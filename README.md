@@ -1,15 +1,17 @@
 # 🚀 Projeto backend - Guia de Commits e Colaboração
 
 ## 📋 Índice
-- [Convenção de Commits](#-convenção-de-commits)
-- [Estrutura das Mensagens](#-estrutura-das-mensagens)
-- [Tipos de Commit](#-tipos-de-commit)
-- [Exemplos Práticos](#-exemplos-práticos)
-- [Workflow do Git](#-workflow-do-git)
-- [Branches](#-estratégia-de-branches)
-- [Pull Requests](#-pull-requests)
-- [Comandos Úteis](#-comandos-úteis)
-- [Ferramentas Recomendadas](#-ferramentas-recomendadas)
+
+* [Convenção de Commits](#-convenção-de-commits)
+* [Estrutura das Mensagens](#-estrutura-das-mensagens)
+* [Tipos de Commit](#-tipos-de-commit)
+* [Exemplos Práticos](#-exemplos-práticos)
+* [Workflow do Git](#-workflow-do-git)
+* [Branches](#-estratégia-de-branches)
+* [Pull Requests](#-pull-requests)
+* [Comandos Úteis](#-comandos-úteis)
+* [Ferramentas Recomendadas](#-ferramentas-recomendadas)
+* [Automação (Husky + Commitlint + PR Template)](#-automação-husky--commitlint--pr-template)
 
 ---
 
@@ -18,6 +20,7 @@
 Seguimos o padrão **Conventional Commits** para manter o histórico organizado e facilitar a geração automática de changelogs.
 
 ### Formato Padrão:
+
 ```
 <tipo>[escopo opcional]: <descrição>
 
@@ -27,23 +30,26 @@ Seguimos o padrão **Conventional Commits** para manter o histórico organizado 
 ```
 
 ### Regras Importantes:
-- ✅ Use **presente do indicativo** ("adiciona" não "adicionado")
-- ✅ Primeira letra **minúscula** na descrição
-- ✅ **Sem ponto final** na descrição
-- ✅ Máximo **50 caracteres** no título
-- ✅ Linha em branco entre título e corpo
-- ✅ Corpo com máximo **72 caracteres** por linha
+
+* ✅ Use **presente do indicativo** ("adiciona" não "adicionado")
+* ✅ Primeira letra **minúscula** na descrição
+* ✅ **Sem ponto final** na descrição
+* ✅ Máximo **50 caracteres** no título
+* ✅ Linha em branco entre título e corpo
+* ✅ Corpo com máximo **72 caracteres** por linha
 
 ---
 
 ## 📝 Estrutura das Mensagens
 
 ### Título (Obrigatório)
+
 ```
 feat(auth): #tarefa adiciona sistema de login JWT
 ```
 
 ### Com Corpo (Opcional)
+
 ```
 feat(auth): adiciona sistema de login JWT
 
@@ -54,6 +60,7 @@ Implementa autenticação usando JSON Web Tokens com:
 ```
 
 ### Com Breaking Change
+
 ```
 feat(api)!: #tarefa altera estrutura de resposta da API
 
@@ -64,25 +71,26 @@ BREAKING CHANGE: campo 'data' agora é obrigatório em todas as respostas
 
 ## 🏷️ Tipos de Commit
 
-| Tipo | Descrição | Exemplo |
-|------|-----------|---------|
-| `feat` | Nova funcionalidade | `feat(upload): adiciona drag and drop` |
-| `fix` | Correção de bug | `fix(auth): corrige validação de token` |
-| `docs` | Documentação | `docs(readme): atualiza guia de instalação` |
-| `style` | Formatação, espaços | `style(css): ajusta indentação` |
-| `refactor` | Refatoração de código | `refactor(api): simplifica validação` |
-| `test` | Testes | `test(auth): adiciona testes unitários` |
-| `chore` | Tarefas de build, deps | `chore(deps): atualiza react para v18` |
-| `perf` | Melhoria de performance | `perf(db): otimiza query de projetos` |
-| `ci` | Integração contínua | `ci(github): adiciona workflow de testes` |
-| `build` | Sistema de build | `build(webpack): configura hot reload` |
-| `revert` | Reverter commit | `revert: desfaz commit abc123` |
+| Tipo       | Descrição               | Exemplo                                     |
+| ---------- | ----------------------- | ------------------------------------------- |
+| `feat`     | Nova funcionalidade     | `feat(upload): adiciona drag and drop`      |
+| `fix`      | Correção de bug         | `fix(auth): corrige validação de token`     |
+| `docs`     | Documentação            | `docs(readme): atualiza guia de instalação` |
+| `style`    | Formatação, espaços     | `style(css): ajusta indentação`             |
+| `refactor` | Refatoração de código   | `refactor(api): simplifica validação`       |
+| `test`     | Testes                  | `test(auth): adiciona testes unitários`     |
+| `chore`    | Tarefas de build, deps  | `chore(deps): atualiza react para v18`      |
+| `perf`     | Melhoria de performance | `perf(db): otimiza query de projetos`       |
+| `ci`       | Integração contínua     | `ci(github): adiciona workflow de testes`   |
+| `build`    | Sistema de build        | `build(webpack): configura hot reload`      |
+| `revert`   | Reverter commit         | `revert: desfaz commit abc123`              |
 
 ---
 
 ## 💡 Exemplos Práticos
 
 ### ✅ Commits Bons
+
 ```bash
 # Funcionalidade nova
 feat(dashboard): #tarefa adiciona gráfico de produtividade
@@ -104,6 +112,7 @@ chore(eslint): #tarefa adiciona regras de TypeScript
 ```
 
 ### ❌ Commits Ruins
+
 ```bash
 # Muito vago
 fix: corrige bug
@@ -126,6 +135,7 @@ feat: adiciona login e corrige bug do upload
 ## 🌊 Workflow do Git
 
 ### 1. Antes de Começar
+
 ```bash
 # Sempre puxe as últimas mudanças
 git pull origin main
@@ -135,6 +145,7 @@ git checkout -b feat/nome-da-feature
 ```
 
 ### 2. Durante o Desenvolvimento
+
 ```bash
 # Adicione arquivos específicos
 git add src/components/Login.tsx
@@ -147,6 +158,7 @@ git commit -m "feat(auth): adiciona componente de login"
 ```
 
 ### 3. Antes de Enviar
+
 ```bash
 # Verifique o que será commitado
 git status
@@ -161,10 +173,12 @@ git push origin feat/nome-da-feature
 ## 🌳 Estratégia de Branches
 
 ### Branches Principais
-- `main` - Código de produção (sempre estável)
-- `develop` - Integração de features (para desenvolvimento)
+
+* `main` - Código de produção (sempre estável)
+* `develop` - Integração de features (para desenvolvimento)
 
 ### Branches de Feature
+
 ```bash
 # Nomenclatura
 feat/nome-da-funcionalidade
@@ -180,6 +194,7 @@ docs/api-documentation
 ```
 
 ### Fluxo de Trabalho
+
 ```bash
 # 1. Criar branch a partir da main
 git checkout main
@@ -200,6 +215,7 @@ git push origin feat/nova-funcionalidade
 ## 🔄 Pull Requests
 
 ### Template de PR
+
 ```markdown
 ## 📝 Descrição
 Breve descrição das mudanças implementadas.
@@ -221,24 +237,26 @@ Breve descrição das mudanças implementadas.
 
 ## 🧪 Como Testar
 1. Faça checkout da branch
-2. Execute `npm install`
-3. Execute `npm run dev`
+2. Execute `pnpm install`
+3. Execute `pnpm dev`
 4. Teste a funcionalidade X
 ```
 
 ### Boas Práticas de PR
-- ✅ **Título claro** e descritivo
-- ✅ **Descrição detalhada** das mudanças
-- ✅ **Screenshots** para mudanças visuais
-- ✅ **Testes** incluídos quando necessário
-- ✅ **Revisão** de pelo menos 1 colega
-- ✅ **Conflitos resolvidos** antes do merge
+
+* ✅ **Título claro** e descritivo
+* ✅ **Descrição detalhada** das mudanças
+* ✅ **Screenshots** para mudanças visuais
+* ✅ **Testes** incluídos quando necessário
+* ✅ **Revisão** de pelo menos 1 colega
+* ✅ **Conflitos resolvidos** antes do merge
 
 ---
 
 ## 🛠️ Comandos Úteis
 
 ### Verificação e Status
+
 ```bash
 # Ver status dos arquivos
 git status
@@ -253,6 +271,7 @@ git log --graph --oneline --all
 ```
 
 ### Correções Rápidas
+
 ```bash
 # Alterar última mensagem de commit
 git commit --amend -m "nova mensagem"
@@ -270,6 +289,7 @@ git reset --hard HEAD
 ```
 
 ### Sincronização
+
 ```bash
 # Atualizar branch local com remota
 git pull origin main
@@ -288,11 +308,13 @@ git merge upstream/main
 ## 🔧 Ferramentas Recomendadas
 
 ### Extensions do VS Code
-- **GitLens** - Histórico e blame inline
-- **Git Graph** - Visualização gráfica do histórico
-- **Conventional Commits** - Autocomplete para commits
+
+* **GitLens** - Histórico e blame inline
+* **Git Graph** - Visualização gráfica do histórico
+* **Conventional Commits** - Autocomplete para commits
 
 ### Configuração do Git
+
 ```bash
 # Configurar nome e email
 git config --global user.name "Seu Nome"
@@ -306,6 +328,7 @@ git config --global merge.tool vscode
 ```
 
 ### Aliases Úteis
+
 ```bash
 # Adicionar ao ~/.gitconfig
 [alias]
@@ -325,12 +348,14 @@ git config --global merge.tool vscode
 ## 📚 Recursos Adicionais
 
 ### Links Úteis
-- [Conventional Commits](https://www.conventionalcommits.org/)
-- [Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)
-- [GitHub Flow](https://guides.github.com/introduction/flow/)
-- [Semantic Versioning](https://semver.org/)
+
+* [Conventional Commits](https://www.conventionalcommits.org/)
+* [Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)
+* [GitHub Flow](https://guides.github.com/introduction/flow/)
+* [Semantic Versioning](https://semver.org/)
 
 ### Comandos de Emergência
+
 ```bash
 # Recuperar commit deletado
 git reflog
@@ -349,18 +374,21 @@ git checkout HEAD -- arquivo.txt
 ## 🤝 Colaboração em Equipe
 
 ### Comunicação
-- 💬 **Comente** nos PRs de forma construtiva
-- 🔍 **Revise** o código dos colegas
-- 📢 **Comunique** mudanças importantes no grupo
-- ❓ **Tire dúvidas** antes de fazer mudanças grandes
+
+* 💬 **Comente** nos PRs de forma construtiva
+* 🔍 **Revise** o código dos colegas
+* 📢 **Comunique** mudanças importantes no grupo
+* ❓ **Tire dúvidas** antes de fazer mudanças grandes
 
 ### Responsabilidades
-- 👤 **Cada um** é responsável por sua branch
-- 🔄 **Todos** devem revisar PRs
-- 📝 **Mantenha** commits organizados
-- 🧪 **Teste** antes de fazer push
+
+* 👤 **Cada um** é responsável por sua branch
+* 🔄 **Todos** devem revisar PRs
+* 📝 **Mantenha** commits organizados
+* 🧪 **Teste** antes de fazer push
 
 ### Resolução de Conflitos
+
 ```bash
 # Quando houver conflito no merge
 git status  # Ver arquivos em conflito
@@ -384,9 +412,184 @@ git commit -m "resolve: conflito em arquivo-resolvido"
 
 ---
 
-**Lembre-se**: Um bom histórico de commits é como uma documentação viva do projeto! 📖✨
+*Criado para o Projeto Workflow - FATEC Cotia*
 
 ---
 
-*Criado para o Projeto Workflow - FATEC Cotia*
+
+# 🚀 Como subir o backend
+
+> Guia prático para rodar a API localmente com e sem Docker, incluindo variáveis de ambiente, Prisma e diagnóstico.
+
+## ✅ Pré‑requisitos
+
+* **Node.js** (>= 20)
+* **pnpm** (>= 9)
+* **Docker Desktop** (opção A) **ou** **MySQL 8** instalado local (opção B)
+
+## 📄 `.env` mínimo (exemplo)
+
+Crie a partir do `.env.example` e ajuste:
+
+```env
+NODE_ENV=development
+PORT=3333
+CORS_ORIGIN=http://localhost:5173
+DATABASE_URL="mysql://root:root@127.0.0.1:3306/workflow_fatec"
+JWT_ACCESS_SECRET=change-me
+JWT_REFRESH_SECRET=change-me-too
+JWT_ACCESS_EXPIRES=15m
+JWT_REFRESH_EXPIRES=7d
+```
+
+> Dica: use **127.0.0.1** em vez de `localhost` para evitar problemas de socket no macOS.
+
+---
+
+## 🅰️ Opção A — Com Docker (MySQL + Adminer)
+
+### `docker-compose.yml`
+
+> Coloque na raiz do projeto (ao lado do `package.json`).
+
+```yaml
+version: "3.9"
+services:
+  db:
+    image: mysql:8
+    container_name: wf_mysql
+    command: ["--default-authentication-plugin=mysql_native_password"]
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: workflow_fatec
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - db_data:/var/lib/mysql
+
+  adminer:
+    image: adminer:4
+    container_name: wf_adminer
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_DB_DRIVER: mysql
+      ADMINER_DEFAULT_SERVER: db
+      ADMINER_DEFAULT_DB_NAME: workflow_fatec
+
+volumes:
+  db_data:
+```
+
+### Subir e rodar
+
+```bash
+# 1) Variáveis
+cp .env.example .env
+
+# 2) Banco via Docker
+docker compose up -d
+
+# 3) Dependências e Prisma
+pnpm i
+pnpm prisma:generate
+pnpm prisma:push
+
+# 4) API
+pnpm dev
+# Teste
+curl -s http://127.0.0.1:3333/health
+```
+
+> Adminer: [http://localhost:8080](http://localhost:8080) (Server: `db`, User: `root`, Pass: `root`, DB: `workflow_fatec`).
+
+---
+
+## 🅱️ Opção B — Sem Docker (MySQL local / macOS Homebrew)
+
+```bash
+# Instalar e iniciar MySQL 8
+brew install mysql@8.0
+brew services start mysql@8.0
+export PATH="/opt/homebrew/opt/mysql@8.0/bin:$PATH"
+
+# Configurar usuário e banco
+mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';"
+mysql -u root -proot -e "CREATE DATABASE IF NOT EXISTS workflow_fatec;"
+
+# Verificar servidor
+mysqladmin -uroot -proot ping
+mysql -uroot -proot -h 127.0.0.1 -P 3306 -e "SELECT VERSION();"
+
+# Prisma e API
+pnpm prisma:generate
+pnpm prisma:push
+pnpm dev
+curl -s http://127.0.0.1:3333/health
+```
+
+> Windows: usar **Docker Desktop** ou **WSL2** com MySQL dentro do WSL.
+
+---
+
+## 🧪 Rotas de teste rápidas
+
+```bash
+# Health
+curl -s http://127.0.0.1:3333/health
+
+# (Opcional, se habilitadas)
+# Criar admin de debug
+curl -s -X POST http://127.0.0.1:3333/debug/seed-admin | jq
+# Listar usuários
+curl -s http://127.0.0.1:3333/debug/users | jq
+```
+
+---
+
+## 🧰 Scripts úteis (package.json)
+
+```json
+{
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc -p . --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push"
+  }
+}
+```
+
+---
+
+## 🛟 Solução de problemas comuns
+
+* **P1001: Can't reach database server**
+
+  * Garanta MySQL ligado (Docker ou serviço local)
+  * Use `127.0.0.1:3306` no `.env`
+  * `mysqladmin -uroot -proot ping` deve responder `mysqld is alive`
+
+* **`Module '@prisma/client' has no exported member 'PrismaClient'`**
+
+  * Rode `pnpm prisma:generate`
+  * Importe como `import { PrismaClient } from "@prisma/client";`
+
+* **`EADDRINUSE: 3333`**
+
+  * Descobrir processo: `lsof -i :3333`
+  * Matar: `kill -9 <PID>`
+
+* **`bcrypt`/`esbuild` ignorados no pnpm**
+
+  * `pnpm approve-builds && pnpm i`
+
 

@@ -1,0 +1,252 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/* ---------- ENUMS ---------- */
+enum Role {
+  USER
+  BACKOFFICE
+  TECH
+  ADMIN
+}
+
+enum TicketLevel {
+  N1
+  N2
+  N3
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/* ---------- USUÁRIOS & SESSÕES ---------- */
+model User {
+  id               String    @id @default(cuid())
+  name             String
+  email            String    @unique
+  educationalEmail String?
+  ra               String?   @db.VarChar(32)
+  passwordHash     String
+  role             Role      @default(USER)
+  isActive         Boolean   @default(true)
+  isAnonymized     Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  createdTickets   Ticket[]  @relation("CreatedTickets")
+  assignedTickets  Ticket[]  @relation("AssignedTickets")
+  evidences        Evidence[]
+  logs             AuditLog[]
+  comments         TicketComment[]
+  statusChanges    TicketStatusHistory[] @relation("StatusByUser")
+  sessions         Session[]
+  resetTokens      PasswordResetToken[]  @relation("UserPasswordResetTokens")
+
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshHash  String
+  userAgent    String?
+  ip           String?  @db.VarChar(64)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation("UserPasswordResetTokens", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/* ---------- CLIENTES & CONTRATOS ---------- */
+model Customer {
+  id             String    @id @default(cuid())
+  name           String
+  cpf            String?   @unique @db.VarChar(14)
+  email          String?
+  phone          String?   @db.VarChar(20)
+  externalId     String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  contracts      Contract[]
+  tickets        Ticket[]
+
+  @@index([name])
+  @@index([cpf])
+}
+
+model Contract {
+  id            String    @id @default(cuid())
+  customerId    String
+  number        String    @db.VarChar(64)
+  plan          String?
+  startDate     DateTime?
+  endDate       DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  customer      Customer  @relation(fields: [customerId], references: [id])
+
+  tickets       Ticket[]  @relation("ContractTickets")
+
+  @@unique([customerId, number])
+  @@index([customerId])
+}
+
+/* ---------- TICKETS ---------- */
+model Ticket {
+  id             String         @id @default(cuid())
+  title          String
+  description    String
+  level          TicketLevel    @default(N1)
+  status         TicketStatus   @default(OPEN)
+  priority       TicketPriority @default(MEDIUM)
+
+  customerId     String?
+  contractId     String?
+  customer       Customer?      @relation(fields: [customerId], references: [id])
+  contract       Contract?      @relation("ContractTickets", fields: [contractId], references: [id])
+
+  assignedToId   String?
+  assignedTo     User?          @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  createdById    String
+  createdBy      User           @relation("CreatedTickets", fields: [createdById], references: [id])
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  evidences      Evidence[]
+  history        TicketStatusHistory[]
+  comments       TicketComment[]
+  tags           TicketTag[]
+
+  @@index([status, level])
+  @@index([createdAt])
+  @@index([customerId])
+}
+
+model TicketStatusHistory {
+  id        String       @id @default(cuid())
+  ticketId  String
+  from      TicketStatus?
+  to        TicketStatus
+  byUserId  String?
+  note      String?
+  createdAt DateTime     @default(now())
+  ticket    Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  byUser    User?        @relation("StatusByUser", fields: [byUserId], references: [id])
+
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
+model TicketComment {
+  id         String   @id @default(cuid())
+  ticketId   String
+  authorId   String
+  body       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author     User     @relation(fields: [authorId], references: [id])
+
+  @@index([ticketId])
+}
+
+model Evidence {
+  id           String   @id @default(cuid())
+  ticketId     String
+  filename     String
+  mimeType     String
+  size         Int
+  storageKey   String
+  uploadedById String
+  createdAt    DateTime @default(now())
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([ticketId])
+}
+
+/* ---------- TAGS ---------- */
+model Tag {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  color     String?     @db.VarChar(16)
+  createdAt DateTime    @default(now())
+  tickets   TicketTag[]
+}
+
+model TicketTag {
+  ticketId String
+  tagId    String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tag      Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, tagId])
+  @@index([tagId])
+}
+
+/* ---------- AUDITORIA & E-MAILS ---------- */
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  target    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+  actor     User?    @relation(fields: [actorId], references: [id])
+
+  @@index([createdAt])
+}
+
+model EmailOutbox {
+  id         String   @id @default(cuid())
+  to         String
+  subject    String
+  payload    Json
+  providerId String?
+  status     String   @default("PENDING")
+  error      String?
+  createdAt  DateTime @default(now())
+  sentAt     DateTime?
+
+  @@index([status])
+}
