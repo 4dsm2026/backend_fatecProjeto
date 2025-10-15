@@ -5,3 +5,4 @@ uploads
 coverage
 dist
 .prisma
+package-lock.json
