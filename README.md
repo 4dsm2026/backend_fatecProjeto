@@ -499,12 +499,12 @@ cp .env.example .env
 docker compose up -d
 
 # 3) Dependências e Prisma
-pnpm i
-pnpm prisma:generate
-pnpm prisma:push
+npm i
+npm run prisma:generate
+npm run prisma:push
 
 # 4) API
-pnpm dev
+npm run dev
 # Teste
 curl -s http://127.0.0.1:3333/health
 ```
