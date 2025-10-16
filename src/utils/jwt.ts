@@ -1,32 +1,46 @@
-import jwt, { SignOptions } from "jsonwebtoken";
+import jwt, { SignOptions, JwtPayload as JWTStd } from "jsonwebtoken";
 
-export interface JwtPayload {
+export interface AccessClaims {
   sub: string;
   email: string;
-  role: string;
+  role: string; 
 }
 
-export const generateAccessToken = (payload: JwtPayload): string => {
+const ACCESS_DEFAULT_EXPIRES: SignOptions["expiresIn"] =
+  (process.env.JWT_ACCESS_EXPIRES as any) || "15m";
+
+export function generateAccessToken(claims: AccessClaims, opts?: { expiresIn?: SignOptions["expiresIn"] }): string {
   const secret = process.env.JWT_ACCESS_SECRET;
   if (!secret) throw new Error("JWT_ACCESS_SECRET não definido");
 
-  const expiresIn = (process.env.JWT_ACCESS_EXPIRES || "15m") as SignOptions["expiresIn"];
 
-  return jwt.sign(payload, secret, { expiresIn });
-};
+  const { sub, email, role } = claims;
 
-export const generateRefreshToken = (payload: { sub: string }): string => {
-  const secret = process.env.JWT_REFRESH_SECRET;
-  if (!secret) throw new Error("JWT_REFRESH_SECRET não definido");
+  return jwt.sign(
+    { sub, email, role },
+    secret,
+    {
+      algorithm: "HS256",
+      expiresIn: opts?.expiresIn ?? ACCESS_DEFAULT_EXPIRES,
+      issuer: process.env.JWT_ISSUER || "helpdesk",
+      audience: process.env.JWT_AUDIENCE || "helpdesk-app",
+    }
+  );
+}
 
-  const expiresIn = (process.env.JWT_REFRESH_EXPIRES || "7d") as SignOptions["expiresIn"];
-
-  return jwt.sign(payload, secret, { expiresIn });
-};
-
-export const verifyAccessToken = (token: string): JwtPayload => {
+export function verifyAccessToken(token: string): (JWTStd & AccessClaims) {
   const secret = process.env.JWT_ACCESS_SECRET;
   if (!secret) throw new Error("JWT_ACCESS_SECRET não definido");
 
-  return jwt.verify(token, secret) as JwtPayload;
-};
+  try {
+    
+    return jwt.verify(token, secret, {
+      algorithms: ["HS256"],
+      issuer: process.env.JWT_ISSUER || "helpdesk",
+      audience: process.env.JWT_AUDIENCE || "helpdesk-app",
+    }) as JWTStd & AccessClaims;
+  } catch {
+    throw new Error("Token inválido ou expirado");
+  }
+}
+
