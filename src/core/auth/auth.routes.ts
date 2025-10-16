@@ -1,84 +1,56 @@
-// src/modules/auth/auth.routes.ts
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { login, refresh, logout, me, register, getUser } from "./auth.controller";
 import { authenticate } from "../../middlewares/auth.middleware";
+import { buildRouteValidator, zEmail, zStringTrim, zPapelOptional } from "../../utils/zod-helpers";
+import { z } from "zod";
 
-export default async function authRoutes(app: FastifyInstance) {
-  // Schemas de validação
-  const loginSchema = {
-    body: {
-      type: "object",
-      required: ["email", "password"],
-      properties: {
-        email: { type: "string", format: "email" },
-        password: { type: "string", minLength: 1 },
-      },
-      additionalProperties: false,
-    },
-  } as const;
+const LoginSchema = z.object({
+  email: zEmail,
+  password: zStringTrim.min(8),
+});
+const RefreshSchema = z.object({ refreshToken: z.string().min(20) });
+const RegisterSchema = z.object({
+  email: zEmail,
+  password: zStringTrim.min(8),
+  role: zPapelOptional,
+  name: zStringTrim.min(2),
+  educationalEmail: zEmail.optional(),
+  ra: zStringTrim.max(32).optional(),
+});
+const GetUserQuerySchema = z.object({
+  ra: zStringTrim.optional(),
+  email: zEmail.optional(),
+  id: zStringTrim.optional(),
+  name: zStringTrim.optional(),
+  educationalEmail: zEmail.optional(),
+});
 
-  const tokenSchema = {
-    body: {
-      type: "object",
-      required: ["refreshToken"],
-      properties: {
-        refreshToken: { type: "string", minLength: 10 },
-      },
-      additionalProperties: false,
-    },
-  } as const;
 
-  const registerSchema = {
-    body: {
-      type: "object",
-      required: ["email", "password", "name"],
-      properties: {
-        email: { type: "string", format: "email" },  // email pessoal
-        password: { type: "string", minLength: 6 },
-        role: { type: "string" },                    // USUARIO | BACKOFFICE | TECNICO | ADMINISTRADOR
-        name: { type: "string", minLength: 1 },      // nome
-        educationalEmail: { type: "string", nullable: true },
-        ra: { type: "string", nullable: true },
-      },
-      additionalProperties: false,
-    },
-  } as const;
+const preBody =
+  (schema: z.ZodTypeAny) =>
+  async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const v = buildRouteValidator({ body: schema }).parse(req);
+    if ("error" in v) {
+      await reply.code(400).send(v.error);
+    }
+  };
 
-  // Schema de querystring para /usuarios
-  const getUserQuerySchema = {
-    querystring: {
-      type: "object",
-      properties: {
-        ra: { type: "string" },
-        email: { type: "string" },             // email pessoal
-        id: { type: "string" },
-        name: { type: "string" },
-        educationalEmail: { type: "string" },
-      },
-      additionalProperties: false,
-    },
-  } as const;
+const preQuery =
+  (schema: z.ZodTypeAny) =>
+  async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const v = buildRouteValidator({ query: schema }).parse(req);
+    if ("error" in v) {
+      await reply.code(400).send(v.error);
+    }
+  };
 
-  // Rotas de autenticação
-  app.post("/auth/login", { schema: loginSchema }, login);
-  app.post("/auth/refresh", { schema: tokenSchema }, refresh);
-  app.post("/auth/logout", { schema: tokenSchema }, logout);
-  app.post("/auth/register", { schema: registerSchema }, register);
+export default function authRoutes(app: FastifyInstance): void {
+  app.post("/login",    { preHandler: preBody(LoginSchema) }, login);
+  app.post("/refresh",  { preHandler: preBody(RefreshSchema) }, refresh);
+  app.post("/logout",   { preHandler: preBody(RefreshSchema) }, logout);
+  app.post("/register", { preHandler: preBody(RegisterSchema) }, register);
 
-  // Perfil protegido
-  app.get("/auth/me", { preHandler: authenticate }, me);
-
-  app.get<{
-    Querystring: {
-      ra?: string;
-      email?: string;
-      id?: string;
-      name?: string;
-      educationalEmail?: string;
-    };
-  }>(
-    "/usuarios",
-    { preHandler: authenticate, schema: getUserQuerySchema },
-    getUser
-  );
+  app.get("/me", { preHandler: authenticate }, me);
+  app.get("/usuarios", { preHandler: [authenticate, preQuery(GetUserQuerySchema)] }, getUser);
 }
+
