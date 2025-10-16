@@ -110,11 +110,11 @@ model Categoria {
 
 model Servico {
   id          String     @id @default(cuid())
-  categoriaId String? // <- opcional
+  categoriaId String?
   nome        String
   descricao   String?
   ativo       Boolean    @default(true)
-  categoria   Categoria? @relation(fields: [categoriaId], references: [id]) // <- opcional
+  categoria   Categoria? @relation(fields: [categoriaId], references: [id])
 
   chamados Chamado[]
 
@@ -133,7 +133,7 @@ model Usuario {
   emailEducacional String?
   ra               String?   @db.VarChar(32)
   senhaHash        String
-  papel            Papel     @default(USUARIO) // papel global
+  papel            Papel     @default(USUARIO)
   ativo            Boolean   @default(true)
   anonimizado      Boolean   @default(false)
   criadoEm         DateTime  @default(now())
@@ -152,23 +152,36 @@ model Usuario {
   tokensReset        TokenResetSenha[]        @relation("TokensDeUsuario")
   usuarioSetores     UsuarioSetor[]
 
+  // back-relation das tentativas de login
+  loginTentativas LoginTentativa[] @relation("LoginTentativasDoUsuario")
+
   @@index([emailPessoal])
   @@index([organizacaoId])
   @@map("usuarios")
 }
 
 model Sessao {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) // pode servir como JTI
   usuarioId   String
-  refreshHash String
+  refreshHash String   @db.VarChar(255) // hash do refresh (opaque token)
   userAgent   String?
   ip          String?  @db.VarChar(64)
   expiraEm    DateTime
   criadoEm    DateTime @default(now())
-  usuario     Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
+  // segurança/rotação
+  ultimoUsoEm      DateTime  @default(now())
+  revogadaEm       DateTime?
+  substituidaPorId String?
+  substituidaPor   Sessao?   @relation("SessaoSubstituta", fields: [substituidaPorId], references: [id])
+  substitui        Sessao[]  @relation("SessaoSubstituta")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([refreshHash])
   @@index([usuarioId])
   @@index([expiraEm])
+  @@index([revogadaEm])
   @@map("sessoes")
 }
 
@@ -195,7 +208,7 @@ model Cliente {
   cpf          String?   @unique @db.VarChar(14)
   email        String?
   telefone     String?   @db.VarChar(20)
-  idExterno    String?   @unique
+  idExterno    String?
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
   deletadoEm   DateTime?
@@ -309,16 +322,20 @@ model Mensagem {
 }
 
 model Anexo {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   chamadoId      String
   nomeArquivo    String
   mimeType       String
   tamanhoBytes   Int
   caminhoArquivo String
-  enviadoPorId   String
-  enviadoEm      DateTime @default(now())
-  chamado        Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
-  enviadoPor     Usuario  @relation(fields: [enviadoPorId], references: [id])
+  // Para Supabase Storage (opcionais)
+  storageBucket  String? @default("anexos")
+  checksumSha256 String? @db.VarChar(64)
+
+  enviadoPorId String
+  enviadoEm    DateTime @default(now())
+  chamado      Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+  enviadoPor   Usuario  @relation(fields: [enviadoPorId], references: [id])
 
   @@index([chamadoId])
   @@map("anexos")
@@ -377,4 +394,25 @@ model EmailEnvio {
 
   @@index([status])
   @@map("email_envios")
+}
+
+/**
+ * ---------- LOGIN (AUDITORIA) ----------
+ */
+model LoginTentativa {
+  id        String   @id @default(cuid())
+  email     String
+  usuarioId String? // SetNull exige opcional
+  sucesso   Boolean
+  ip        String?  @db.VarChar(64)
+  userAgent String?
+  motivo    String?
+  criadoEm  DateTime @default(now())
+
+  // Nome da relação posicional (Prisma 6)
+  usuario Usuario? @relation("LoginTentativasDoUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([email, criadoEm])
+  @@index([usuarioId, criadoEm])
+  @@map("login_tentativas")
 }
