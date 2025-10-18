@@ -1,4 +1,3 @@
-// src/middlewares/auth.middleware.ts
 import { FastifyReply, FastifyRequest } from "fastify";
 import { verifyAccessToken } from "../utils/jwt";
 

@@ -131,7 +131,7 @@ model Usuario {
   nome             String
   emailPessoal     String    @unique
   emailEducacional String?
-  ra               String?   @db.VarChar(32)
+  ra               String?   @unique @db.VarChar(32)
   senhaHash        String
   papel            Papel     @default(USUARIO)
   ativo            Boolean   @default(true)
