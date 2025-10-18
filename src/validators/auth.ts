@@ -1,21 +1,27 @@
+// src/validators/auth.ts
 import { z } from "zod";
-import { zEmail, zPassword, zPapelOptional } from "../utils/zod-helpers";
+import { zEmail, zStringTrim, zPapelOptional } from "../utils/zod-helpers";
 
-/** Auth */
-export const LoginSchema = z.object({
-  email: zEmail,
-  password: zPassword,
-});
+/** Ajuste a regex do RA conforme seu padrão real (numérico, alfanumérico, etc.) */
+const zRA = zStringTrim.min(3).max(32).regex(/^[A-Za-z0-9._-]+$/, "RA inválido");
 
-export const RefreshSchema = z.object({
-  refreshToken: z.string().min(20, "Refresh token inválido"),
-});
+export const LoginSchema = z
+  .object({
+    email: zEmail.optional(),      // funcionários/professores/admin
+    ra: zRA.optional(),            // alunos
+    password: zStringTrim.min(8),
+  })
+  .refine((d) => (!!d.email) !== (!!d.ra), {
+    message: "Informe email (funcionário) OU RA (aluno).",
+  });
+
+export const RefreshSchema = z.object({ refreshToken: z.string().min(20) });
 
 export const RegisterSchema = z.object({
-  email: zEmail,                       // email pessoal
-  password: zPassword,
-  role: zPapelOptional,                // mapeia string -> enum Papel (default USUARIO)
-  name: z.string().trim().min(2),
-  educationalEmail: zEmail.optional(), // email educacional
-  ra: z.string().trim().max(32).optional(),
+  email: zEmail,
+  password: zStringTrim.min(8),
+  role: zPapelOptional,
+  name: zStringTrim.min(2),
+  educationalEmail: zEmail.optional(),
+  ra: zStringTrim.max(32).optional(),
 });
