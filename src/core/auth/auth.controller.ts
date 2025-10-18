@@ -16,7 +16,10 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /* ============ LOGIN ============ */
 const loginValidator = buildRouteValidator({ body: LoginSchema });
+
 export const login = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
+  console.log("🔹 Iniciando login...");
+
   const parsed = loginValidator.parse(req);
   if ("error" in parsed) {
     await res.code(400).send(parsed.error);
@@ -24,23 +27,43 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
   }
 
   const prisma = (req.server as any).prisma;
-  const { email, password } = parsed.data!.body! as { email: string; password: string };
+  const { email, ra, password } = parsed.data!.body! as {
+    email?: string;
+    ra?: string;
+    password: string;
+  };
+
   const ip = req.ip;
   const userAgent = String(req.headers["user-agent"] || "");
+  const identificador = email ?? ra ?? "";
 
   try {
-    const user = await prisma.usuario.findUnique({ where: { emailPessoal: email } });
+    // 🔍 Busca por e-mail (funcionário) ou RA (aluno)
+    const user = email
+      ? await prisma.usuario.findUnique({ where: { emailPessoal: email } })
+      : await prisma.usuario.findUnique({ where: { ra } });
+
     if (!user || !user.senhaHash || !(await verifyPassword(user.senhaHash, password))) {
       await prisma.loginTentativa.create({
-        data: { email, usuarioId: user?.id ?? null, sucesso: false, ip, userAgent, motivo: "credenciais_invalidas" },
+        data: {
+          email: email ?? "",
+          usuarioId: user?.id ?? null,
+          sucesso: false,
+          ip,
+          userAgent,
+          motivo: "credenciais_invalidas",
+        },
       });
+      console.warn("❌ Credenciais inválidas:", identificador);
       await res.code(401).send({ error: "Credenciais inválidas" });
       return;
     }
+
     if (!user.ativo) {
       await prisma.loginTentativa.create({
-        data: { email, usuarioId: user.id, sucesso: false, ip, userAgent, motivo: "usuario_inativo" },
+        data: { email: email ?? "", usuarioId: user.id, sucesso: false, ip, userAgent, motivo: "usuario_inativo" },
       });
+      console.warn("⚠️ Usuário inativo:", identificador);
       await res.code(403).send({ error: "Usuário inativo" });
       return;
     }
@@ -52,6 +75,7 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     });
 
     const { token: refreshToken } = genRT();
+
     await createSession({
       usuarioId: user.id,
       refreshToken,
@@ -61,17 +85,20 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     });
 
     await prisma.loginTentativa.create({
-      data: { email, usuarioId: user.id, sucesso: true, ip, userAgent, motivo: "ok" },
+      data: { email: email ?? "", usuarioId: user.id, sucesso: true, ip, userAgent, motivo: "ok" },
     });
 
+    console.log("✅ Login concluído com sucesso:", identificador);
     await res.send({ user, accessToken, refreshToken });
   } catch (e) {
+    console.error("💥 Erro no login:", e);
     await res.code(500).send({ error: errMsg(e) });
   }
 };
 
 /* ============ REGISTER ============ */
 const registerValidator = buildRouteValidator({ body: RegisterSchema });
+
 export const register = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
   const parsed = registerValidator.parse(req);
   if ("error" in parsed) {
@@ -90,17 +117,12 @@ export const register = async (req: FastifyRequest, res: FastifyReply): Promise<
   };
 
   try {
-    const result = await prisma.$transaction(async (tx: {
-        usuario: {
-          findUnique: (arg0: { where: { emailPessoal: string; }; select: { id: boolean; }; }) => any; create: (arg0: {
-            data: {
-              nome: string; emailPessoal: string; emailEducacional: string | null; ra: string | null; senhaHash: string; papel: any; // normalizado via Zod
-              ativo: boolean;
-            };
-          }) => any;
-        };
-      }) => {
-      const exists = await tx.usuario.findUnique({ where: { emailPessoal: email }, select: { id: true } });
+    const result = await prisma.$transaction(async (tx: any) => {
+      const exists = await tx.usuario.findUnique({
+        where: { emailPessoal: email },
+        select: { id: true },
+      });
+
       if (exists) {
         const err: any = new Error("Email já está em uso");
         err.statusCode = 409;
@@ -116,7 +138,7 @@ export const register = async (req: FastifyRequest, res: FastifyReply): Promise<
           emailEducacional: educationalEmail ?? null,
           ra: ra ?? null,
           senhaHash,
-          papel: role, // normalizado via Zod
+          papel: role,
           ativo: true,
         },
       });
@@ -128,6 +150,7 @@ export const register = async (req: FastifyRequest, res: FastifyReply): Promise<
       });
 
       const { token: refreshToken } = genRT();
+
       await createSessionWithClient(tx, {
         usuarioId: user.id,
         refreshToken,
@@ -141,6 +164,7 @@ export const register = async (req: FastifyRequest, res: FastifyReply): Promise<
 
     await res.send(result);
   } catch (e: any) {
+    console.error("💥 Erro no registro:", e);
     if (e?.statusCode === 409 || e?.code === "P2002") {
       await res.code(409).send({ error: "Email já está em uso" });
       return;
@@ -149,8 +173,9 @@ export const register = async (req: FastifyRequest, res: FastifyReply): Promise<
   }
 };
 
-/* ============ REFRESH ============ */
+/* ============ REFRESH TOKEN ============ */
 const refreshValidator = buildRouteValidator({ body: RefreshSchema });
+
 export const refresh = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
   const parsed = refreshValidator.parse(req);
   if ("error" in parsed) {
@@ -181,6 +206,7 @@ export const refresh = async (req: FastifyRequest, res: FastifyReply): Promise<v
 
     await res.send({ accessToken, refreshToken: novoRefresh });
   } catch (e) {
+    console.error("💥 Erro no refresh:", e);
     await res.code(500).send({ error: errMsg(e) });
   }
 };
@@ -195,6 +221,7 @@ export const logout = async (req: FastifyRequest, res: FastifyReply): Promise<vo
 
   const prisma = (req.server as any).prisma;
   const { refreshToken } = parsed.data!.body! as { refreshToken: string };
+
   try {
     const sessao = await verifyAndGetSession(refreshToken);
     if (sessao) {
@@ -203,16 +230,19 @@ export const logout = async (req: FastifyRequest, res: FastifyReply): Promise<vo
         data: { revogadaEm: new Date() },
       });
     }
+
     await res.send({ message: "Logout OK" });
   } catch (e) {
+    console.error("💥 Erro no logout:", e);
     await res.code(500).send({ error: errMsg(e) });
   }
 };
 
-/* ============ ME ============ */
+/* ============ ME (usuário atual) ============ */
 export const me = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
   const prisma = (req.server as any).prisma;
   const authUser = (req as any).user as { sub?: string } | undefined;
+
   if (!authUser?.sub) {
     await res.code(401).send({ error: "Não autenticado" });
     return;
@@ -233,12 +263,15 @@ export const me = async (req: FastifyRequest, res: FastifyReply): Promise<void> 
         atualizadoEm: true,
       },
     });
+
     if (!user) {
       await res.code(404).send({ error: "Usuário não encontrado" });
       return;
     }
+
     await res.send(user);
   } catch (e) {
+    console.error("💥 Erro no /me:", e);
     await res.code(500).send({ error: errMsg(e) });
   }
 };
@@ -267,8 +300,10 @@ export const getUser = async (req: FastifyRequest, res: FastifyReply): Promise<v
       await res.code(404).send({ error: "Usuário não encontrado" });
       return;
     }
+
     await res.send(users);
   } catch (e) {
+    console.error("💥 Erro em /usuarios:", e);
     await res.code(500).send({ error: errMsg(e) });
   }
 };
