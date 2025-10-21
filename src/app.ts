@@ -1,35 +1,40 @@
-// src/app.ts
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import prismaPlugin from "./plugins/prisma";
 import authRoutes from "./core/auth/auth.routes";
+import authVerify from "./plugins/auth-verify";
+import { usersRoutes } from "./core/users/users.routes";
+import { ticketsRoutes } from "./core/tickets/tickets.routes";
+import swaggerPlugin from "./plugins/swagger"; 
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
 
-  // 1) CORS antes de tudo, com origins explícitas e headers/métodos claros
   const origins = (process.env.CORS_ORIGIN ?? "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean); // exemplo no .env: http://localhost:3000,http://localhost:5173
+    .filter(Boolean);
 
   await app.register(cors, {
     origin: (origin, cb) => {
-      // permite chamadas sem Origin (ex.: curl, Postman) e as origins whitelisted
       if (!origin || origins.includes(origin)) return cb(null, true);
       return cb(new Error("Origin not allowed"), false);
     },
     credentials: true,
-    methods: ["GET", "POST", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    maxAge: 86400, // ajuda em dev
+    maxAge: 86400,
   });
 
-  // 2) Prisma
+  // ====== Plugins ======
   await app.register(prismaPlugin);
+  await app.register(authVerify);
+  await app.register(swaggerPlugin); // ✅ Swagger em /docs
 
-  // 3) Logs úteis (entrada e saída) para ver se o POST está chegando e respondendo
-  app.addHook("onRoute", (r) => app.log.info({ method: r.method, url: r.url }, "ROUTE"));
+  // ====== Logs úteis ======
+  app.addHook("onRoute", (r) =>
+    app.log.info({ method: r.method, url: r.url }, "ROUTE"),
+  );
   app.addHook("onRequest", async (req) => {
     req.log.info({ method: req.method, url: req.url }, "REQ");
   });
@@ -38,8 +43,12 @@ export async function buildApp() {
     return payload;
   });
 
-  // 4) Rotas (depois do CORS!)
+  // ====== Rotas principais ======
   app.register(authRoutes, { prefix: "/auth" });
+  app.register(usersRoutes, { prefix: "/usuarios" });
+  app.register(ticketsRoutes, { prefix: "/tickets" });
+
+  // ====== Health Check ======
   app.get("/health", async () => ({ ok: true }));
 
   return app;

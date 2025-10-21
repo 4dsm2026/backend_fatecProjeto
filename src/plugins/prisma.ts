@@ -1,3 +1,4 @@
+// src/plugins/prisma.ts
 import fp from "fastify-plugin";
 import { PrismaClient } from "@prisma/client";
 
@@ -12,8 +13,21 @@ export default fp(async (app) => {
   });
 });
 
+// 🔹 Declaração de tipos do Fastify (importantíssimo!)
 declare module "fastify" {
   interface FastifyInstance {
     prisma: PrismaClient;
+    authenticate: (req: any, res: any) => Promise<void>; // ✅ adiciona o método do plugin JWT
+  }
+
+  interface FastifyRequest {
+    prisma: PrismaClient;
+    user?: {
+      sub: string;
+      email: string;
+      role: string;
+      iat?: number;
+      exp?: number;
+    };
   }
 }
