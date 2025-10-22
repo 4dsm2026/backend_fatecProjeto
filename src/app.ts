@@ -5,6 +5,7 @@ import authRoutes from "./core/auth/auth.routes";
 import authVerify from "./plugins/auth-verify";
 import { usersRoutes } from "./core/users/users.routes";
 import { ticketsRoutes } from "./core/tickets/tickets.routes";
+import { catalogoRoutes } from "./core/catalogo/catalogo.routes";
 import swaggerPlugin from "./plugins/swagger"; 
 
 export async function buildApp() {
@@ -47,6 +48,8 @@ export async function buildApp() {
   app.register(authRoutes, { prefix: "/auth" });
   app.register(usersRoutes, { prefix: "/usuarios" });
   app.register(ticketsRoutes, { prefix: "/tickets" });
+  app.register(catalogoRoutes, { prefix: "/catalogo" });
+
 
   // ====== Health Check ======
   app.get("/health", async () => ({ ok: true }));

@@ -16,7 +16,8 @@
     "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
