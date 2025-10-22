@@ -13,7 +13,7 @@ import {
   softDeleteTicket,
   updateTicket,
 } from './tickets.service'
-import type { TicketsListQuery } from './tickets.types' // <-- importa o tipo
+import type { TicketsListQuery } from './tickets.types' 
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -72,7 +72,6 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   try {
     const q = parsed.data!.query!
 
-    // 🔧 Normaliza include: string -> array, mantém undefined quando não enviado
     const normalizedInclude =
       q.include === undefined
         ? undefined
