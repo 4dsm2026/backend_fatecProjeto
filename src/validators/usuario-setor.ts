@@ -1,0 +1,34 @@
+import { z } from "zod";
+
+const pag = {
+  page: z.coerce.number().int().min(1).default(1).optional(),
+  perPage: z.coerce.number().int().min(1).max(100).default(20).optional(),
+};
+
+export const VincularUsuarioSetorSchema = z.object({
+  params: z.object({ usuarioId: z.string().cuid() }),
+  body: z.object({
+    setorId: z.string().cuid(),
+    papelId: z.string().cuid().optional().nullable(),
+  }),
+});
+
+export const AlterarPapelUsuarioSetorSchema = z.object({
+  params: z.object({ usuarioSetorId: z.string().cuid() }),
+  body: z.object({
+    papelId: z.string().cuid().optional().nullable(),
+  }),
+});
+
+export const ListUsuariosDoSetorSchema = z.object({
+  params: z.object({ setorId: z.string().cuid() }),
+  query: z.object({
+    ...pag,
+    search: z.string().min(1).optional(),
+  }),
+});
+
+export const ListSetoresDoUsuarioSchema = z.object({
+  params: z.object({ usuarioId: z.string().cuid() }),
+  query: z.object({ ...pag }),
+});
