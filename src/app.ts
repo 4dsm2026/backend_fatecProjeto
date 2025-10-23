@@ -6,7 +6,10 @@ import authVerify from "./plugins/auth-verify";
 import { usersRoutes } from "./core/users/users.routes";
 import { ticketsRoutes } from "./core/tickets/tickets.routes";
 import { catalogoRoutes } from "./core/catalogo/catalogo.routes";
-import swaggerPlugin from "./plugins/swagger"; 
+import swaggerPlugin from "./plugins/swagger";
+import { setoresRoutes } from "./core/setores/setores.routes";
+import { papeisRoutes } from "./core/papeis/papeis.routes";
+import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -27,31 +30,27 @@ export async function buildApp() {
     maxAge: 86400,
   });
 
-  // ====== Plugins ======
   await app.register(prismaPlugin);
   await app.register(authVerify);
-  await app.register(swaggerPlugin); // ✅ Swagger em /docs
+  await app.register(swaggerPlugin);
 
-  // ====== Logs úteis ======
-  app.addHook("onRoute", (r) =>
-    app.log.info({ method: r.method, url: r.url }, "ROUTE"),
-  );
-  app.addHook("onRequest", async (req) => {
-    req.log.info({ method: req.method, url: req.url }, "REQ");
-  });
+  app.addHook("onRoute", (r) => app.log.info({ method: r.method, url: r.url }, "ROUTE"));
+  app.addHook("onRequest", async (req) => req.log.info({ method: req.method, url: req.url }, "REQ"));
   app.addHook("onSend", async (req, reply, payload) => {
     req.log.info({ statusCode: reply.statusCode }, "RES");
     return payload;
   });
 
-  // ====== Rotas principais ======
   app.register(authRoutes, { prefix: "/auth" });
   app.register(usersRoutes, { prefix: "/usuarios" });
   app.register(ticketsRoutes, { prefix: "/tickets" });
   app.register(catalogoRoutes, { prefix: "/catalogo" });
+  
+  app.register(setoresRoutes, { prefix: "/admin" });
+  app.register(papeisRoutes, { prefix: "/admin" });
+  app.register(usuarioSetorRoutes, { prefix: "/admin" });
 
 
-  // ====== Health Check ======
   app.get("/health", async () => ({ ok: true }));
 
   return app;
