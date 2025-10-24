@@ -9,6 +9,7 @@ export type TicketsListQuery = {
   nivel?: NivelChamado | NivelChamado[]
   prioridade?: PrioridadeChamado | PrioridadeChamado[]
   clienteId?: string
+  criadoPorId?: string; // ✅ <-- adicione isso aqui
   contratoId?: string
   setorId?: string
   servicoId?: string
