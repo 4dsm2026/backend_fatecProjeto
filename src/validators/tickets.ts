@@ -67,9 +67,11 @@ export const TicketListSchema = z.object({
     criadoAte: IsoDate,
     orderBy: z.enum(['criadoEm','atualizadoEm']).default('criadoEm').optional(),
     orderDir: z.enum(['asc','desc']).default('desc').optional(),
-    include: z.union([
-      z.enum(['cliente','contrato','servico','setor','responsavel','criadoPor','historico']),
-      z.array(z.enum(['cliente','contrato','servico','setor','responsavel','criadoPor','historico']))
-    ]).optional(),
+    include: z
+      .union([
+        z.string().transform((s) => s.split(",").map((x) => x.trim())), // String separada por vírgula
+        z.array(z.enum(['cliente','contrato','servico','setor','responsavel','criadoPor','historico'])) // Array de strings
+      ])
+      .optional(),
   }),
-})
+});
