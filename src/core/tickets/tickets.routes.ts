@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { create, getOne, list, patch, removeSoft } from "./tickets.controller";
+// src/core/tickets/tickets.routes.ts
+import { create, getOne, list, patch, removeSoft } from "./tickets.controller.js";
 
 export async function ticketsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate as any);

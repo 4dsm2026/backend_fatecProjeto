@@ -9,7 +9,7 @@ const ticketInclude = (include?: TicketsListQuery['include']) => {
     cliente: false,
     contrato: false,
     servico: false,
-    setor: false,
+    setor: true,
     responsavel: false,
     criadoPor: false,
     historico: false,
@@ -21,9 +21,10 @@ const ticketInclude = (include?: TicketsListQuery['include']) => {
 }
 
 const buildWhere = (q: TicketsListQuery) => {
-  const { search, status, nivel, prioridade, clienteId, contratoId, setorId, servicoId, responsavelId, organizacaoId, criadoDe, criadoAte } = q
+  const { search, status, nivel, prioridade, clienteId, contratoId, setorId, servicoId, responsavelId, organizacaoId, criadoDe, criadoAte, feitoPorId } = q
   return {
     deletadoEm: null,
+    ...(feitoPorId ? { criadoPorId: feitoPorId } : {}), // 🔹 agora filtra por usuário autenticado
     ...(organizacaoId ? { organizacaoId } : {}),
     ...(clienteId ? { clienteId } : {}),
     ...(contratoId ? { contratoId } : {}),
@@ -61,6 +62,8 @@ const buildWhere = (q: TicketsListQuery) => {
 
 export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: { feitoPorId?: string }) {
   const { feitoPorId } = opts
+
+  // 🔹 Flexibiliza IDs (aceita string simples do front)
   const ticket = await prisma.chamado.create({
     data: {
       titulo: data.titulo,
@@ -68,19 +71,18 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
       prioridade: data.prioridade ?? 'MEDIA',
       nivel: data.nivel ?? 'N1',
       status: 'ABERTO',
-      servicoId: data.servicoId ?? null,
-      setorId: data.setorId ?? null,
-      clienteId: data.clienteId ?? null,
-      contratoId: data.contratoId ?? null,
-      responsavelId: data.responsavelId ?? null,
-      organizacaoId: data.organizacaoId ?? null,
-      criadoPorId: feitoPorId!, // exige auth
-      // protocolo pode ser gerado aqui também:
+      servicoId: data.servicoId || null, // 🔹 aceita string simples
+      setorId: data.setorId || null,
+      clienteId: data.clienteId || null,
+      contratoId: data.contratoId || null,
+      responsavelId: data.responsavelId || null,
+      organizacaoId: data.organizacaoId || null,
+      criadoPorId: feitoPorId!, // exige autenticação
       protocolo: `TCK-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     },
   })
 
-  // histórico inicial
+  // 🔹 Histórico inicial
   await prisma.historicoStatusChamado.create({
     data: {
       chamadoId: ticket.id,
@@ -91,7 +93,13 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
     },
   })
 
-  return ticket
+  // 🔹 Retorna ticket completo com relacionamento
+  const fullTicket = await prisma.chamado.findFirst({
+    where: { id: ticket.id },
+    include: ticketInclude(['servico', 'criadoPor']),
+  })
+
+  return fullTicket
 }
 
 export async function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
@@ -132,7 +140,6 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
   const before = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } })
   if (!before) throw Object.assign(new Error('Chamado não encontrado'), { code: 'P2025' })
 
-  // se mudar status, registra histórico + timestamps
   const isStatusChange = data.status && data.status !== before.status
 
   const updated = await prisma.chamado.update({
@@ -150,7 +157,8 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
       responsavelId: data.responsavelId === undefined ? undefined : data.responsavelId,
       organizacaoId: data.organizacaoId === undefined ? undefined : data.organizacaoId,
       encerradoEm:
-        data.status && (data.status === StatusChamado.ENCERRADO || data.status === StatusChamado.RESOLVIDO)
+        data.status &&
+        (data.status === StatusChamado.ENCERRADO || data.status === StatusChamado.RESOLVIDO)
           ? new Date()
           : undefined,
     },
@@ -180,7 +188,6 @@ export async function softDeleteTicket(prisma: Ctx, id: string, opts: { feitoPor
     data: { deletadoEm: new Date() },
   })
 
-  // auditoria opcional
   await prisma.auditoria.create({
     data: {
       feitoPorId: opts.feitoPorId ?? null,

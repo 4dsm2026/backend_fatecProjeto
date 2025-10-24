@@ -2,7 +2,7 @@
   "name": "workflow-fatec-backend",
   "version": "1.0.0",
   "description": "Backend do Workflow Fatec — Fastify + Prisma + JWT + Resend",
-  "type": "module",
+  "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
