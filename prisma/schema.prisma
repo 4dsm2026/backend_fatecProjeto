@@ -8,7 +8,7 @@ datasource db {
 }
 
 /**
- * ---------- ENUMS (PT-BR, sem acentos) ----------
+ * ---------- ENUMS ----------
  */
 enum Papel {
   USUARIO
@@ -39,7 +39,7 @@ enum PrioridadeChamado {
 }
 
 /**
- * ---------- ORGANIZAÇÃO / SETORES / PAPÉIS POR SETOR / CATÁLOGO ----------
+ * ---------- ORGANIZAÇÃO / SETORES / CATÁLOGO ----------
  */
 model Organizacao {
   id       String   @id @default(cuid())
@@ -47,10 +47,11 @@ model Organizacao {
   sigla    String?
   criadoEm DateTime @default(now())
 
-  usuarios   Usuario[]
-  setores    Setor[]
-  categorias Categoria[]
-  chamados   Chamado[]
+  usuarios     Usuario[]
+  setores      Setor[]
+  categorias   Categoria[]
+  chamados     Chamado[]
+  notificacoes Notificacao[] @relation("NotificacoesDaOrganizacao")
 
   @@map("organizacoes")
 }
@@ -151,9 +152,8 @@ model Usuario {
   sessoes            Sessao[]
   tokensReset        TokenResetSenha[]        @relation("TokensDeUsuario")
   usuarioSetores     UsuarioSetor[]
-
-  // back-relation das tentativas de login
-  loginTentativas LoginTentativa[] @relation("LoginTentativasDoUsuario")
+  loginTentativas    LoginTentativa[]         @relation("LoginTentativasDoUsuario")
+  notificacoes       Notificacao[]            @relation("NotificacoesDoUsuario")
 
   @@index([emailPessoal])
   @@index([organizacaoId])
@@ -163,13 +163,12 @@ model Usuario {
 model Sessao {
   id          String   @id @default(cuid()) // pode servir como JTI
   usuarioId   String
-  refreshHash String   @db.VarChar(255) // hash do refresh (opaque token)
+  refreshHash String   @db.VarChar(255)
   userAgent   String?
   ip          String?  @db.VarChar(64)
   expiraEm    DateTime
   criadoEm    DateTime @default(now())
 
-  // segurança/rotação
   ultimoUsoEm      DateTime  @default(now())
   revogadaEm       DateTime?
   substituidaPorId String?
@@ -276,10 +275,11 @@ model Chamado {
   responsavel Usuario?     @relation("ChamadosAtribuidos", fields: [responsavelId], references: [id])
   criadoPor   Usuario      @relation("ChamadosCriados", fields: [criadoPorId], references: [id])
 
-  anexos    Anexo[]
-  historico HistoricoStatusChamado[]
-  mensagens Mensagem[]
-  tags      ChamadoTag[]
+  anexos       Anexo[]
+  historico    HistoricoStatusChamado[]
+  mensagens    Mensagem[]
+  tags         ChamadoTag[]
+  notificacoes Notificacao[]            @relation("NotificacoesDoChamado")
 
   @@index([status, nivel])
   @@index([criadoEm])
@@ -317,6 +317,8 @@ model Mensagem {
   chamado      Chamado   @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
   autor        Usuario   @relation(fields: [autorId], references: [id])
 
+  notificacoes Notificacao[] @relation("NotificacoesDaMensagem")
+
   @@index([chamadoId])
   @@map("mensagens")
 }
@@ -328,7 +330,6 @@ model Anexo {
   mimeType       String
   tamanhoBytes   Int
   caminhoArquivo String
-  // Para Supabase Storage (opcionais)
   storageBucket  String? @default("anexos")
   checksumSha256 String? @db.VarChar(64)
 
@@ -336,6 +337,8 @@ model Anexo {
   enviadoEm    DateTime @default(now())
   chamado      Chamado  @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
   enviadoPor   Usuario  @relation(fields: [enviadoPorId], references: [id])
+
+  notificacoes Notificacao[] @relation("NotificacoesDoAnexo")
 
   @@index([chamadoId])
   @@map("anexos")
@@ -402,17 +405,68 @@ model EmailEnvio {
 model LoginTentativa {
   id        String   @id @default(cuid())
   email     String
-  usuarioId String? // SetNull exige opcional
+  usuarioId String?
   sucesso   Boolean
   ip        String?  @db.VarChar(64)
   userAgent String?
   motivo    String?
   criadoEm  DateTime @default(now())
 
-  // Nome da relação posicional (Prisma 6)
   usuario Usuario? @relation("LoginTentativasDoUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
 
   @@index([email, criadoEm])
   @@index([usuarioId, criadoEm])
   @@map("login_tentativas")
+}
+
+/**
+ * ---------- NOTIFICAÇÕES ----------
+ */
+enum TipoNotificacao {
+  CHAMADO_CRIADO
+  CHAMADO_ATRIBUIDO
+  CHAMADO_ATUALIZADO
+  STATUS_ALTERADO
+  MENSAGEM_NOVA
+  ANEXO_NOVO
+  SISTEMA
+}
+
+enum CanalNotificacao {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+model Notificacao {
+  id        String           @id @default(cuid())
+  usuarioId String
+  titulo    String
+  mensagem  String
+  tipo      TipoNotificacao
+  canal     CanalNotificacao @default(IN_APP)
+
+  organizacaoId String?
+  chamadoId     String?
+  mensagemId    String?
+  anexoId       String?
+
+  entregueEm  DateTime?
+  lidaEm      DateTime?
+  arquivadaEm DateTime?
+  erroEntrega String?
+  meta        Json?
+  criadoEm    DateTime  @default(now())
+
+  usuario     Usuario      @relation("NotificacoesDoUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  organizacao Organizacao? @relation("NotificacoesDaOrganizacao", fields: [organizacaoId], references: [id])
+  chamado     Chamado?     @relation("NotificacoesDoChamado", fields: [chamadoId], references: [id])
+  mensagemRef Mensagem?    @relation("NotificacoesDaMensagem", fields: [mensagemId], references: [id])
+  anexoRef    Anexo?       @relation("NotificacoesDoAnexo", fields: [anexoId], references: [id])
+
+  @@index([usuarioId, criadoEm])
+  @@index([chamadoId])
+  @@index([organizacaoId])
+  @@index([tipo, canal])
+  @@map("notificacoes")
 }
