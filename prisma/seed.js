@@ -1,18 +1,14 @@
-// prisma/seed.js
-import { PrismaClient, Papel } from '@prisma/client';
+// prisma/seed.js (CommonJS)
+const { PrismaClient, Papel } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function main() {
-  // IDs fixos para upsert idempotente
+  // IDs fixos
   const orgId = 'org_default';
   const setorSecretariaId = 'setor_secretaria';
   const setorSuporteId = 'setor_suporte';
   const catTIId = 'cat_ti';
   const catAcademicoId = 'cat_academico';
-  const papelAlunoId = 'papel_aluno';
-  const papelSecretariaId = 'papel_secretaria';
-  const papelTecnicoId = 'papel_tecnico';
-  const papelGestorId = 'papel_gestor';
 
   // Organização
   await prisma.organizacao.upsert({
@@ -33,29 +29,17 @@ async function main() {
     update: {},
   });
 
-  // Catálogo de papéis (por setor)
-  await prisma.papelCatalogo.upsert({
-    where: { id: papelAlunoId },
-    create: { id: papelAlunoId, nome: 'aluno' },
-    update: {},
-  });
-  await prisma.papelCatalogo.upsert({
-    where: { id: papelSecretariaId },
-    create: { id: papelSecretariaId, nome: 'secretaria' },
-    update: {},
-  });
-  await prisma.papelCatalogo.upsert({
-    where: { id: papelTecnicoId },
-    create: { id: papelTecnicoId, nome: 'tecnico' },
-    update: {},
-  });
-  await prisma.papelCatalogo.upsert({
-    where: { id: papelGestorId },
-    create: { id: papelGestorId, nome: 'gestor' },
-    update: {},
-  });
+  // Papéis do catálogo (usa upsert por NOME, pq é UNIQUE)
+  const papeis = ['aluno', 'secretaria', 'tecnico', 'gestor'];
+  for (const nome of papeis) {
+    await prisma.papelCatalogo.upsert({
+      where: { nome },          // <- evita colisão de unique por nome
+      create: { nome },
+      update: {},
+    });
+  }
 
-  // Categorias & serviços
+  // Categorias
   await prisma.categoria.upsert({
     where: { id: catTIId },
     create: { id: catTIId, nome: 'TI', organizacaoId: orgId },
@@ -67,28 +51,24 @@ async function main() {
     update: {},
   });
 
-  // Serviços (alguns sem categoria, outros vinculados)
-  const svcLoginId = 'svc_login';
-  const svcDeclaracaoId = 'svc_declaracao';
-  const svcMatriculaId = 'svc_matricula';
-
+  // Serviços
   await prisma.servico.upsert({
-    where: { id: svcLoginId },
-    create: { id: svcLoginId, nome: 'Acesso ao Sistema', descricao: 'Problemas de login e senha', categoriaId: catTIId, ativo: true },
+    where: { id: 'svc_login' },
+    create: { id: 'svc_login', nome: 'Acesso ao Sistema', descricao: 'Problemas de login e senha', categoriaId: catTIId, ativo: true },
     update: {},
   });
   await prisma.servico.upsert({
-    where: { id: svcDeclaracaoId },
-    create: { id: svcDeclaracaoId, nome: 'Emissão de Declaração', descricao: 'Declaração de matrícula/frequência', categoriaId: catAcademicoId, ativo: true },
+    where: { id: 'svc_declaracao' },
+    create: { id: 'svc_declaracao', nome: 'Emissão de Declaração', descricao: 'Declaração de matrícula/frequência', categoriaId: catAcademicoId, ativo: true },
     update: {},
   });
   await prisma.servico.upsert({
-    where: { id: svcMatriculaId },
-    create: { id: svcMatriculaId, nome: 'Matrícula', descricao: 'Processos de matrícula', categoriaId: catAcademicoId, ativo: true },
+    where: { id: 'svc_matricula' },
+    create: { id: 'svc_matricula', nome: 'Matrícula', descricao: 'Processos de matrícula', categoriaId: catAcademicoId, ativo: true },
     update: {},
   });
 
-  // Usuário admin global (ajuste os dados e a hash depois)
+  // Admin global
   const adminId = 'user_admin';
   await prisma.usuario.upsert({
     where: { id: adminId },
@@ -104,15 +84,18 @@ async function main() {
     update: {},
   });
 
-  // Vínculos do admin com setores (gestor)
+  // Obter ids dos papeis do catálogo por nome (garante FK certa)
+  const papelGestor   = await prisma.papelCatalogo.findUnique({ where: { nome: 'gestor' } });
+
+  // Vínculos do admin com setores
   await prisma.usuarioSetor.upsert({
     where: { id: 'us_admin_secretaria' },
-    create: { id: 'us_admin_secretaria', usuarioId: adminId, setorId: setorSecretariaId, papelId: papelGestorId },
+    create: { id: 'us_admin_secretaria', usuarioId: adminId, setorId: setorSecretariaId, papelId: papelGestor?.id ?? null },
     update: {},
   });
   await prisma.usuarioSetor.upsert({
     where: { id: 'us_admin_suporte' },
-    create: { id: 'us_admin_suporte', usuarioId: adminId, setorId: setorSuporteId, papelId: papelGestorId },
+    create: { id: 'us_admin_suporte', usuarioId: adminId, setorId: setorSuporteId, papelId: papelGestor?.id ?? null },
     update: {},
   });
 
@@ -121,7 +104,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error('❌ Erro no seed:', e);
     process.exit(1);
   })
   .finally(async () => {
