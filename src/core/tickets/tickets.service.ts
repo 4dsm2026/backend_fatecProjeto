@@ -111,7 +111,7 @@ export async function getTicketById(prisma: Ctx, id: string, include?: TicketsLi
 
 export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
   const page = q.page ?? 1
-  const pageSize = q.pageSize ?? 20
+  const pageSize = q.pageSize ?? 1000
   const skip = (page - 1) * pageSize
   const take = pageSize
 
