@@ -1,4 +1,3 @@
-// src/core/tickets/tickets.types.ts
 import { NivelChamado, PrioridadeChamado, StatusChamado } from '@prisma/client'
 
 export type TicketsListQuery = {
@@ -9,7 +8,7 @@ export type TicketsListQuery = {
   nivel?: NivelChamado | NivelChamado[]
   prioridade?: PrioridadeChamado | PrioridadeChamado[]
   clienteId?: string
-  criadoPorId?: string; // ✅ <-- adicione isso aqui
+  criadoPorId?: string; 
   contratoId?: string
   setorId?: string
   servicoId?: string
@@ -19,6 +18,7 @@ export type TicketsListQuery = {
   criadoAte?: string // ISO
   orderBy?: 'criadoEm' | 'atualizadoEm'
   orderDir?: 'asc' | 'desc'
+  feitoPorId?: string
   include?: ('cliente' | 'contrato' | 'servico' | 'setor' | 'responsavel' | 'criadoPor' | 'historico')[]
 }
 

@@ -10,6 +10,7 @@ import swaggerPlugin from "./plugins/swagger";
 import { setoresRoutes } from "./core/setores/setores.routes";
 import { papeisRoutes } from "./core/papeis/papeis.routes";
 import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
+import { notificationsRoutes } from "./core/notifications/notifications.routes";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -49,6 +50,8 @@ export async function buildApp() {
   app.register(setoresRoutes, { prefix: "/admin" });
   app.register(papeisRoutes, { prefix: "/admin" });
   app.register(usuarioSetorRoutes, { prefix: "/admin" });
+
+  app.register(notificationsRoutes, { prefix: "/notifications" });
 
 
   app.get("/health", async () => ({ ok: true }));
