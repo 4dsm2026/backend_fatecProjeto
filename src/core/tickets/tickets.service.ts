@@ -1,8 +1,10 @@
-import { PrismaClient, StatusChamado } from '@prisma/client'
-import { TicketsListQuery, TicketCreateInput, TicketUpdateInput } from './tickets.types'
-import { notifyMany } from '../notifications/notify' // ✅ novo import
+import { PrismaClient, StatusChamado } from '@prisma/client';
+import { TicketsListQuery, TicketCreateInput, TicketUpdateInput } from './tickets.types';
+import { notifyMany } from '../notifications/notify';
 
-type Ctx = PrismaClient
+type Ctx = PrismaClient;
+
+/* ========================= helpers ========================= */
 
 const ticketInclude = (include?: TicketsListQuery['include']) => {
   const base = {
@@ -13,15 +15,20 @@ const ticketInclude = (include?: TicketsListQuery['include']) => {
     responsavel: false,
     criadoPor: false,
     historico: false,
-  }
-  if (!include) return base
-  const arr = Array.isArray(include) ? include : [include]
-  for (const k of arr) (base as any)[k] = true
-  return base
-}
+  };
+  if (!include) return base;
+  const arr = Array.isArray(include) ? include : [include];
+  for (const k of arr) (base as any)[k] = true;
+  return base;
+};
 
 const buildWhere = (q: TicketsListQuery) => {
-  const { search, status, nivel, prioridade, clienteId, contratoId, setorId, servicoId, responsavelId, organizacaoId, criadoDe, criadoAte, feitoPorId } = q
+  const {
+    search, status, nivel, prioridade,
+    clienteId, contratoId, setorId, servicoId, responsavelId, organizacaoId,
+    criadoDe, criadoAte, feitoPorId,
+  } = q;
+
   return {
     deletadoEm: null,
     ...(feitoPorId ? { criadoPorId: feitoPorId } : {}),
@@ -31,15 +38,9 @@ const buildWhere = (q: TicketsListQuery) => {
     ...(setorId ? { setorId } : {}),
     ...(servicoId ? { servicoId } : {}),
     ...(responsavelId ? { responsavelId } : {}),
-    ...(status
-      ? { status: Array.isArray(status) ? { in: status } : status }
-      : {}),
-    ...(nivel
-      ? { nivel: Array.isArray(nivel) ? { in: nivel } : nivel }
-      : {}),
-    ...(prioridade
-      ? { prioridade: Array.isArray(prioridade) ? { in: prioridade } : prioridade }
-      : {}),
+    ...(status ? { status: Array.isArray(status) ? { in: status } : status } : {}),
+    ...(nivel ? { nivel: Array.isArray(nivel) ? { in: nivel } : nivel } : {}),
+    ...(prioridade ? { prioridade: Array.isArray(prioridade) ? { in: prioridade } : prioridade } : {}),
     ...(criadoDe || criadoAte
       ? {
           criadoEm: {
@@ -57,13 +58,28 @@ const buildWhere = (q: TicketsListQuery) => {
           ],
         }
       : {}),
-  }
+  };
+};
+
+/** Busca todos os usuárioIds **ativos** vinculados ao setor (sem campo `ativo` em UsuarioSetor) */
+async function getUsuariosDoSetor(prisma: Ctx, setorId: string): Promise<string[]> {
+  const vinculos = await prisma.usuarioSetor.findMany({
+    where: {
+      setorId,
+      usuario: { ativo: true, deletadoEm: null }, // ✅ filtra pelo usuário
+      // Se quiser somente liderança do setor: papel: { nome: 'LIDER' }
+    },
+    select: { usuarioId: true },
+  });
+  return vinculos.map(v => v.usuarioId);
 }
 
+/* ========================= services ========================= */
+
 export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: { feitoPorId?: string }) {
-  const { feitoPorId } = opts
+  const { feitoPorId } = opts;
   if (!feitoPorId) {
-    throw Object.assign(new Error('Não autenticado'), { code: 'UNAUTH' })
+    throw Object.assign(new Error('Não autenticado'), { code: 'UNAUTH' });
   }
 
   const ticket = await prisma.chamado.create({
@@ -82,7 +98,7 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
       criadoPorId: feitoPorId!,
       protocolo: `TCK-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     },
-  })
+  });
 
   // Histórico inicial
   await prisma.historicoStatusChamado.create({
@@ -93,45 +109,55 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
       porUsuarioId: feitoPorId ?? null,
       observacao: 'Abertura do chamado',
     },
-  })
+  });
 
-  // 🔔 Notificações: criador e (se existir) responsável
+  // 🔔 Notificações: criador, responsável (se houver) e SETOR (se houver)
   {
-    const alvos = new Set<string>()
-    alvos.add(feitoPorId)
-    if (ticket.responsavelId) alvos.add(ticket.responsavelId)
-    await notifyMany(prisma, Array.from(alvos), {
-      titulo: 'Chamado criado',
-      mensagem: `Chamado ${ticket.protocolo ?? ticket.id} criado.`,
-      tipo: 'CHAMADO_CRIADO',
-      chamadoId: ticket.id,
-      organizacaoId: ticket.organizacaoId ?? null,
-    })
+    const alvos = new Set<string>();
+    alvos.add(feitoPorId);
+    if (ticket.responsavelId) alvos.add(ticket.responsavelId);
+
+    if (ticket.setorId) {
+      const usuariosDoSetor = await getUsuariosDoSetor(prisma, ticket.setorId);
+      for (const u of usuariosDoSetor) alvos.add(u);
+    }
+
+    try {
+      await notifyMany(prisma, Array.from(alvos), {
+        titulo: 'Chamado criado',
+        mensagem: `Chamado ${ticket.protocolo ?? ticket.id} criado.`,
+        tipo: 'CHAMADO_CRIADO',
+        chamadoId: ticket.id,
+        organizacaoId: ticket.organizacaoId ?? null,
+      });
+    } catch {
+      // não derruba o fluxo se a notificação falhar
+    }
   }
 
-  // Retorna ticket completo com relacionamento
+  // Retorna ticket completo com alguns relacionamentos úteis
   const fullTicket = await prisma.chamado.findFirst({
     where: { id: ticket.id },
     include: ticketInclude(['servico', 'criadoPor']),
-  })
+  });
 
-  return fullTicket
+  return fullTicket;
 }
 
 export async function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
   return prisma.chamado.findFirst({
     where: { id, deletadoEm: null },
     include: ticketInclude(include),
-  })
+  });
 }
 
 export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
-  const page = q.page ?? 1
-  const pageSize = q.pageSize ?? 1000
-  const skip = (page - 1) * pageSize
-  const take = pageSize
+  const page = q.page ?? 1;
+  const pageSize = q.pageSize ?? 1000;
+  const skip = (page - 1) * pageSize;
+  const take = pageSize;
 
-  const where = buildWhere(q)
+  const where = buildWhere(q);
   const [total, items] = await Promise.all([
     prisma.chamado.count({ where }),
     prisma.chamado.findMany({
@@ -141,18 +167,18 @@ export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
       take,
       include: ticketInclude(q.include),
     }),
-  ])
+  ]);
 
-  return { total, page, pageSize, items }
+  return { total, page, pageSize, items };
 }
 
 export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateInput, opts: { feitoPorId?: string }) {
-  const { feitoPorId } = opts
-  const before = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } })
-  if (!before) throw Object.assign(new Error('Chamado não encontrado'), { code: 'P2025' })
+  const { feitoPorId } = opts;
+  const before = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } });
+  if (!before) throw Object.assign(new Error('Chamado não encontrado'), { code: 'P2025' });
 
-  const isStatusChange = data.status && data.status !== before.status
-  const oldResponsavelId = before.responsavelId
+  const isStatusChange = !!data.status && data.status !== before.status;
+  const oldResponsavelId = before.responsavelId;
 
   const updated = await prisma.chamado.update({
     where: { id },
@@ -174,7 +200,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
           ? new Date()
           : undefined,
     },
-  })
+  });
 
   // 🔔 Notificação por mudança de status
   if (isStatusChange) {
@@ -186,24 +212,35 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
         porUsuarioId: feitoPorId ?? null,
         observacao: 'Atualização de status',
       },
-    })
+    });
 
     const alvoInfo = await prisma.chamado.findUnique({
       where: { id },
-      select: { criadoPorId: true, responsavelId: true, protocolo: true, organizacaoId: true },
-    })
+      select: { criadoPorId: true, responsavelId: true, protocolo: true, organizacaoId: true, setorId: true },
+    });
 
-    const alvos = new Set<string>()
-    if (alvoInfo?.criadoPorId) alvos.add(alvoInfo.criadoPorId)
-    if (alvoInfo?.responsavelId) alvos.add(alvoInfo.responsavelId)
+    const alvos = new Set<string>();
+    if (alvoInfo?.criadoPorId) alvos.add(alvoInfo.criadoPorId);
+    if (alvoInfo?.responsavelId) alvos.add(alvoInfo.responsavelId);
 
-    await notifyMany(prisma, Array.from(alvos), {
-      titulo: 'Status atualizado',
-      mensagem: `Chamado ${alvoInfo?.protocolo ?? id} mudou para ${data.status}.`,
-      tipo: 'STATUS_ALTERADO',
-      chamadoId: id,
-      organizacaoId: alvoInfo?.organizacaoId ?? null,
-    })
+    // 👉 Setor também é avisado quando entra em EM_ATENDIMENTO (ajuste conforme sua regra)
+    const sectorNotifyStatuses: StatusChamado[] = [StatusChamado.EM_ATENDIMENTO];
+    if (alvoInfo?.setorId && data.status && sectorNotifyStatuses.includes(data.status as StatusChamado)) {
+      const usuariosDoSetor = await getUsuariosDoSetor(prisma, alvoInfo.setorId);
+      for (const u of usuariosDoSetor) alvos.add(u);
+    }
+
+    try {
+      await notifyMany(prisma, Array.from(alvos), {
+        titulo: 'Status atualizado',
+        mensagem: `Chamado ${alvoInfo?.protocolo ?? id} mudou para ${data.status}.`,
+        tipo: 'STATUS_ALTERADO',
+        chamadoId: id,
+        organizacaoId: alvoInfo?.organizacaoId ?? null,
+      });
+    } catch {
+      // ignora falha de notificação
+    }
   }
 
   // 🔔 Notificação por troca de responsável
@@ -211,31 +248,35 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
     const alvoInfo = await prisma.chamado.findUnique({
       where: { id },
       select: { protocolo: true, organizacaoId: true },
-    })
+    });
 
-    const novoResp = data.responsavelId ? [data.responsavelId] : []
+    const novoResp = data.responsavelId ? [data.responsavelId] : [];
     if (novoResp.length) {
-      await notifyMany(prisma, novoResp, {
-        titulo: 'Chamado atribuído',
-        mensagem: `Você foi atribuído ao chamado ${alvoInfo?.protocolo ?? id}.`,
-        tipo: 'CHAMADO_ATRIBUIDO',
-        chamadoId: id,
-        organizacaoId: alvoInfo?.organizacaoId ?? null,
-      })
+      try {
+        await notifyMany(prisma, novoResp, {
+          titulo: 'Chamado atribuído',
+          mensagem: `Você foi atribuído ao chamado ${alvoInfo?.protocolo ?? id}.`,
+          tipo: 'CHAMADO_ATRIBUIDO',
+          chamadoId: id,
+          organizacaoId: alvoInfo?.organizacaoId ?? null,
+        });
+      } catch {
+        // ignora falha de notificação
+      }
     }
   }
 
-  return updated
+  return updated;
 }
 
 export async function softDeleteTicket(prisma: Ctx, id: string, opts: { feitoPorId?: string }) {
-  const found = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } })
-  if (!found) throw Object.assign(new Error('Chamado não encontrado'), { code: 'P2025' })
+  const found = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } });
+  if (!found) throw Object.assign(new Error('Chamado não encontrado'), { code: 'P2025' });
 
   const deleted = await prisma.chamado.update({
     where: { id },
     data: { deletadoEm: new Date() },
-  })
+  });
 
   await prisma.auditoria.create({
     data: {
@@ -244,7 +285,7 @@ export async function softDeleteTicket(prisma: Ctx, id: string, opts: { feitoPor
       alvo: id,
       meta: { protocolo: found.protocolo },
     },
-  })
+  });
 
-  return deleted
+  return deleted;
 }

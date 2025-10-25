@@ -91,33 +91,12 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
     return void (await res.code(400).send(parsed.error));
 
   const prisma = (req.server as any).prisma;
-  const userJwt = (req as any).user;
 
   try {
-    let feitoPorId: string | undefined = undefined;
-
-    // 🔹 1) tenta primeiro por ID (caso o sub seja o id do usuário)
-    if (userJwt?.sub) {
-      const found = await prisma.usuario.findUnique({
-        where: { id: userJwt.sub },
-        select: { id: true },
-      });
-      if (found) feitoPorId = found.id;
-    }
-
-    // 🔹 2) fallback por e-mail (caso o token contenha email em vez de id)
-    if (!feitoPorId && userJwt?.email) {
-      const foundByEmail = await prisma.usuario.findUnique({
-        where: { emailPessoal: userJwt.email },
-        select: { id: true },
-      });
-      if (foundByEmail) feitoPorId = foundByEmail.id;
-    }
-
-    // 🔹 monta query
+    // 🔹 monta query base
     const q = parsed.data!.query!;
 
-    // ⚙️ corrigido: suporta tanto array quanto string (ex: "setor,criadoPor")
+    // ⚙️ suporta tanto array quanto string no include (ex: "setor,criadoPor")
     const normalizedInclude =
       q.include === undefined
         ? undefined
@@ -128,10 +107,12 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
             .map((s) => s.trim())
             .filter(Boolean);
 
+    // ❗ aqui é o ponto principal:
+    // removemos feitoPorId — assim ele não filtra por usuário e lista TODOS os chamados
     const query = {
       ...q,
       include: normalizedInclude,
-      feitoPorId, // agora sempre correto
+      // feitoPorId removido para listar todos
     };
 
     const page = await listTickets(prisma, query);
@@ -141,7 +122,6 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
     await res.code(500).send({ error: "Erro interno ao listar tickets" });
   }
 }
-
 
 
 /* ============ PATCH /tickets/:id ============ */
