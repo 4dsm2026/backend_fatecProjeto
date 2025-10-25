@@ -1,6 +1,6 @@
-// src/core/tickets/tickets.service.ts
 import { PrismaClient, StatusChamado } from '@prisma/client'
 import { TicketsListQuery, TicketCreateInput, TicketUpdateInput } from './tickets.types'
+import { notifyMany } from '../notifications/notify' // ✅ novo import
 
 type Ctx = PrismaClient
 
@@ -24,7 +24,7 @@ const buildWhere = (q: TicketsListQuery) => {
   const { search, status, nivel, prioridade, clienteId, contratoId, setorId, servicoId, responsavelId, organizacaoId, criadoDe, criadoAte, feitoPorId } = q
   return {
     deletadoEm: null,
-    ...(feitoPorId ? { criadoPorId: feitoPorId } : {}), // 🔹 agora filtra por usuário autenticado
+    ...(feitoPorId ? { criadoPorId: feitoPorId } : {}),
     ...(organizacaoId ? { organizacaoId } : {}),
     ...(clienteId ? { clienteId } : {}),
     ...(contratoId ? { contratoId } : {}),
@@ -62,8 +62,10 @@ const buildWhere = (q: TicketsListQuery) => {
 
 export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: { feitoPorId?: string }) {
   const { feitoPorId } = opts
+  if (!feitoPorId) {
+    throw Object.assign(new Error('Não autenticado'), { code: 'UNAUTH' })
+  }
 
-  // 🔹 Flexibiliza IDs (aceita string simples do front)
   const ticket = await prisma.chamado.create({
     data: {
       titulo: data.titulo,
@@ -71,18 +73,18 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
       prioridade: data.prioridade ?? 'MEDIA',
       nivel: data.nivel ?? 'N1',
       status: 'ABERTO',
-      servicoId: data.servicoId || null, // 🔹 aceita string simples
+      servicoId: data.servicoId || null,
       setorId: data.setorId || null,
       clienteId: data.clienteId || null,
       contratoId: data.contratoId || null,
       responsavelId: data.responsavelId || null,
       organizacaoId: data.organizacaoId || null,
-      criadoPorId: feitoPorId!, // exige autenticação
+      criadoPorId: feitoPorId!,
       protocolo: `TCK-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     },
   })
 
-  // 🔹 Histórico inicial
+  // Histórico inicial
   await prisma.historicoStatusChamado.create({
     data: {
       chamadoId: ticket.id,
@@ -93,7 +95,21 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
     },
   })
 
-  // 🔹 Retorna ticket completo com relacionamento
+  // 🔔 Notificações: criador e (se existir) responsável
+  {
+    const alvos = new Set<string>()
+    alvos.add(feitoPorId)
+    if (ticket.responsavelId) alvos.add(ticket.responsavelId)
+    await notifyMany(prisma, Array.from(alvos), {
+      titulo: 'Chamado criado',
+      mensagem: `Chamado ${ticket.protocolo ?? ticket.id} criado.`,
+      tipo: 'CHAMADO_CRIADO',
+      chamadoId: ticket.id,
+      organizacaoId: ticket.organizacaoId ?? null,
+    })
+  }
+
+  // Retorna ticket completo com relacionamento
   const fullTicket = await prisma.chamado.findFirst({
     where: { id: ticket.id },
     include: ticketInclude(['servico', 'criadoPor']),
@@ -127,12 +143,7 @@ export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
     }),
   ])
 
-  return {
-    total,
-    page,
-    pageSize,
-    items,
-  }
+  return { total, page, pageSize, items }
 }
 
 export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateInput, opts: { feitoPorId?: string }) {
@@ -141,6 +152,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
   if (!before) throw Object.assign(new Error('Chamado não encontrado'), { code: 'P2025' })
 
   const isStatusChange = data.status && data.status !== before.status
+  const oldResponsavelId = before.responsavelId
 
   const updated = await prisma.chamado.update({
     where: { id },
@@ -164,6 +176,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
     },
   })
 
+  // 🔔 Notificação por mudança de status
   if (isStatusChange) {
     await prisma.historicoStatusChamado.create({
       data: {
@@ -174,6 +187,42 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
         observacao: 'Atualização de status',
       },
     })
+
+    const alvoInfo = await prisma.chamado.findUnique({
+      where: { id },
+      select: { criadoPorId: true, responsavelId: true, protocolo: true, organizacaoId: true },
+    })
+
+    const alvos = new Set<string>()
+    if (alvoInfo?.criadoPorId) alvos.add(alvoInfo.criadoPorId)
+    if (alvoInfo?.responsavelId) alvos.add(alvoInfo.responsavelId)
+
+    await notifyMany(prisma, Array.from(alvos), {
+      titulo: 'Status atualizado',
+      mensagem: `Chamado ${alvoInfo?.protocolo ?? id} mudou para ${data.status}.`,
+      tipo: 'STATUS_ALTERADO',
+      chamadoId: id,
+      organizacaoId: alvoInfo?.organizacaoId ?? null,
+    })
+  }
+
+  // 🔔 Notificação por troca de responsável
+  if (data.responsavelId !== undefined && data.responsavelId !== oldResponsavelId) {
+    const alvoInfo = await prisma.chamado.findUnique({
+      where: { id },
+      select: { protocolo: true, organizacaoId: true },
+    })
+
+    const novoResp = data.responsavelId ? [data.responsavelId] : []
+    if (novoResp.length) {
+      await notifyMany(prisma, novoResp, {
+        titulo: 'Chamado atribuído',
+        mensagem: `Você foi atribuído ao chamado ${alvoInfo?.protocolo ?? id}.`,
+        tipo: 'CHAMADO_ATRIBUIDO',
+        chamadoId: id,
+        organizacaoId: alvoInfo?.organizacaoId ?? null,
+      })
+    }
   }
 
   return updated

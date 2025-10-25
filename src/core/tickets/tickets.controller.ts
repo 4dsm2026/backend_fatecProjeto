@@ -1,4 +1,3 @@
-// src/core/tickets/tickets.controller.ts
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
 import {
