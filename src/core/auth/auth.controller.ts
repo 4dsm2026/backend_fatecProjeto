@@ -15,6 +15,18 @@ import {
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+function parseExpires(v?: string | number) {
+  if (!v) return 15 * 60;
+  if (typeof v === 'number') return Number(v);
+  const s = String(v).trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  const m = /^([0-9]+)m$/.exec(s);
+  if (m) return Number(m[1]) * 60;
+  const h = /^([0-9]+)h$/.exec(s);
+  if (h) return Number(h[1]) * 3600;
+  return 15 * 60;
+}
+
 /* ============ LOGIN ============ */
 const loginValidator = buildRouteValidator({ body: LoginSchema });
 
@@ -117,6 +129,35 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     });
 
     req.log.info({ identificador }, "✅ Login concluído com sucesso");
+
+    // Also set httpOnly cookie for access_token so browser navigations include it
+    // Compute cookie maxAge from JWT_ACCESS_EXPIRES (simple support for minutes like '15m')
+    const parseExpires = (v?: string | number) => {
+      if (!v) return 15 * 60;
+      if (typeof v === 'number') return Number(v);
+      const s = String(v).trim();
+      if (/^\d+$/.test(s)) return Number(s);
+      const m = /^([0-9]+)m$/.exec(s);
+      if (m) return Number(m[1]) * 60;
+      const h = /^([0-9]+)h$/.exec(s);
+      if (h) return Number(h[1]) * 3600;
+      return 15 * 60;
+    };
+    const maxAge = parseExpires(process.env.JWT_ACCESS_EXPIRES);
+
+    try {
+      // set httpOnly cookie; front-end will still receive accessToken in body if needed
+      (res as any).setCookie('access_token', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge,
+      });
+    } catch (e) {
+      // if cookie plugin not installed, just continue — response will still include tokens
+      req.log.debug('setCookie failed or cookie plugin not available');
+    }
 
     // Não vazar senhaHash
     const { senhaHash, ...safeUser } = user as any;
@@ -266,6 +307,16 @@ export const refresh = async (req: FastifyRequest, res: FastifyReply): Promise<v
 
     const { token: novoRefresh } = genRT();
     await rotateSession(sessao.id, novoRefresh);
+
+    try {
+      (res as any).setCookie('access_token', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: parseExpires(process.env.JWT_ACCESS_EXPIRES),
+      });
+    } catch {}
 
     await res.send({ accessToken, refreshToken: novoRefresh });
   } catch (e) {
