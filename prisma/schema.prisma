@@ -39,7 +39,7 @@ enum PrioridadeChamado {
 }
 
 /**
- * ---------- ORGANIZAÇÃO / SETORES / CATÁLOGO / CURSOS ----------
+ * ---------- ORGANIZAÇÃO / SETORES / CATÁLOGO ----------
  */
 model Organizacao {
   id       String   @id @default(cuid())
@@ -78,21 +78,6 @@ model PapelCatalogo {
   usuarioSetores UsuarioSetor[]
 
   @@map("papeis")
-}
-
-model Curso {
-  id          String    @id @default(cuid())
-  nome        String
-  sigla       String?   @db.VarChar(16)
-  descricao   String?
-  ativo       Boolean   @default(true)
-  criadoEm    DateTime  @default(now())
-  atualizadoEm DateTime @updatedAt
-
-  alunos Usuario[]
-
-  @@index([nome])
-  @@map("cursos")
 }
 
 model UsuarioSetor {
@@ -144,7 +129,8 @@ model Servico {
 model Usuario {
   id               String    @id @default(cuid())
   organizacaoId    String?
-  cursoId          String?
+  cursoNome        String?   
+  cursoSigla       String?   @db.VarChar(16) 
   nome             String
   emailPessoal     String    @unique
   emailEducacional String?
@@ -158,7 +144,6 @@ model Usuario {
   deletadoEm       DateTime?
 
   organizacao Organizacao? @relation(fields: [organizacaoId], references: [id])
-  curso       Curso?       @relation(fields: [cursoId], references: [id]) // relação
 
   chamadosCriados    Chamado[]                @relation("ChamadosCriados")
   chamadosAtribuidos Chamado[]                @relation("ChamadosAtribuidos")
@@ -174,7 +159,7 @@ model Usuario {
 
   @@index([emailPessoal])
   @@index([organizacaoId])
-  @@index([cursoId])
+  @@index([cursoSigla])
   @@map("usuarios")
 }
 
