@@ -99,30 +99,14 @@ async function main() {
     update: {},
   });
 
-  // Cursos
-  const cursos = [
-    { id: 'curso_dsm', nome: 'Desenvolvimento de Software Multiplataforma', sigla: 'DSM', ativo: true },
-    { id: 'curso_gpi', nome: 'Gestão da Produção Industrial', sigla: 'GPI', ativo: true },
-    { id: 'curso_gestao', nome: 'Gestão Empresarial', sigla: 'GE', ativo: true },
-    { id: 'curso_comex', nome: 'Comércio Exterior', sigla: 'COMEX', ativo: true },
-    { id: 'curso_design', nome: 'Design de Produto', sigla: 'PD', ativo: true },
-  ];
-
-  for (const curso of cursos) {
-    await prisma.curso.upsert({
-      where: { id: curso.id },
-      create: curso,
-      update: {},
-    });
-  }
-
   // Usuários exemplo (alunos e secretaria)
   const usuariosExemplo = [
     // Alunos
     {
       id: 'user_aluno_dsm_1',
       organizacaoId: orgId,
-      cursoId: 'curso_dsm',
+      cursoNome: 'Desenvolvimento de Software Multiplataforma',
+      cursoSigla: 'DSM',
       nome: 'João Silva - Aluno DSM',
       emailPessoal: 'joao.silva@aluno.fatec.sp.gov.br',
       ra: '123456789',
@@ -133,7 +117,8 @@ async function main() {
     {
       id: 'user_aluno_gpi_1',
       organizacaoId: orgId,
-      cursoId: 'curso_gpi',
+      cursoNome: 'Gestão da Produção Industrial',
+      cursoSigla: 'GPI',
       nome: 'Maria Ribeiro - Aluno GPI',
       emailPessoal: 'maria.ribeiro@aluno.fatec.sp.gov.br',
       ra: '987654321',
@@ -141,10 +126,24 @@ async function main() {
       papel: Papel.USUARIO,
       ativo: true,
     },
+    {
+      id: 'user_aluno_comex_1',
+      organizacaoId: orgId,
+      //cursoNome: null, (implícito)
+      //cursoSigla: null, (implícito)
+      nome: 'João Feijo - Aluno COMEX',
+      emailPessoal: 'joão.feijo@aluno.fatec.sp.gov.br',
+      ra: '998877665',
+      senhaHash: 'hash_fake_aluno_3',
+      papel: Papel.USUARIO,
+      ativo: true,
+    },
     // Secretaria
     {
       id: 'user_secretaria_1',
       organizacaoId: orgId,
+      // cursoNome: null, (implícito)
+      // cursoSigla: null, (implícito)
       nome: 'Ana Costa - Secretaria',
       emailPessoal: 'ana.costa@fatec.sp.gov.br',
       senhaHash: 'hash_fake_secretaria',
