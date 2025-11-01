@@ -26,12 +26,12 @@ const buildWhere = (q: TicketsListQuery) => {
   const {
     search, status, nivel, prioridade,
     clienteId, contratoId, setorId, servicoId, responsavelId, organizacaoId,
-    criadoDe, criadoAte, feitoPorId,
+    criadoDe, criadoAte, criadoPorId,
   } = q;
 
   return {
     deletadoEm: null,
-    ...(feitoPorId ? { criadoPorId: feitoPorId } : {}),
+    ...(criadoPorId ? { criadoPorId } : {}),
     ...(organizacaoId ? { organizacaoId } : {}),
     ...(clienteId ? { clienteId } : {}),
     ...(contratoId ? { contratoId } : {}),
