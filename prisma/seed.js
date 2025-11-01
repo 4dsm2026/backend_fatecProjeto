@@ -102,8 +102,10 @@ async function main() {
   // Cursos
   const cursos = [
     { id: 'curso_dsm', nome: 'Desenvolvimento de Software Multiplataforma', sigla: 'DSM', ativo: true },
-    { id: 'curso_ads', nome: 'Análise e Desenvolvimento de Sistemas', sigla: 'ADS', ativo: true },
+    { id: 'curso_gpi', nome: 'Gestão da Produção Industrial', sigla: 'GPI', ativo: true },
     { id: 'curso_gestao', nome: 'Gestão Empresarial', sigla: 'GE', ativo: true },
+    { id: 'curso_comex', nome: 'Comércio Exterior', sigla: 'COMEX', ativo: true },
+    { id: 'curso_design', nome: 'Design de Produto', sigla: 'PD', ativo: true },
   ];
 
   for (const curso of cursos) {
@@ -129,11 +131,11 @@ async function main() {
       ativo: true,
     },
     {
-      id: 'user_aluno_ads_1',
+      id: 'user_aluno_gpi_1',
       organizacaoId: orgId,
-      cursoId: 'curso_ads',
-      nome: 'Maria Santos - Aluno ADS',
-      emailPessoal: 'maria.santos@aluno.fatec.sp.gov.br',
+      cursoId: 'curso_gpi',
+      nome: 'Maria Ribeiro - Aluno GPI',
+      emailPessoal: 'maria.ribeiro@aluno.fatec.sp.gov.br',
       ra: '987654321',
       senhaHash: 'hash_fake_aluno_2',
       papel: Papel.USUARIO,
