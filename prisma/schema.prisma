@@ -39,7 +39,7 @@ enum PrioridadeChamado {
 }
 
 /**
- * ---------- ORGANIZAÇÃO / SETORES / CATÁLOGO ----------
+ * ---------- ORGANIZAÇÃO / SETORES / CATÁLOGO / CURSOS ----------
  */
 model Organizacao {
   id       String   @id @default(cuid())
@@ -78,6 +78,21 @@ model PapelCatalogo {
   usuarioSetores UsuarioSetor[]
 
   @@map("papeis")
+}
+
+model Curso {
+  id          String    @id @default(cuid())
+  nome        String
+  sigla       String?   @db.VarChar(16)
+  descricao   String?
+  ativo       Boolean   @default(true)
+  criadoEm    DateTime  @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  alunos Usuario[]
+
+  @@index([nome])
+  @@map("cursos")
 }
 
 model UsuarioSetor {
