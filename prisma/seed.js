@@ -85,7 +85,7 @@ async function main() {
   });
 
   // Obter ids dos papeis do catálogo por nome (garante FK certa)
-  const papelGestor   = await prisma.papelCatalogo.findUnique({ where: { nome: 'gestor' } });
+  const papelGestor = await prisma.papelCatalogo.findUnique({ where: { nome: 'gestor' } });
 
   // Vínculos do admin com setores
   await prisma.usuarioSetor.upsert({
@@ -96,6 +96,79 @@ async function main() {
   await prisma.usuarioSetor.upsert({
     where: { id: 'us_admin_suporte' },
     create: { id: 'us_admin_suporte', usuarioId: adminId, setorId: setorSuporteId, papelId: papelGestor?.id ?? null },
+    update: {},
+  });
+
+  // Cursos
+  const cursos = [
+    { id: 'curso_dsm', nome: 'Desenvolvimento de Software Multiplataforma', sigla: 'DSM', ativo: true },
+    { id: 'curso_ads', nome: 'Análise e Desenvolvimento de Sistemas', sigla: 'ADS', ativo: true },
+    { id: 'curso_gestao', nome: 'Gestão Empresarial', sigla: 'GE', ativo: true },
+  ];
+
+  for (const curso of cursos) {
+    await prisma.curso.upsert({
+      where: { id: curso.id },
+      create: curso,
+      update: {},
+    });
+  }
+
+  // Usuários exemplo (alunos e secretaria)
+  const usuariosExemplo = [
+    // Alunos
+    {
+      id: 'user_aluno_dsm_1',
+      organizacaoId: orgId,
+      cursoId: 'curso_dsm',
+      nome: 'João Silva - Aluno DSM',
+      emailPessoal: 'joao.silva@aluno.fatec.sp.gov.br',
+      ra: '123456789',
+      senhaHash: 'hash_fake_aluno_1',
+      papel: Papel.USUARIO,
+      ativo: true,
+    },
+    {
+      id: 'user_aluno_ads_1',
+      organizacaoId: orgId,
+      cursoId: 'curso_ads',
+      nome: 'Maria Santos - Aluno ADS',
+      emailPessoal: 'maria.santos@aluno.fatec.sp.gov.br',
+      ra: '987654321',
+      senhaHash: 'hash_fake_aluno_2',
+      papel: Papel.USUARIO,
+      ativo: true,
+    },
+    // Secretaria
+    {
+      id: 'user_secretaria_1',
+      organizacaoId: orgId,
+      nome: 'Ana Costa - Secretaria',
+      emailPessoal: 'ana.costa@fatec.sp.gov.br',
+      senhaHash: 'hash_fake_secretaria',
+      papel: Papel.BACKOFFICE,
+      ativo: true,
+    }
+  ];
+
+  for (const usuario of usuariosExemplo) {
+    await prisma.usuario.upsert({
+      where: { id: usuario.id },
+      create: usuario,
+      update: {},
+    });
+  }
+
+  // Vincular secretaria ao setor
+  const papelSecretaria = await prisma.papelCatalogo.findUnique({ where: { nome: 'secretaria' } });
+  await prisma.usuarioSetor.upsert({
+    where: { id: 'us_secretaria_principal' },
+    create: {
+      id: 'us_secretaria_principal',
+      usuarioId: 'user_secretaria_1',
+      setorId: setorSecretariaId,
+      papelId: papelSecretaria?.id ?? null
+    },
     update: {},
   });
 
