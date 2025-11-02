@@ -15,6 +15,10 @@ import {
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+// CONFIGURAÇÕES DE BLOQUEIO (ADICIONAR NO TOPO)
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos
+
 function parseExpires(v?: string | number) {
   if (!v) return 15 * 60;
   if (typeof v === 'number') return Number(v);
@@ -26,6 +30,100 @@ function parseExpires(v?: string | number) {
   if (h) return Number(h[1]) * 3600;
   return 15 * 60;
 }
+
+// 🔒 FUNÇÕES DE CONTROLE DE BLOQUEIO (ADICIONAR)
+/** VERIFICA SE CONTA ESTÁ BLOQUEADA */
+const checkAccountLock = async (prisma: any, user: any) => {
+  if (!user.lockedUntil) return false;
+  
+  // Se o bloqueio expirou, resetar
+  if (user.lockedUntil < new Date()) {
+    await prisma.usuario.update({
+      where: { id: user.id },
+      data: {
+        loginAttempts: 0,
+        lockedUntil: null,
+        lastFailedAttempt: null,
+      },
+    });
+    return false;
+  }
+  
+  return true;
+};
+
+/** REGISTRAR TENTATIVA FALHA */
+const recordFailedAttempt = async (prisma: any, userId: string, email: string, ip: string, userAgent: string, motivo: string = "senha_incorreta") => {
+  // Atualizar contador no usuário
+  const updatedUser = await prisma.usuario.update({
+    where: { id: userId },
+    data: {
+      loginAttempts: { increment: 1 },
+      lastFailedAttempt: new Date(),
+    },
+  });
+
+  // Registrar na auditoria
+  await prisma.loginTentativa.create({
+    data: {
+      email,
+      usuarioId: userId,
+      sucesso: false,
+      ip,
+      userAgent,
+      motivo,
+    },
+  });
+
+  // Verificar se deve bloquear a conta
+  if (updatedUser.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+    const lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+    await prisma.usuario.update({
+      where: { id: userId },
+      data: {
+        lockedUntil,
+      },
+    });
+    
+    // Atualizar a auditoria com motivo de bloqueio
+    await prisma.loginTentativa.create({
+      data: {
+        email,
+        usuarioId: userId,
+        sucesso: false,
+        ip,
+        userAgent,
+        motivo: `conta_bloqueada_${Math.ceil(LOCKOUT_DURATION_MS / 60000)}min`,
+      },
+    });
+  }
+
+  return updatedUser;
+};
+
+/** RESETAR TENTATIVAS EM SUCESSO */
+const resetLoginAttempts = async (prisma: any, userId: string, email: string, ip: string, userAgent: string) => {
+  await prisma.usuario.update({
+    where: { id: userId },
+    data: {
+      loginAttempts: 0,
+      lockedUntil: null,
+      lastFailedAttempt: null,
+    },
+  });
+
+  // Registrar tentativa bem-sucedida na auditoria
+  await prisma.loginTentativa.create({
+    data: {
+      email,
+      usuarioId: userId,
+      sucesso: true,
+      ip,
+      userAgent,
+      motivo: "login_sucesso",
+    },
+  });
+};
 
 /* ============ LOGIN ============ */
 const loginValidator = buildRouteValidator({ body: LoginSchema });
@@ -186,18 +284,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     req.log.info({ identificador }, "✅ Login concluído com sucesso");
 
     // Also set httpOnly cookie for access_token so browser navigations include it
-    // Compute cookie maxAge from JWT_ACCESS_EXPIRES (simple support for minutes like '15m')
-    const parseExpires = (v?: string | number) => {
-      if (!v) return 15 * 60;
-      if (typeof v === 'number') return Number(v);
-      const s = String(v).trim();
-      if (/^\d+$/.test(s)) return Number(s);
-      const m = /^([0-9]+)m$/.exec(s);
-      if (m) return Number(m[1]) * 60;
-      const h = /^([0-9]+)h$/.exec(s);
-      if (h) return Number(h[1]) * 3600;
-      return 15 * 60;
-    };
     const maxAge = parseExpires(process.env.JWT_ACCESS_EXPIRES);
 
     try {
@@ -214,8 +300,8 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       req.log.debug('setCookie failed or cookie plugin not available');
     }
 
-    // Não vazar senhaHash
-    const { senhaHash, ...safeUser } = user as any;
+    // Não vazar campos sensíveis
+    const { senhaHash, loginAttempts, lockedUntil, lastFailedAttempt, ...safeUser } = user as any;
     await res.send({ user: safeUser, accessToken, refreshToken });
 
   } catch (e) {
