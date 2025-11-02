@@ -30,20 +30,6 @@ CREATE TABLE `papeis` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
-CREATE TABLE `cursos` (
-    `id` VARCHAR(191) NOT NULL,
-    `nome` VARCHAR(191) NOT NULL,
-    `sigla` VARCHAR(16) NULL,
-    `descricao` VARCHAR(191) NULL,
-    `ativo` BOOLEAN NOT NULL DEFAULT true,
-    `criadoEm` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `atualizadoEm` DATETIME(3) NOT NULL,
-
-    INDEX `cursos_nome_idx`(`nome`),
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
 CREATE TABLE `usuarios_setores` (
     `id` VARCHAR(191) NOT NULL,
     `usuarioId` VARCHAR(191) NOT NULL,
@@ -83,7 +69,8 @@ CREATE TABLE `servicos` (
 CREATE TABLE `usuarios` (
     `id` VARCHAR(191) NOT NULL,
     `organizacaoId` VARCHAR(191) NULL,
-    `cursoId` VARCHAR(191) NULL,
+    `cursoNome` VARCHAR(191) NULL,
+    `cursoSigla` VARCHAR(16) NULL,
     `nome` VARCHAR(191) NOT NULL,
     `emailPessoal` VARCHAR(191) NOT NULL,
     `emailEducacional` VARCHAR(191) NULL,
@@ -95,12 +82,15 @@ CREATE TABLE `usuarios` (
     `criadoEm` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `atualizadoEm` DATETIME(3) NOT NULL,
     `deletadoEm` DATETIME(3) NULL,
+    `loginAttempts` INTEGER NOT NULL DEFAULT 0,
+    `lockedUntil` DATETIME(3) NULL,
+    `lastFailedAttempt` DATETIME(3) NULL,
 
     UNIQUE INDEX `usuarios_emailPessoal_key`(`emailPessoal`),
     UNIQUE INDEX `usuarios_ra_key`(`ra`),
     INDEX `usuarios_emailPessoal_idx`(`emailPessoal`),
     INDEX `usuarios_organizacaoId_idx`(`organizacaoId`),
-    INDEX `usuarios_cursoId_idx`(`cursoId`),
+    INDEX `usuarios_cursoSigla_idx`(`cursoSigla`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -362,9 +352,6 @@ ALTER TABLE `servicos` ADD CONSTRAINT `servicos_categoriaId_fkey` FOREIGN KEY (`
 
 -- AddForeignKey
 ALTER TABLE `usuarios` ADD CONSTRAINT `usuarios_organizacaoId_fkey` FOREIGN KEY (`organizacaoId`) REFERENCES `organizacoes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `usuarios` ADD CONSTRAINT `usuarios_cursoId_fkey` FOREIGN KEY (`cursoId`) REFERENCES `cursos`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `sessoes` ADD CONSTRAINT `sessoes_substituidaPorId_fkey` FOREIGN KEY (`substituidaPorId`) REFERENCES `sessoes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
