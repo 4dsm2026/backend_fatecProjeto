@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import websocketPlugin from "@fastify/websocket";
+import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import path from "path";
@@ -40,20 +40,10 @@ export async function buildApp() {
   // ---------------------------------------------------------
   // 🔐 CORS
   // ---------------------------------------------------------
-  const origins = (process.env.CORS_ORIGIN ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
   await app.register(cors, {
-    origin: (origin, cb) => {
-      if (!origin || origins.includes(origin)) return cb(null, true);
-      return cb(new Error("Origin not allowed"), false);
-    },
+    origin: (origin, cb) => cb(null, true),
     credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    maxAge: 86400,
   });
 
   // ---------------------------------------------------------
@@ -63,7 +53,7 @@ export async function buildApp() {
   await app.register(cookiePlugin);
   await app.register(authVerify);
   await app.register(swaggerPlugin);
-  await app.register(websocketPlugin);
+  await app.register(websocket);
 
   // ---------------------------------------------------------
   // 📁 Servir arquivos estáticos (downloads)
@@ -101,38 +91,67 @@ export async function buildApp() {
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(anexoRoutes, { prefix: "/" });
 
-  // ---------------------------------------------------------
-  // 🔌 WEBSOCKET
-  // ---------------------------------------------------------
-  const connections = new Map<string, import("ws").WebSocket>();
+ // ---------------------------------------------------------
+// 🔌 WEBSOCKET
+// ---------------------------------------------------------
+const connections = new Map<string, import("ws").WebSocket>();
 
-  app.get("/ws", { websocket: true }, (connection, req) => {
-    const socket: import("ws").WebSocket =
-      (connection as any).socket ?? (connection as any);
+app.get("/ws", { websocket: true }, (connection, req) => {
+  const socket = (connection as any).socket ?? (connection as any);
+  const userId = (req.query as any)?.userId;
 
-    const userId = (req.query as any).userId as string | undefined;
-    if (!userId) {
-      socket.send(JSON.stringify({ error: "Usuário não autenticado (sem userId)" }));
-      socket.close();
-      return;
+  if (!userId) {
+    socket.send(JSON.stringify({ error: "Usuário não autenticado (sem userId)" }));
+    socket.close();
+    return;
+  }
+
+  app.log.info(`✅ Novo WS handshake recebido: userId=${userId}`);
+
+  // Salva a conexão do usuário
+  connections.set(userId, socket);
+
+  socket.on("message", async (rawMsg: string) => {
+    try {
+      const data = JSON.parse(rawMsg);
+
+      // Caso o front envie "nova_mensagem"
+      if (data.type === "nova_mensagem") {
+        const { chamadoId, mensagem, autorId, autor } = data;
+
+        // 🔥 Broadcast: envia a todos conectados
+        for (const [, client] of connections) {
+          if (client.readyState === client.OPEN) {
+            client.send(
+              JSON.stringify({
+                type: "nova_mensagem",
+                chamadoId,
+                mensagem: {
+                  id: Date.now().toString(),
+                  conteudo: mensagem,
+                  criadoEm: new Date().toISOString(),
+                  autorId,
+                  autor,
+                },
+              })
+            );
+          }
+        }
+      }
+    } catch (err) {
+      app.log.error({ err }, "💥 Erro ao processar WS message");
     }
-
-    connections.set(userId, socket);
-    app.log.info(`✅ WebSocket conectado: ${userId}`);
-
-    socket.on("message", (msg) => {
-      app.log.info(`📩 WS [${userId}] → ${msg}`);
-    });
-
-    socket.on("close", () => {
-      connections.delete(userId);
-      app.log.info(`❌ WebSocket desconectado: ${userId}`);
-    });
-
-    socket.on("error", (err) => {
-      app.log.error({ err }, `💥 Erro no WebSocket (${userId})`);
-    });
   });
+
+  socket.on("close", () => {
+    connections.delete(userId);
+    app.log.warn(`🔴 WS desconectado [${userId}]`);
+  });
+
+  socket.on("error", (err: unknown) => {
+    app.log.error({ err }, `💥 WS erro (${userId})`);
+  });
+});
 
   // ---------------------------------------------------------
   // 🌍 Broadcast global (chat/notificações)

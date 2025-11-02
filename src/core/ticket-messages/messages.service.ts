@@ -43,8 +43,19 @@ export async function createTicketMessage(
     vinculos.forEach(v => userIds.add(v.usuarioId));
   }
 
-  // 📡 Envia notificação em tempo real via WebSocket
+  // 📡 Envia notificação persistente + broadcast em tempo real
   const app: any = (global as any).fastifyAppInstance; // setado no app.ts
+
+  // 🔥 1. Broadcast WebSocket (para atualizar os chats de todos conectados)
+  if ((globalThis as any).broadcastWS) {
+    (globalThis as any).broadcastWS({
+      type: "nova_mensagem",
+      chamadoId,
+      mensagem: msg,
+    });
+  }
+
+  // 🔔 2. Notificação persistente (banco + push realtime)
   if (app?.notifyUsers) {
     await app.notifyUsers(
       Array.from(userIds),
