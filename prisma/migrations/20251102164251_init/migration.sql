@@ -69,6 +69,8 @@ CREATE TABLE `servicos` (
 CREATE TABLE `usuarios` (
     `id` VARCHAR(191) NOT NULL,
     `organizacaoId` VARCHAR(191) NULL,
+    `cursoNome` VARCHAR(191) NULL,
+    `cursoSigla` VARCHAR(16) NULL,
     `nome` VARCHAR(191) NOT NULL,
     `emailPessoal` VARCHAR(191) NOT NULL,
     `emailEducacional` VARCHAR(191) NULL,
@@ -88,6 +90,7 @@ CREATE TABLE `usuarios` (
     UNIQUE INDEX `usuarios_ra_key`(`ra`),
     INDEX `usuarios_emailPessoal_idx`(`emailPessoal`),
     INDEX `usuarios_organizacaoId_idx`(`organizacaoId`),
+    INDEX `usuarios_cursoSigla_idx`(`cursoSigla`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
