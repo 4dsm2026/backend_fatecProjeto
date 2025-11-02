@@ -129,6 +129,8 @@ model Servico {
 model Usuario {
   id               String    @id @default(cuid())
   organizacaoId    String?
+  cursoNome        String?   
+  cursoSigla       String?   @db.VarChar(16) 
   nome             String
   emailPessoal     String    @unique
   emailEducacional String?
@@ -160,6 +162,7 @@ model Usuario {
 
   @@index([emailPessoal])
   @@index([organizacaoId])
+  @@index([cursoSigla])
   @@map("usuarios")
 }
 
