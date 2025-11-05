@@ -10,6 +10,7 @@ import prismaPlugin from "./plugins/prisma";
 import authRoutes from "./core/auth/auth.routes";
 import cookiePlugin from "./plugins/cookie";
 import authVerify from "./plugins/auth-verify";
+import authorizePlugin from './plugins/authorize'
 import { usersRoutes } from "./core/users/users.routes";
 import { ticketsRoutes } from "./core/tickets/tickets.routes";
 import { catalogoRoutes } from "./core/catalogo/catalogo.routes";
@@ -52,6 +53,7 @@ export async function buildApp() {
   await app.register(prismaPlugin);
   await app.register(cookiePlugin);
   await app.register(authVerify);
+  await app.register(authorizePlugin)
   await app.register(swaggerPlugin);
   await app.register(websocket);
 
