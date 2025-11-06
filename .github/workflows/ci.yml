@@ -31,34 +31,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
+          check-latest: true
 
-      - uses: pnpm/action-setup@v4
+      # Ativa Corepack e pnpm de forma determinística (evita erro “Unable …”)
+      - name: Enable Corepack and set pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm -v
+          node -v
+
+      # Cache da store do pnpm (mais previsível que cache embutido do setup-node)
+      - name: Get pnpm store path
+        id: pnpm-store
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
         with:
-          version: 9
+          path: ${{ steps.pnpm-store.outputs.STORE_PATH }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
 
-      - name: Aguardar MySQL ficar pronto
+      - name: Wait for MySQL
         run: |
           for i in {1..30}; do
             if mysqladmin ping -h 127.0.0.1 -proot --silent; then
-              echo "MySQL está pronto!"; exit 0
+              echo "MySQL OK"; exit 0
             fi
-            echo "Aguardando MySQL... ($i/30)"
-            sleep 2
+            echo "Aguardando MySQL... ($i/30)"; sleep 2
           done
-          echo "MySQL não ficou pronto a tempo"; exit 1
+          echo "MySQL não respondeu a tempo"; exit 1
 
-      - name: Instalar dependências
+      - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      - name: Gerar Prisma Client
+      - name: Generate Prisma client
         run: pnpm prisma:generate
-      - name: Aplicar migrations
-        run: |
-          pnpm exec prisma migrate deploy || pnpm exec prisma db push
+
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy || pnpm exec prisma db push
 
       - name: Typecheck
         run: pnpm typecheck
@@ -66,5 +83,5 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Testes
+      - name: Test
         run: pnpm test
