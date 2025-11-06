@@ -87,7 +87,6 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   const feitoPorId = (req as any).user?.sub as string | undefined
 
   try {
-    // repassa o body como veio (incluindo organizacaoId: null para desconectar)
     const user = await updateUser(prisma, parsed.data!.params!.id, parsed.data!.body!, {
       feitoPorId,
     })
