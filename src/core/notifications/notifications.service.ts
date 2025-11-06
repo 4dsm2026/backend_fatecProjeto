@@ -69,12 +69,19 @@ export async function listNotifications(prisma: Ctx, userId: string, q: Notifica
 }
 
 export async function markAsRead(prisma: Ctx, id: string, userId: string) {
-  const r = await prisma.notificacao.updateMany({
-    where: { id, usuarioId: userId },
-    data: { lidaEm: new Date(), arquivadaEm: null, erroEntrega: null },
+  const r = await prisma.notificacao.update({
+    where: { id: id },  // Usando 'id' para encontrar a notificação
+    data: {
+      lidaEm: new Date(),  // Atualizando 'lidaEm' para marcar como lida
+      arquivadaEm: null,   // Garantindo que 'arquivadaEm' seja nulo
+      erroEntrega: null,   // Limpando qualquer erro de entrega
+    },
   });
-  if (!r.count) throw Object.assign(new Error("Notificação não encontrada"), { code: "P2025" });
+  if (!r) throw Object.assign(new Error("Notificação não encontrada"), { code: "P2025" });
 }
+
+
+
 
 export async function archiveNotification(prisma: Ctx, id: string, userId: string) {
   const r = await prisma.notificacao.updateMany({
