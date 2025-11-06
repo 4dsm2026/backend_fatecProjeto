@@ -30,7 +30,7 @@ export async function usersRoutes(app: FastifyInstance) {
   )
   app.patch(
     '/:id',
-    { preHandler: [app.authenticate, app.authorize(['ADMINISTRADOR'])] },
+    { preHandler: [app.authenticate, app.authorize(['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO','USUARIO'])] },
     patch,
   )
   app.delete(
