@@ -16,9 +16,12 @@ const baseSelect = {
   emailPessoal: true,
   emailEducacional: true,
   ra: true,
+  cursoNome: true,          // 👈 incluído
+  cursoSigla: true,         // 👈 incluído
   papel: true,
   ativo: true,
   anonimizado: true,
+  precisaTrocarSenha: true, 
   criadoEm: true,
   atualizadoEm: true,
   deletadoEm: true,
@@ -52,18 +55,33 @@ export async function createUser(
   data: UserCreateDTO,
   opts?: ServiceOpts,
 ): Promise<UserResponse> {
-  const senhaHash = await hashPassword(data.senha)
+  const isAluno = !!data.ra
+
+  // Senha padrão (aluno sempre usa a padrão, ignorando data.senha)
+  const DEFAULT_TEMP_PASSWORD =
+    process.env.DEFAULT_TEMP_PASSWORD || 'Mudar123#'
+
+  // Para não-alunos, você pode aceitar senha do payload;
+  // se não vier, cai na mesma padrão.
+  const senhaPlano = isAluno
+    ? DEFAULT_TEMP_PASSWORD
+    : (data as any).senha || process.env.DEFAULT_STAFF_PASSWORD || DEFAULT_TEMP_PASSWORD
+
+  const senhaHash = await hashPassword(senhaPlano)
 
   const created = await prisma.usuario.create({
     data: {
       nome: data.nome,
-      emailPessoal: data.emailPessoal,
+      emailPessoal: data.emailPessoal ?? data.emailEducacional, // fallback
       emailEducacional: data.emailEducacional ?? null,
       ra: data.ra ?? null,
+      cursoNome: (data as any).cursoNome ?? null,   // 👈 novo
+      cursoSigla: (data as any).cursoSigla ?? null, // 👈 novo
       senhaHash,
       papel: (data.papel as any) ?? 'USUARIO',
       ativo: data.ativo ?? true,
       organizacaoId: data.organizacaoId ?? null,
+      precisaTrocarSenha: isAluno ? true : ((data as any).precisaTrocarSenha ?? false), // 👈 regra
     },
     select: baseSelect,
   })
@@ -72,7 +90,11 @@ export async function createUser(
     prisma,
     'USUARIO_CRIADO',
     `usuarios:${created.id}`,
-    { user: created, origem: opts?.meta?.origem ?? 'service:createUser' },
+    {
+      user: created,
+      origem: opts?.meta?.origem ?? 'service:createUser',
+      isAluno,
+    },
     opts?.feitoPorId,
   )
 
@@ -108,6 +130,8 @@ export async function listUsers(
             { emailPessoal: { contains: q.q } },
             { emailEducacional: { contains: q.q } },
             { ra: { contains: q.q } },
+            { cursoNome: { contains: q.q } },  // 👈 ajuda na busca
+            { cursoSigla: { contains: q.q } }, // 👈 ajuda na busca
           ],
         }
       : {}),
@@ -145,9 +169,12 @@ export async function updateUser(
     emailPessoal: data.emailPessoal ?? undefined,
     emailEducacional: data.emailEducacional ?? undefined,
     ra: data.ra ?? undefined,
+    cursoNome: (data as any).cursoNome ?? undefined,   // 👈 novo
+    cursoSigla: (data as any).cursoSigla ?? undefined, // 👈 novo
     papel: (data.papel as any) ?? undefined,
     ativo: typeof data.ativo === 'boolean' ? data.ativo : undefined,
     anonimizado: typeof data.anonimizado === 'boolean' ? data.anonimizado : undefined,
+    precisaTrocarSenha: (data as any).precisaTrocarSenha ?? undefined, // 👈 se quiser permitir alterar
   }
 
   // 3 estados p/ organizacaoId
@@ -155,8 +182,10 @@ export async function updateUser(
     ;(patch as Prisma.UsuarioUncheckedUpdateInput).organizacaoId = data.organizacaoId as any
   }
 
-  if (data.senha) {
-    patch.senhaHash = await hashPassword(data.senha)
+  // Atualização de senha via este endpoint é opcional;
+  // idealmente, trocas de senha ficam em endpoint próprio (/auth/password).
+  if ((data as any).senha) {
+    patch.senhaHash = await hashPassword((data as any).senha)
   }
 
   const before = await prisma.usuario.findUnique({ where: { id }, select: baseSelect })
@@ -215,14 +244,10 @@ export async function softDeleteUser(
   }
 
   if (isAluno) {
-    // Aluno: educacional obrigatório → anonimiza (não null)
     dataUpdate.emailEducacional = anonEmailEduc
-    // Pessoal também não-nulo → anonimiza
     dataUpdate.emailPessoal = anonEmailPessoal
   } else {
-    // Staff: pessoal obrigatório → anonimiza
     dataUpdate.emailPessoal = anonEmailPessoal
-    // Educacional pode ser null
     dataUpdate.emailEducacional = null
   }
 
