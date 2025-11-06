@@ -127,43 +127,38 @@ model Servico {
  * ---------- USUÁRIOS & SESSÕES ----------
  */
 model Usuario {
-  id                 String    @id @default(cuid())
-  organizacaoId      String?
-  cursoNome          String?
-  cursoSigla         String?   @db.VarChar(16)
-  nome               String
-  emailPessoal       String    @unique
-  emailEducacional   String?
-  ra                 String?   @unique @db.VarChar(32)
-  senhaHash          String
-  papel              Papel     @default(USUARIO)
-  ativo              Boolean   @default(true)
-  anonimizado        Boolean   @default(false)
-  criadoEm           DateTime  @default(now())
-  atualizadoEm       DateTime  @updatedAt
-  deletadoEm         DateTime?
-  loginAttempts      Int       @default(0)
-  lockedUntil        DateTime?
-  lastFailedAttempt  DateTime?
+  id                String    @id @default(cuid())
+  organizacaoId     String?
+  cursoNome         String?
+  cursoSigla        String?   @db.VarChar(16)
+  nome              String
+  emailPessoal      String    @unique
+  emailEducacional  String?
+  ra                String?   @unique @db.VarChar(32)
+  senhaHash         String
+  papel             Papel     @default(USUARIO)
+  ativo             Boolean   @default(true)
+  anonimizado       Boolean   @default(false)
+  criadoEm          DateTime  @default(now())
+  atualizadoEm      DateTime  @updatedAt
+  deletadoEm        DateTime?
+  loginAttempts     Int       @default(0)
+  lockedUntil       DateTime?
+  lastFailedAttempt DateTime?
 
-  // Flags de senha / primeiro acesso
-  precisaTrocarSenha Boolean   @default(false)
-  passwordUpdatedAt  DateTime?
+  organizacao Organizacao? @relation(fields: [organizacaoId], references: [id])
 
-  // Relações
-  organizacao         Organizacao?             @relation(fields: [organizacaoId], references: [id])
-
-  chamadosCriados     Chamado[]                @relation("ChamadosCriados")
-  chamadosAtribuidos  Chamado[]                @relation("ChamadosAtribuidos")
-  anexos              Anexo[]
-  auditorias          Auditoria[]
-  mensagens           Mensagem[]
-  mudancasStatus      HistoricoStatusChamado[] @relation("StatusPorUsuario")
-  sessoes             Sessao[]
-  tokensReset         TokenResetSenha[]        @relation("TokensDeUsuario")
-  usuarioSetores      UsuarioSetor[]
-  loginTentativas     LoginTentativa[]         @relation("LoginTentativasDoUsuario")
-  notificacoes        Notificacao[]            @relation("NotificacoesDoUsuario")
+  chamadosCriados    Chamado[]                @relation("ChamadosCriados")
+  chamadosAtribuidos Chamado[]                @relation("ChamadosAtribuidos")
+  anexos             Anexo[]
+  auditorias         Auditoria[]
+  mensagens          Mensagem[]
+  mudancasStatus     HistoricoStatusChamado[] @relation("StatusPorUsuario")
+  sessoes            Sessao[]
+  tokensReset        TokenResetSenha[]        @relation("TokensDeUsuario")
+  usuarioSetores     UsuarioSetor[]
+  loginTentativas    LoginTentativa[]         @relation("LoginTentativasDoUsuario")
+  notificacoes       Notificacao[]            @relation("NotificacoesDoUsuario")
 
   @@index([emailPessoal])
   @@index([organizacaoId])
@@ -171,9 +166,8 @@ model Usuario {
   @@map("usuarios")
 }
 
-
 model Sessao {
-  id          String   @id @default(cuid()) 
+  id          String   @id @default(cuid()) // pode servir como JTI
   usuarioId   String
   refreshHash String   @db.VarChar(255)
   userAgent   String?
