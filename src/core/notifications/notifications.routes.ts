@@ -14,7 +14,7 @@ export async function notificationsRoutes(app: FastifyInstance) {
   app.get("/", list);
   app.post("/read-all", readAll);
   app.post("/test", createTest);
-  app.post("/:id/read", readOne);
+  app.patch("/:id/lida", readOne);  // A rota para marcar como lida deve ser PATCH
   app.post("/:id/archive", archive);
   app.post("/:id/unarchive", unarchive);
 }

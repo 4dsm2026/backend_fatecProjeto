@@ -119,7 +119,6 @@ app.get("/ws", { websocket: true }, (connection, req) => {
       if (data.type === "nova_mensagem") {
         const { chamadoId, mensagem, autorId, autor } = data;
 
-        // 🔥 Broadcast: envia a todos conectados
         for (const [, client] of connections) {
           if (client.readyState === client.OPEN) {
             client.send(
@@ -164,9 +163,7 @@ app.get("/ws", { websocket: true }, (connection, req) => {
     }
   };
 
-  // ---------------------------------------------------------
-  // 📣 Notificações persistentes e em tempo real
-  // ---------------------------------------------------------
+ 
   app.decorate(
     "notifyUsers",
     async (userIds: string[], data: any, prisma: PrismaClient) => {
