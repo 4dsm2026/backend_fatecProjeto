@@ -1,9 +1,23 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { login, refresh, logout, me, register, getUser, firstAccess } from "./auth.controller";
+import {
+  login,
+  refresh,
+  logout,
+  me,
+  register,
+  getUser,
+  firstAccess,
+  forgotPassword,
+  resetPassword,
+} from "./auth.controller";
 import { authenticate } from "../../middlewares/auth.middleware";
 import { buildRouteValidator, zEmail, zStringTrim, zPapelOptional } from "../../utils/zod-helpers";
 import { z } from "zod";
-import { FirstAccessSchema } from "../../validators/auth";
+import {
+  FirstAccessSchema,
+  EsqueciSenhaSchema,
+  ResetSenhaSchema,
+} from "../../validators/auth";
 
 const zRA = zStringTrim.min(3).max(32).regex(/^[A-Za-z0-9._-]+$/, "RA inválido");
 
@@ -61,9 +75,15 @@ export default async function authRoutes(app: FastifyInstance) {
   app.post("/refresh",  { preHandler: preBody(RefreshSchema) }, refresh);
   app.post("/logout",   { preHandler: preBody(RefreshSchema) }, logout);
   app.post("/register", { preHandler: preBody(RegisterSchema) }, register);
+
   app.post("/primeiro-acesso", { preHandler: preBody(FirstAccessSchema) }, firstAccess);
 
-  app.get("/me", { preHandler: app.authenticate as any }, me);
-  app.get("/usuarios", { preHandler: [app.authenticate as any, preQuery(GetUserQuerySchema)] }, getUser);
-}
+  // 🔹 NOVAS ROTAS:
+  app.post("/esqueci-senha", { preHandler: preBody(EsqueciSenhaSchema) }, forgotPassword);
+  app.post("/reset-senha",   { preHandler: preBody(ResetSenhaSchema) }, resetPassword);
 
+  app.get("/me", { preHandler: app.authenticate as any }, me);
+  app.get("/usuarios", {
+    preHandler: [app.authenticate as any, preQuery(GetUserQuerySchema)],
+  }, getUser);
+}
