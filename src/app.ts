@@ -11,6 +11,7 @@ import authRoutes from "./core/auth/auth.routes";
 import cookiePlugin from "./plugins/cookie";
 import authVerify from "./plugins/auth-verify";
 import authorizePlugin from './plugins/authorize'
+import auditoriaRoutes from "./core/auditoria/auditoria.routes";
 import { usersRoutes } from "./core/users/users.routes";
 import { ticketsRoutes } from "./core/tickets/tickets.routes";
 import { catalogoRoutes } from "./core/catalogo/catalogo.routes";
@@ -91,6 +92,7 @@ export async function buildApp() {
   app.register(papeisRoutes, { prefix: "/admin" });
   app.register(usuarioSetorRoutes, { prefix: "/admin" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
+  app.register(auditoriaRoutes, { prefix: "/auditoria" });
   app.register(anexoRoutes, { prefix: "/" });
 
  // ---------------------------------------------------------

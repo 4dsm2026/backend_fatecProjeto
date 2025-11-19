@@ -22,23 +22,23 @@ const RegistrarSchema = z.object({
 // Helpers iguais do seu auth.routes.ts
 const preBody =
   (schema: z.ZodTypeAny) =>
-  async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const v = buildRouteValidator({ body: schema }).parse(req);
-    if ("error" in v) {
-      await reply.code(400).send(v.error);
-      return;
-    }
-  };
+    async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+      const v = buildRouteValidator({ body: schema }).parse(req);
+      if ("error" in v) {
+        await reply.code(400).send(v.error);
+        return;
+      }
+    };
 
 const preQuery =
   (schema: z.ZodTypeAny) =>
-  async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const v = buildRouteValidator({ query: schema }).parse(req);
-    if ("error" in v) {
-      await reply.code(400).send(v.error);
-      return;
-    }
-  };
+    async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+      const v = buildRouteValidator({ query: schema }).parse(req);
+      if ("error" in v) {
+        await reply.code(400).send(v.error);
+        return;
+      }
+    };
 
 // ----- Rotas -----
 
@@ -48,13 +48,23 @@ export default async function auditoriaRoutes(app: FastifyInstance) {
 
   app.get(
     "/auditoria",
-    { preHandler: app.authenticate as any },
+    {
+      preHandler: [
+        app.authenticate as any,
+        app.authorize(["ADMINISTRADOR"]) as any
+      ]
+    },
     controller.listar
   );
 
   app.get(
     "/auditoria/usuario/:id",
-    { preHandler: app.authenticate as any },
+    {
+      preHandler: [
+        app.authenticate as any,
+        app.authorize(["ADMINISTRADOR"]) as any
+      ]
+    },
     controller.listarPorUsuario
   );
 
@@ -63,8 +73,9 @@ export default async function auditoriaRoutes(app: FastifyInstance) {
     {
       preHandler: [
         app.authenticate as any,
-        preQuery(ListarPorPeriodoSchema),
-      ],
+        app.authorize(["ADMINISTRADOR"]) as any,
+        preQuery(ListarPorPeriodoSchema)
+      ]
     },
     controller.listarPorPeriodo
   );
@@ -74,8 +85,9 @@ export default async function auditoriaRoutes(app: FastifyInstance) {
     {
       preHandler: [
         app.authenticate as any,
-        preBody(RegistrarSchema),
-      ],
+        app.authorize(["ADMINISTRADOR"]) as any,
+        preBody(RegistrarSchema)
+      ]
     },
     controller.registrar
   );
