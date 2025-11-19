@@ -25,13 +25,10 @@ jobs:
           --health-retries=5
 
     env:
-      # Variáveis de ambiente que você definiu nos Secrets
       JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
       JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
-      JWT_ACCESS_EXPIRES: "15m"
-      JWT_REFRESH_EXPIRES: "7d"
-      JWT_ISSUER: "helpdesk"
-      JWT_AUDIENCE: "helpdesk-app"
+      JWT_ACCESS_EXPIRES: ${{ secrets.JWT_ACCESS_EXPIRES }}
+      JWT_REFRESH_EXPIRES: ${{ secrets.JWT_REFRESH_EXPIRES }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       NODE_ENV: test
