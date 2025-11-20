@@ -92,8 +92,8 @@ export async function buildApp() {
   app.register(papeisRoutes, { prefix: "/admin" });
   app.register(usuarioSetorRoutes, { prefix: "/admin" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
-  app.register(auditoriaRoutes, { prefix: "/auditoria" });
   app.register(anexoRoutes, { prefix: "/" });
+  app.register(auditoriaRoutes)
 
  // ---------------------------------------------------------
 // 🔌 WEBSOCKET

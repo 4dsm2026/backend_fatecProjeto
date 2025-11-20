@@ -3,30 +3,30 @@ import { AuditoriaService } from "./auditoria.service";
 export class AuditoriaController {
   constructor(private service: AuditoriaService = new AuditoriaService()) {}
 
-  listar = async (req, res) => {
+  listar = async (req, reply) => {
     const logs = await this.service.listar();
-    return res.json(logs);
+    return reply.send(logs);
   };
 
-  listarPorUsuario = async (req, res) => {
+  listarPorUsuario = async (req, reply) => {
     const { id } = req.params;
     const logs = await this.service.listarPorUsuario(id);
-    return res.json(logs);
+    return reply.send(logs);
   };
 
-  listarPorPeriodo = async (req, res) => {
+  listarPorPeriodo = async (req, reply) => {
     const { inicio, fim } = req.query;
 
     const logs = await this.service.listarPorPeriodo(
-      new Date(inicio as string),
-      new Date(fim as string)
+      new Date(inicio),
+      new Date(fim)
     );
 
-    return res.json(logs);
+    return reply.send(logs);
   };
 
-  registrar = async (req, res) => {
+  registrar = async (req, reply) => {
     const log = await this.service.registrar(req.body);
-    return res.status(201).json(log);
+    return reply.code(201).send(log);
   };
 }
