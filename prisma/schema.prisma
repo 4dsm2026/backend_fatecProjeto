@@ -384,15 +384,17 @@ model ChamadoTag {
  * ---------- AUDITORIA & E-MAILS ----------
  */
 model Auditoria {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   feitoPorId String?
   acao       String
   alvo       String?
   meta       Json?
-  feitoEm    DateTime @default(now())
-  feitoPor   Usuario? @relation(fields: [feitoPorId], references: [id])
+  feitoEm    DateTime  @default(now())
+
+  feitoPor   Usuario?  @relation(fields: [feitoPorId], references: [id])
 
   @@index([feitoEm])
+  @@index([feitoPorId])
   @@map("auditoria")
 }
 

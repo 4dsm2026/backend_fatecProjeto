@@ -11,6 +11,7 @@ import {
 } from "../../validators/auth";
 import { hashPassword, verifyPassword } from "../../security/password";
 import { generateAccessToken } from "../../utils/jwt";
+import { registrarAuditoria } from "../../lib/auditoria";
 import {
   generateRefreshToken as genRT,
   createSession,
@@ -126,6 +127,14 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
   const userAgent = String(req.headers["user-agent"] || "");
   const identificador = email ?? ra ?? "";
 
+  // 🔵 AUDITORIA: tentativa de login (antes de tudo)
+  await registrarAuditoria({
+    feitoPorId: null,
+    acao: "login_tentativa",
+    alvo: identificador,
+    meta: { identificador, ip, userAgent }
+  });
+
   try {
     const baseSelect = {
       id: true,
@@ -146,9 +155,18 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       : await prisma.usuario.findUnique({ where: { ra: ra! }, select: baseSelect });
 
     if (!user) {
+      // 🔵 AUDITORIA: usuário inexistente
+      await registrarAuditoria({
+        feitoPorId: null,
+        acao: "login_falha_usuario_inexistente",
+        alvo: identificador,
+        meta: { identificador }
+      });
+
       await prisma.loginTentativa.create({
         data: { email: email ?? "", usuarioId: null, sucesso: false, ip, userAgent, motivo: "usuario_nao_encontrado" },
       });
+
       req.log.warn({ identificador }, "❌ Usuário não encontrado");
       await res.code(401).send({ error: "Credenciais inválidas" });
       return;
@@ -159,6 +177,15 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     if (isLocked) {
       const remainingTime = Math.ceil((user.lockedUntil!.getTime() - Date.now()) / 1000);
       const remainingMinutes = Math.max(1, Math.ceil(remainingTime / 60));
+
+      // 🔵 AUDITORIA: conta bloqueada
+      await registrarAuditoria({
+        feitoPorId: user.id,
+        acao: "login_falha_conta_bloqueada",
+        alvo: user.emailPessoal,
+        meta: { remainingMinutes, email: user.emailPessoal }
+      });
+
       await prisma.loginTentativa.create({
         data: {
           email: user.emailPessoal ?? "",
@@ -169,6 +196,7 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
           motivo: `conta_bloqueada_${remainingMinutes}min_restantes`,
         },
       });
+
       req.log.warn({ identificador, userId: user.id }, "🔒 Tentativa em conta bloqueada");
       await res.code(423).send({
         error: "Conta bloqueada",
@@ -179,18 +207,36 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     }
 
     if (!user.ativo) {
+      // 🔵 AUDITORIA: usuário inativo
+      await registrarAuditoria({
+        feitoPorId: user.id,
+        acao: "login_falha_usuario_inativo",
+        alvo: user.emailPessoal,
+        meta: { email: user.emailPessoal }
+      });
+
       await prisma.loginTentativa.create({
         data: { email: user.emailPessoal ?? "", usuarioId: user.id, sucesso: false, ip, userAgent, motivo: "usuario_inativo" },
       });
+
       req.log.warn({ identificador }, "⚠️ Usuário inativo");
       await res.code(403).send({ error: "Usuário inativo" });
       return;
     }
 
     if (!user.senhaHash) {
+      // 🔵 AUDITORIA: hash ausente
+      await registrarAuditoria({
+        feitoPorId: user.id,
+        acao: "login_falha_hash_ausente",
+        alvo: user.emailPessoal,
+        meta: { email: user.emailPessoal }
+      });
+
       await prisma.loginTentativa.create({
         data: { email: user.emailPessoal ?? "", usuarioId: user.id, sucesso: false, ip, userAgent, motivo: "hash_senha_ausente" },
       });
+
       req.log.warn({ identificador }, "❌ Hash de senha ausente");
       await res.code(401).send({ error: "Credenciais inválidas" });
       return;
@@ -200,9 +246,18 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     if (!passwordValid) {
       const updatedUser = await recordFailedAttempt(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
       const attemptsLeft = MAX_LOGIN_ATTEMPTS - updatedUser.loginAttempts;
+
+      // 🔵 AUDITORIA: senha incorreta
+      await registrarAuditoria({
+        feitoPorId: user.id,
+        acao: "login_falha_senha_incorreta",
+        alvo: user.emailPessoal,
+        meta: { attemptsLeft, email: user.emailPessoal }
+      });
       let errorMessage = "Credenciais inválidas";
       if (attemptsLeft <= 0) errorMessage = "Conta bloqueada por muitas tentativas. Tente novamente em 15 minutos.";
       else if (attemptsLeft <= 2) errorMessage = `Credenciais inválidas. ${attemptsLeft} tentativa(s) restante(s) antes do bloqueio.`;
+
       req.log.warn({ identificador, attemptsLeft }, "❌ Senha incorreta");
       await res.code(401).send({ error: errorMessage, attemptsLeft });
       return;
@@ -210,7 +265,16 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
 
     // Primeiro acesso obrigatório
     if (user.precisaTrocarSenha) {
+      // 🔵 AUDITORIA: primeiro acesso (senha padrão)
+      await registrarAuditoria({
+        feitoPorId: user.id,
+        acao: "login_primeiro_acesso",
+        alvo: user.emailPessoal,
+        meta: { email: user.emailPessoal }
+      });
+
       await resetLoginAttempts(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
+
       req.log.info({ userId: user.id }, "🔁 precisaTrocarSenha ativo — exigir troca de senha");
       await res.code(428).send({
         code: "PASSWORD_CHANGE_REQUIRED",
@@ -222,6 +286,14 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
 
     // Login OK
     await resetLoginAttempts(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
+
+    // 🔵 AUDITORIA: login bem-sucedido
+    await registrarAuditoria({
+      feitoPorId: user.id,
+      acao: "login_sucesso",
+      alvo: user.emailPessoal,
+      meta: { email: user.emailPessoal }
+    });
 
     const accessToken = generateAccessToken({
       sub: user.id,
@@ -365,7 +437,7 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
         path: "/",
         maxAge: parseExpires(process.env.JWT_ACCESS_EXPIRES),
       });
-    } catch {}
+    } catch { }
 
     await res.send({ user: updated, accessToken, refreshToken });
   } catch (e) {
@@ -608,7 +680,7 @@ export const refresh = async (req: FastifyRequest, res: FastifyReply): Promise<v
         path: "/",
         maxAge: parseExpires(process.env.JWT_ACCESS_EXPIRES),
       });
-    } catch {}
+    } catch { }
 
     await res.send({ accessToken, refreshToken: novoRefresh });
   } catch (e) {

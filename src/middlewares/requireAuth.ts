@@ -1,0 +1,22 @@
+import { FastifyRequest, FastifyReply } from "fastify";
+
+export async function requireAuth(
+  req: FastifyRequest,
+  reply: FastifyReply
+) {
+  // Verifica se existe o token
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return reply.status(401).send({ message: "Token não enviado" });
+  }
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return reply.status(401).send({ message: "Formato de token inválido" });
+  }
+
+  // Verifica a assinatura usando o plugin do Fastify-JWT
+  const decoded = await req.jwtVerify();
+
+  // Salva no request para outros handlers/middlewares
+  (req as any).user = decoded;
+}
