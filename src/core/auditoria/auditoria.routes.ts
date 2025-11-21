@@ -19,14 +19,14 @@ const RegistrarSchema = z.object({
   feitoPorId: zStringTrim.optional(),
 });
 
-// Helpers iguais do seu auth.routes.ts
+// Helpers corrigidos - removendo return redundante
 const preBody =
   (schema: z.ZodTypeAny) =>
     async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
       const v = buildRouteValidator({ body: schema }).parse(req);
       if ("error" in v) {
         await reply.code(400).send(v.error);
-        return;
+        // Removido o return desnecessário
       }
     };
 
@@ -36,7 +36,7 @@ const preQuery =
       const v = buildRouteValidator({ query: schema }).parse(req);
       if ("error" in v) {
         await reply.code(400).send(v.error);
-        return;
+        // Removido o return desnecessário
       }
     };
 
