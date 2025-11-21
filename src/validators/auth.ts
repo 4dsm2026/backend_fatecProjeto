@@ -42,4 +42,13 @@ export const FirstAccessBodySchema = z.object({
   personalEmail: zEmail.optional(),
 });
 
+export const EsqueciSenhaSchema = z.object({
+  email: zEmail,
+});
+
+export const ResetSenhaSchema = z.object({
+  token: zStringTrim.min(10),
+  newPassword: zStringTrim.min(8),
+});
+
 export const FirstAccessSchema = FirstAccessBodySchema;

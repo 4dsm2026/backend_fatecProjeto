@@ -8,6 +8,8 @@ import type {
   Paginated,
 } from '../../types/users'
 import { hashPassword } from '../../security/password'
+import { enviarLinkPrimeiroAcesso } from '../auth/reset-senha.service' 
+
 
 const baseSelect = {
   id: true,
@@ -57,33 +59,39 @@ export async function createUser(
 ): Promise<UserResponse> {
   const isAluno = !!data.ra
 
-  // Senha padrão (aluno sempre usa a padrão, ignorando data.senha)
   const DEFAULT_TEMP_PASSWORD =
     process.env.DEFAULT_TEMP_PASSWORD || 'Mudar123#'
 
-  // Para não-alunos, você pode aceitar senha do payload;
-  // se não vier, cai na mesma padrão.
-  const senhaPlano = isAluno
-    ? DEFAULT_TEMP_PASSWORD
-    : (data as any).senha || process.env.DEFAULT_STAFF_PASSWORD || DEFAULT_TEMP_PASSWORD
-
+  // Senha padrão só pra satisfazer o NOT NULL no banco.
+  // Ela nunca vai ser usada diretamente, porque o usuário vai criar a própria
+  // via link mágico.
+  const senhaPlano = DEFAULT_TEMP_PASSWORD
   const senhaHash = await hashPassword(senhaPlano)
 
   const created = await prisma.usuario.create({
     data: {
       nome: data.nome,
-      emailPessoal: data.emailPessoal ?? data.emailEducacional, // fallback
+      emailPessoal: data.emailPessoal ?? data.emailEducacional,
       emailEducacional: data.emailEducacional ?? null,
       ra: data.ra ?? null,
-      cursoNome: (data as any).cursoNome ?? null,   // 👈 novo
-      cursoSigla: (data as any).cursoSigla ?? null, // 👈 novo
+      cursoNome: (data as any).cursoNome ?? null,
+      cursoSigla: (data as any).cursoSigla ?? null,
       senhaHash,
       papel: (data.papel as any) ?? 'USUARIO',
       ativo: data.ativo ?? true,
       organizacaoId: data.organizacaoId ?? null,
-      precisaTrocarSenha: isAluno ? true : ((data as any).precisaTrocarSenha ?? false), // 👈 regra
+      // Primeiro acesso SEMPRE exige troca de senha
+      precisaTrocarSenha: true,
     },
     select: baseSelect,
+  })
+
+  // Dispara o link mágico de primeiro acesso
+  await enviarLinkPrimeiroAcesso(prisma, {
+    id: created.id,
+    nome: created.nome,
+    emailPessoal: created.emailPessoal,
+    emailEducacional: created.emailEducacional,
   })
 
   await logAuditoria(
@@ -94,12 +102,14 @@ export async function createUser(
       user: created,
       origem: opts?.meta?.origem ?? 'service:createUser',
       isAluno,
+      metodoAcesso: 'MAGIC_LINK_FIRST_ACCESS',
     },
     opts?.feitoPorId,
   )
 
   return created as unknown as UserResponse
 }
+
 
 // ===== Get One (SEM filtrar deletadoEm) =====
 export async function getUserById(
@@ -181,9 +191,7 @@ export async function updateUser(
   if ('organizacaoId' in data) {
     ;(patch as Prisma.UsuarioUncheckedUpdateInput).organizacaoId = data.organizacaoId as any
   }
-
-  // Atualização de senha via este endpoint é opcional;
-  // idealmente, trocas de senha ficam em endpoint próprio (/auth/password).
+  
   if ((data as any).senha) {
     patch.senhaHash = await hashPassword((data as any).senha)
   }

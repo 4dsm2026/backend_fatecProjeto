@@ -1,6 +1,14 @@
+import crypto from "crypto";
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
-import { LoginSchema, RegisterSchema, RefreshSchema, FirstAccessSchema } from "../../validators/auth";
+import {
+  LoginSchema,
+  RegisterSchema,
+  RefreshSchema,
+  FirstAccessSchema,
+  EsqueciSenhaSchema,
+  ResetSenhaSchema,
+} from "../../validators/auth";
 import { hashPassword, verifyPassword } from "../../security/password";
 import { generateAccessToken } from "../../utils/jwt";
 import { registrarAuditoria } from "../../lib/auditoria";
@@ -12,6 +20,11 @@ import {
   rotateSession,
   REFRESH_TOKEN_TTL_MS,
 } from "../../security/refresh";
+import {
+  enviarLinkEsqueciSenha,
+  validarPoliticaSenha,
+  consumirTokenSenha,
+} from "../../core/auth/reset-senha.service";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -317,37 +330,50 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
   }
 };
 
+/* ===================== PRIMEIRO ACESSO (via token) ===================== */
 const firstAccessValidator = buildRouteValidator({ body: FirstAccessSchema });
 
 export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
   const parsed = firstAccessValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const { userId, newPassword, personalEmail } = parsed.data!.body!;
+  const { token, newPassword, personalEmail } = parsed.data!.body! as unknown as {
+    token: string;
+    newPassword: string;
+    personalEmail?: string;
+  };
+
   const prisma = (req.server as any).prisma;
 
   try {
-    const user = await prisma.usuario.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        papel: true,
-        precisaTrocarSenha: true,
-        emailPessoal: true,
-        emailEducacional: true,
-        ativo: true,
+    if (!validarPoliticaSenha(newPassword)) {
+      return void (await res.code(400).send({ error: "Senha não atende aos critérios mínimos." }));
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const tokenRow = await prisma.tokenResetSenha.findFirst({
+      where: {
+        tokenHash,
+        usadoEm: null,
+        expiraEm: { gt: new Date() },
+      },
+      include: {
+        usuario: true,
       },
     });
 
-    if (!user) return void (await res.code(404).send({ error: "Usuário não encontrado" }));
-    if (!user.ativo) return void (await res.code(403).send({ error: "Usuário inativo" }));
-
-
-    if (!user.precisaTrocarSenha && !personalEmail) {
-      return void (await res.code(409).send({ error: "Primeiro acesso já concluído" }));
+    if (!tokenRow || !tokenRow.usuario) {
+      return void (await res.code(400).send({ error: "Token inválido ou expirado." }));
     }
 
+    const user = tokenRow.usuario;
 
+    if (!user.ativo) {
+      return void (await res.code(403).send({ error: "Usuário inativo" }));
+    }
+
+    // Validar e-mail pessoal (se informado)
     if (personalEmail) {
       const dupe = await prisma.usuario.findUnique({
         where: { emailPessoal: personalEmail },
@@ -358,20 +384,33 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
       }
     }
 
-    const patch: any = {};
-    if (user.precisaTrocarSenha && newPassword && newPassword !== "___skip___") {
-      patch.senhaHash = await hashPassword(newPassword);
-      patch.precisaTrocarSenha = false;
-      patch.passwordUpdatedAt = new Date();
-    }
+    const patch: any = {
+      senhaHash: await hashPassword(newPassword),
+      precisaTrocarSenha: false,
+      passwordUpdatedAt: new Date(),
+    };
     if (personalEmail) {
       patch.emailPessoal = personalEmail;
     }
 
-    const updated = await prisma.usuario.update({
-      where: { id: userId },
-      data: patch,
-      select: { id: true, nome: true, papel: true, emailPessoal: true },
+    const { updated, tokenUsed } = await prisma.$transaction(async (tx: any) => {
+      const updatedUser = await tx.usuario.update({
+        where: { id: user.id },
+        data: patch,
+        select: {
+          id: true,
+          nome: true,
+          papel: true,
+          emailPessoal: true,
+        },
+      });
+
+      const updatedToken = await tx.tokenResetSenha.update({
+        where: { id: tokenRow.id },
+        data: { usadoEm: new Date() },
+      });
+
+      return { updated: updatedUser, tokenUsed: updatedToken };
     });
 
     // autentica após concluir
@@ -404,6 +443,102 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
   } catch (e) {
     req.log.error({ e }, "💥 Erro no primeiro acesso");
     await res.code(500).send({ error: "Erro ao concluir o primeiro acesso" });
+  }
+};
+
+/* ===================== ESQUECI A SENHA ===================== */
+const forgotPasswordValidator = buildRouteValidator({ body: EsqueciSenhaSchema });
+
+export const forgotPassword = async (req: FastifyRequest, res: FastifyReply) => {
+  const parsed = forgotPasswordValidator.parse(req);
+  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+
+  const { email } = parsed.data!.body! as { email: string };
+  const prisma = (req.server as any).prisma;
+
+  try {
+    await enviarLinkEsqueciSenha(prisma, email.trim().toLowerCase());
+    await res.send({
+      message: "Se existir uma conta com esse e-mail, enviaremos um link para redefinir a senha.",
+    });
+  } catch (e) {
+    req.log.error({ e }, "💥 Erro em esqueci-senha");
+    await res.code(500).send({ error: "Erro ao processar a solicitação de redefinição de senha" });
+  }
+};
+
+/* ===================== RESET DE SENHA (via token) ===================== */
+const resetPasswordValidator = buildRouteValidator({ body: ResetSenhaSchema });
+
+export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
+  const parsed = resetPasswordValidator.parse(req);
+  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+
+  const { token, newPassword } = parsed.data!.body! as { token: string; newPassword: string };
+  const prisma = (req.server as any).prisma;
+
+  try {
+    if (!validarPoliticaSenha(newPassword)) {
+      return void (await res.code(400).send({ error: "Senha não atende aos critérios mínimos." }));
+    }
+
+    const basicUser = await consumirTokenSenha(prisma, token, newPassword); // id, nome, ra, papel
+
+    if (!basicUser) {
+      return void (await res.code(400).send({ error: "Token inválido ou expirado." }));
+    }
+
+    // Buscar e-mail para o JWT
+    const userDb = await prisma.usuario.findUnique({
+      where: { id: basicUser.id },
+      select: {
+        id: true,
+        nome: true,
+        ra: true,
+        papel: true,
+        emailPessoal: true,
+      },
+    });
+
+    if (!userDb) {
+      return void (await res.code(404).send({ error: "Usuário não encontrado" }));
+    }
+
+    const accessToken = generateAccessToken({
+      sub: userDb.id,
+      email: userDb.emailPessoal ?? "",
+      role: userDb.papel,
+    });
+    const { token: refreshToken } = genRT();
+
+    await createSession({
+      usuarioId: userDb.id,
+      refreshToken,
+      ip: req.ip,
+      userAgent: String(req.headers["user-agent"] || ""),
+      expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+    });
+
+    try {
+      (res as any).setCookie("access_token", accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: parseExpires(process.env.JWT_ACCESS_EXPIRES),
+      });
+    } catch {}
+
+    await res.send({
+      user: userDb,
+      accessToken,
+      refreshToken,
+    });
+  } catch (e: any) {
+    req.log.error({ e }, "💥 Erro no reset de senha");
+    await res.code(e?.statusCode ?? 500).send({
+      error: e?.message ?? "Erro ao redefinir senha",
+    });
   }
 };
 
@@ -450,13 +585,13 @@ export const register = async (req: FastifyRequest, res: FastifyReply): Promise<
       const user = await tx.usuario.create({
         data: {
           nome: name,
-          emailPessoal: email,                   // para staff, login padrão
+          emailPessoal: email,
           emailEducacional: educationalEmail ?? null,
           ra: ra ?? null,
           senhaHash,
-          papel: role,                           // @default(USUARIO) já existe no schema
+          papel: role,
           ativo: true,
-          precisaTrocarSenha: !!ra,              // se veio com RA (aluno), exigir primeiro acesso
+          precisaTrocarSenha: !!ra,
           passwordUpdatedAt: new Date(),
         },
         select: {
