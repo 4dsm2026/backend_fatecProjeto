@@ -1,7 +1,7 @@
 import { AuditoriaService } from "./auditoria.service";
 
 export class AuditoriaController {
-  constructor(private service: AuditoriaService = new AuditoriaService()) {}
+  constructor(private readonly service: AuditoriaService = new AuditoriaService()) {}
 
   listar = async (req, reply) => {
     const logs = await this.service.listar();
