@@ -1,4 +1,4 @@
-// core/users/users.service.ts
+// src/core/users/users.service.ts
 import type { PrismaClient, Prisma } from '@prisma/client'
 import type {
   UserCreateDTO,
@@ -16,18 +16,17 @@ const baseSelect = {
   emailPessoal: true,
   emailEducacional: true,
   ra: true,
-  cursoNome: true,          // 👈 incluído
-  cursoSigla: true,         // 👈 incluído
+  cursoNome: true,
+  cursoSigla: true,
   papel: true,
   ativo: true,
   anonimizado: true,
-  precisaTrocarSenha: true, 
   criadoEm: true,
   atualizadoEm: true,
   deletadoEm: true,
 } satisfies Prisma.UsuarioSelect
 
-// ===== Auditoria helper =====
+// ===== AUDITORIA =====
 async function logAuditoria(
   prisma: PrismaClient,
   acao: string,
@@ -40,7 +39,7 @@ async function logAuditoria(
       data: { acao, alvo, meta, feitoPorId },
     })
   } catch {
-    // Auditoria não derruba o fluxo principal
+    // Auditoria não deve quebrar o fluxo principal
   }
 }
 
@@ -49,7 +48,7 @@ type ServiceOpts = {
   meta?: any
 }
 
-// ===== Create =====
+// ===== CREATE USER =====
 export async function createUser(
   prisma: PrismaClient,
   data: UserCreateDTO,
@@ -57,31 +56,27 @@ export async function createUser(
 ): Promise<UserResponse> {
   const isAluno = !!data.ra
 
-  // Senha padrão (aluno sempre usa a padrão, ignorando data.senha)
   const DEFAULT_TEMP_PASSWORD =
     process.env.DEFAULT_TEMP_PASSWORD || 'Mudar123#'
 
-  // Para não-alunos, você pode aceitar senha do payload;
-  // se não vier, cai na mesma padrão.
   const senhaPlano = isAluno
     ? DEFAULT_TEMP_PASSWORD
-    : (data as any).senha || process.env.DEFAULT_STAFF_PASSWORD || DEFAULT_TEMP_PASSWORD
+    : (data as any).senha || DEFAULT_TEMP_PASSWORD
 
   const senhaHash = await hashPassword(senhaPlano)
 
   const created = await prisma.usuario.create({
     data: {
       nome: data.nome,
-      emailPessoal: data.emailPessoal ?? data.emailEducacional, // fallback
+      emailPessoal: data.emailPessoal ?? data.emailEducacional,
       emailEducacional: data.emailEducacional ?? null,
       ra: data.ra ?? null,
-      cursoNome: (data as any).cursoNome ?? null,   // 👈 novo
-      cursoSigla: (data as any).cursoSigla ?? null, // 👈 novo
+      cursoNome: (data as any).cursoNome ?? null,
+      cursoSigla: (data as any).cursoSigla ?? null,
       senhaHash,
       papel: (data.papel as any) ?? 'USUARIO',
       ativo: data.ativo ?? true,
       organizacaoId: data.organizacaoId ?? null,
-      precisaTrocarSenha: isAluno ? true : ((data as any).precisaTrocarSenha ?? false), // 👈 regra
     },
     select: baseSelect,
   })
@@ -101,7 +96,7 @@ export async function createUser(
   return created as unknown as UserResponse
 }
 
-// ===== Get One (SEM filtrar deletadoEm) =====
+// ===== GET ONE USER =====
 export async function getUserById(
   prisma: PrismaClient,
   id: string,
@@ -113,13 +108,13 @@ export async function getUserById(
   return user as any
 }
 
-// ===== List (paginated) =====
+// ===== LIST USERS =====
 export async function listUsers(
   prisma: PrismaClient,
   q: UserListQuery,
 ): Promise<Paginated<UserResponse>> {
   const where: Prisma.UsuarioWhereInput = {
-    deletadoEm: null, // não listar soft-deletados
+    deletadoEm: null,
     ...(q.papel ? { papel: q.papel as any } : {}),
     ...(q.organizacaoId ? { organizacaoId: q.organizacaoId } : {}),
     ...(typeof q.ativo !== 'undefined' ? { ativo: q.ativo === 'true' } : {}),
@@ -130,8 +125,8 @@ export async function listUsers(
             { emailPessoal: { contains: q.q } },
             { emailEducacional: { contains: q.q } },
             { ra: { contains: q.q } },
-            { cursoNome: { contains: q.q } },  // 👈 ajuda na busca
-            { cursoSigla: { contains: q.q } }, // 👈 ajuda na busca
+            { cursoNome: { contains: q.q } },
+            { cursoSigla: { contains: q.q } },
           ],
         }
       : {}),
@@ -157,7 +152,7 @@ export async function listUsers(
   }
 }
 
-// ===== Update =====
+// ===== UPDATE USER =====
 export async function updateUser(
   prisma: PrismaClient,
   id: string,
@@ -169,21 +164,17 @@ export async function updateUser(
     emailPessoal: data.emailPessoal ?? undefined,
     emailEducacional: data.emailEducacional ?? undefined,
     ra: data.ra ?? undefined,
-    cursoNome: (data as any).cursoNome ?? undefined,   // 👈 novo
-    cursoSigla: (data as any).cursoSigla ?? undefined, // 👈 novo
+    cursoNome: (data as any).cursoNome ?? undefined,
+    cursoSigla: (data as any).cursoSigla ?? undefined,
     papel: (data.papel as any) ?? undefined,
     ativo: typeof data.ativo === 'boolean' ? data.ativo : undefined,
     anonimizado: typeof data.anonimizado === 'boolean' ? data.anonimizado : undefined,
-    precisaTrocarSenha: (data as any).precisaTrocarSenha ?? undefined, // 👈 se quiser permitir alterar
   }
 
-  // 3 estados p/ organizacaoId
   if ('organizacaoId' in data) {
-    ;(patch as Prisma.UsuarioUncheckedUpdateInput).organizacaoId = data.organizacaoId as any
+    patch.organizacaoId = data.organizacaoId as any
   }
 
-  // Atualização de senha via este endpoint é opcional;
-  // idealmente, trocas de senha ficam em endpoint próprio (/auth/password).
   if ((data as any).senha) {
     patch.senhaHash = await hashPassword((data as any).senha)
   }
@@ -207,7 +198,7 @@ export async function updateUser(
   return updated as any
 }
 
-// ===== Soft Delete com anonimização por papel (RA preservado) =====
+// ===== SOFT DELETE =====
 export async function softDeleteUser(
   prisma: PrismaClient,
   id: string,
@@ -217,6 +208,7 @@ export async function softDeleteUser(
     where: { id },
     select: baseSelect,
   })
+
   if (!before) {
     const err: any = new Error('Usuário não encontrado')
     err.code = 'P2025'
@@ -225,11 +217,9 @@ export async function softDeleteUser(
 
   const isAluno = before.papel === 'USUARIO'
 
-  // domínios configuráveis
   const anonDomain = process.env.ANON_EMAIL_DOMAIN || 'anon.local'
   const anonEduDomain = process.env.ANON_EDU_DOMAIN || 'anon.edu.local'
 
-  // e-mails únicos e válidos usando o próprio id
   const anonEmailPessoal = `anonp_${id}@${anonDomain}`
   const anonEmailEduc = `anone_${id}@${anonEduDomain}`
 
@@ -238,9 +228,7 @@ export async function softDeleteUser(
     ativo: false,
     anonimizado: true,
     nome: 'Usuário Anônimo',
-    // ⚠️ RA preservado
     ra: before.ra,
-    // organizacaoId: null, // opcional: desassociar se quiser
   }
 
   if (isAluno) {
