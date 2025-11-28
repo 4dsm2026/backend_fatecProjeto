@@ -147,6 +147,7 @@ model Usuario {
   loginAttempts     Int       @default(0)
   lockedUntil       DateTime?
   lastFailedAttempt DateTime?
+  passwordUpdatedAt DateTime?
 
   organizacao Organizacao? @relation(fields: [organizacaoId], references: [id])
 
