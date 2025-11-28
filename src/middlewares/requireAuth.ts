@@ -1,4 +1,5 @@
 import { FastifyRequest, FastifyReply } from "fastify";
+import { verifyAccessToken } from "../utils/jwt";
 
 export async function requireAuth(
   req: FastifyRequest,
@@ -14,9 +15,22 @@ export async function requireAuth(
     return reply.status(401).send({ message: "Formato de token inválido" });
   }
 
-  // Verifica a assinatura usando o plugin do Fastify-JWT
-  const decoded = await req.jwtVerify();
+  // Extrai o token
+  const token = authHeader.slice("Bearer ".length).trim();
+  if (!token) {
+    return reply.status(401).send({ message: "Token inválido" });
+  }
 
-  // Salva no request para outros handlers/middlewares
-  (req as any).user = decoded;
+  try {
+    // Verifica a assinatura usando a função verifyAccessToken
+    const decoded = verifyAccessToken(token);
+
+    // Salva no request para outros handlers/middlewares
+    req.user = decoded;
+  } catch (err: any) {
+    return reply.status(401).send({ 
+      message: "Token inválido ou expirado",
+      details: err?.message
+    });
+  }
 }
