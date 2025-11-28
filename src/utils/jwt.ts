@@ -1,4 +1,4 @@
-// src/auth/jwt.ts
+// src/utils/jwt.ts
 import jwt, { SignOptions, JwtPayload as JWTStd } from "jsonwebtoken";
 
 export interface AccessClaims {
@@ -9,8 +9,17 @@ export interface AccessClaims {
 
 export type AccessTokenPayload = JWTStd & AccessClaims;
 
+export interface RefreshClaims {
+  sub: string;   // id do usuário
+}
+
+export type RefreshTokenPayload = JWTStd & RefreshClaims;
+
 const ACCESS_DEFAULT_EXPIRES: SignOptions["expiresIn"] =
   (process.env.JWT_ACCESS_EXPIRES as any) || "15m";
+
+const REFRESH_DEFAULT_EXPIRES: SignOptions["expiresIn"] =
+  (process.env.JWT_REFRESH_EXPIRES as any) || "7d";
 
 export function generateAccessToken(
   claims: AccessClaims,
@@ -44,6 +53,43 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
       audience: process.env.JWT_AUDIENCE || "helpdesk-app",
       clockTolerance: 5, // segundos de tolerância
     }) as AccessTokenPayload;
+  } catch {
+    throw new Error("Token inválido ou expirado");
+  }
+}
+
+export function generateRefreshToken(
+  claims: RefreshClaims,
+  opts?: { expiresIn?: SignOptions["expiresIn"] }
+): string {
+  const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_ACCESS_SECRET;
+  if (!secret) throw new Error("JWT_REFRESH_SECRET ou JWT_ACCESS_SECRET não definido");
+
+  const { sub } = claims;
+
+  return jwt.sign(
+    { sub },
+    secret,
+    {
+      algorithm: "HS256",
+      expiresIn: opts?.expiresIn ?? REFRESH_DEFAULT_EXPIRES,
+      issuer: process.env.JWT_ISSUER || "helpdesk",
+      audience: process.env.JWT_AUDIENCE || "helpdesk-app",
+    }
+  );
+}
+
+export function verifyRefreshToken(token: string): RefreshTokenPayload {
+  const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_ACCESS_SECRET;
+  if (!secret) throw new Error("JWT_REFRESH_SECRET ou JWT_ACCESS_SECRET não definido");
+
+  try {
+    return jwt.verify(token, secret, {
+      algorithms: ["HS256"],
+      issuer: process.env.JWT_ISSUER || "helpdesk",
+      audience: process.env.JWT_AUDIENCE || "helpdesk-app",
+      clockTolerance: 5,
+    }) as RefreshTokenPayload;
   } catch {
     throw new Error("Token inválido ou expirado");
   }

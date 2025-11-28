@@ -175,12 +175,11 @@ export const loginService = async (
   // Login bem-sucedido - resetar tentativas
   await resetLoginAttempts(user.id, email, ctx);
 
-  // Gerar tokens
+  // Gerar tokens (sem passar 'exp' manualmente, a função cuida disso)
   const accessToken = generateAccessToken({
     sub: user.id,
     email: user.emailPessoal ?? undefined,
     role: user.papel,
-    exp: Math.floor((Date.now() + ACCESS_TTL_MIN * 60 * 1000) / 1000),
   });
 
   const refreshToken = generateRefreshToken({ sub: user.id });
@@ -224,12 +223,11 @@ export const refreshService = async (refreshToken: string) => {
   const user = session.usuario;
   if (!user || !user.ativo) throw new Error("Usuário inativo");
 
-  // Novo access
+  // Novo access (sem passar 'exp' manualmente)
   const accessToken = generateAccessToken({
     sub: user.id,
     email: user.emailPessoal ?? undefined,
     role: user.papel,
-    exp: Math.floor((Date.now() + ACCESS_TTL_MIN * 60 * 1000) / 1000),
   });
 
   // Rotação do refresh: cria novo refresh + nova sessão e aponta substituição

@@ -65,10 +65,19 @@ export async function createUser(
 
   const senhaHash = await hashPassword(senhaPlano)
 
+  // ✅ validações de campos obrigatórios (Prisma exige)
+  if (!data.nome) {
+    throw new Error('Nome é obrigatório.')
+  }
+
+  if (!data.emailPessoal && !data.emailEducacional) {
+    throw new Error('É obrigatório informar e-mail pessoal ou educacional.')
+  }
+
   const created = await prisma.usuario.create({
     data: {
-      nome: data.nome,
-      emailPessoal: data.emailPessoal ?? data.emailEducacional,
+      nome: data.nome!, // <- agora TS sabe que não é undefined
+      emailPessoal: (data.emailPessoal ?? data.emailEducacional)!,
       emailEducacional: data.emailEducacional ?? null,
       ra: data.ra ?? null,
       cursoNome: (data as any).cursoNome ?? null,
@@ -191,7 +200,12 @@ export async function updateUser(
     prisma,
     'USUARIO_ATUALIZADO',
     `usuarios:${id}`,
-    { changes: Object.keys(patch), before, after: updated, origem: opts?.meta?.origem ?? 'service:updateUser' },
+    {
+      changes: Object.keys(patch),
+      before,
+      after: updated,
+      origem: opts?.meta?.origem ?? 'service:updateUser',
+    },
     opts?.feitoPorId,
   )
 
@@ -232,10 +246,10 @@ export async function softDeleteUser(
   }
 
   if (isAluno) {
-    dataUpdate.emailEducacional = anonEmailEduc
-    dataUpdate.emailPessoal = anonEmailPessoal
+    dataUpdate.emailEducacional = anonEmailEduc ?? null
+    dataUpdate.emailPessoal = anonEmailPessoal ?? null
   } else {
-    dataUpdate.emailPessoal = anonEmailPessoal
+    dataUpdate.emailPessoal = anonEmailPessoal ?? null
     dataUpdate.emailEducacional = null
   }
 
@@ -249,7 +263,11 @@ export async function softDeleteUser(
     prisma,
     'USUARIO_REMOVIDO_SOFT',
     `usuarios:${id}`,
-    { before, after: deleted, origem: opts?.meta?.origem ?? 'service:softDeleteUser' },
+    {
+      before,
+      after: deleted,
+      origem: opts?.meta?.origem ?? 'service:softDeleteUser',
+    },
     opts?.feitoPorId,
   )
 
