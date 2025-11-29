@@ -1,21 +1,17 @@
-import { PrismaClient } from "@prisma/client";
+// src/modules/auth/auth.service.ts
 import argon2 from "argon2";
 import { generateAccessToken, generateRefreshToken } from "../../utils/jwt";
 import { hashValue } from "../../utils/crypto";
-
-const prisma = new PrismaClient();
+import { prisma } from "../../db/prisma";
 
 type LoginContext = {
   ip?: string | null;
   userAgent?: string | null;
 };
 
-/** TTLs */
-const ACCESS_TTL_MIN = 15;              // access: 15 min
-const REFRESH_TTL_DAYS = 7;             // refresh: 7 dias
+const REFRESH_TTL_DAYS = 7;
 const REFRESH_TTL_MS = REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000;
 
-// CONFIGURAÇÕES DE BLOQUEIO
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos
 
@@ -23,11 +19,9 @@ function plusMs(ms: number) {
   return new Date(Date.now() + ms);
 }
 
-/** VERIFICA SE CONTA ESTÁ BLOQUEADA */
 const checkAccountLock = async (user: any) => {
   if (!user.lockedUntil) return false;
-  
-  // Se o bloqueio expirou, resetar
+
   if (user.lockedUntil < new Date()) {
     await prisma.usuario.update({
       where: { id: user.id },
@@ -39,13 +33,16 @@ const checkAccountLock = async (user: any) => {
     });
     return false;
   }
-  
+
   return true;
 };
 
-/** REGISTRAR TENTATIVA FALHA */
-const recordFailedAttempt = async (userId: string, email: string, ctx: LoginContext, motivo: string = "Senha incorreta") => {
-  // Atualizar contador no usuário
+const recordFailedAttempt = async (
+  userId: string,
+  email: string,
+  ctx: LoginContext,
+  motivo = "Senha incorreta"
+) => {
   const updatedUser = await prisma.usuario.update({
     where: { id: userId },
     data: {
@@ -54,7 +51,6 @@ const recordFailedAttempt = async (userId: string, email: string, ctx: LoginCont
     },
   });
 
-  // Registrar na auditoria
   await prisma.loginTentativa.create({
     data: {
       email,
@@ -66,7 +62,6 @@ const recordFailedAttempt = async (userId: string, email: string, ctx: LoginCont
     },
   });
 
-  // Verificar se deve bloquear a conta
   if (updatedUser.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
     await prisma.usuario.update({
       where: { id: userId },
@@ -79,8 +74,11 @@ const recordFailedAttempt = async (userId: string, email: string, ctx: LoginCont
   return updatedUser;
 };
 
-/** RESETAR TENTATIVAS EM SUCESSO */
-const resetLoginAttempts = async (userId: string, email: string, ctx: LoginContext) => {
+const resetLoginAttempts = async (
+  userId: string,
+  email: string,
+  ctx: LoginContext
+) => {
   await prisma.usuario.update({
     where: { id: userId },
     data: {
@@ -90,7 +88,6 @@ const resetLoginAttempts = async (userId: string, email: string, ctx: LoginConte
     },
   });
 
-  // Registrar tentativa bem-sucedida na auditoria
   await prisma.loginTentativa.create({
     data: {
       email,
@@ -103,7 +100,6 @@ const resetLoginAttempts = async (userId: string, email: string, ctx: LoginConte
   });
 };
 
-/** LOGIN ATUALIZADO COM BLOQUEIO */
 export const loginService = async (
   email: string,
   password: string,
@@ -114,7 +110,6 @@ export const loginService = async (
   });
 
   if (!user) {
-    // Registrar tentativa falha mesmo para usuário não encontrado (sem userId)
     await prisma.loginTentativa.create({
       data: {
         email,
@@ -127,7 +122,6 @@ export const loginService = async (
     throw new Error("Usuário ou senha inválidos");
   }
 
-  // Verificar se conta está ativa
   if (!user.ativo || !user.senhaHash) {
     await prisma.loginTentativa.create({
       data: {
@@ -142,10 +136,11 @@ export const loginService = async (
     throw new Error("Usuário ou senha inválidos");
   }
 
-  // Verificar se conta está bloqueada
   const isLocked = await checkAccountLock(user);
   if (isLocked) {
-    const remainingTime = Math.ceil((user.lockedUntil!.getTime() - Date.now()) / 1000);
+    const remainingTime = Math.ceil(
+      (user.lockedUntil!.getTime() - Date.now()) / 1000
+    );
     await prisma.loginTentativa.create({
       data: {
         email,
@@ -156,26 +151,31 @@ export const loginService = async (
         motivo: `Conta bloqueada - ${remainingTime}s restantes`,
       },
     });
-    throw new Error(`Conta bloqueada devido a muitas tentativas. Tente novamente em ${Math.ceil(remainingTime / 60)} minutos.`);
+    throw new Error(
+      `Conta bloqueada devido a muitas tentativas. Tente novamente em ${Math.ceil(
+        remainingTime / 60
+      )} minutos.`
+    );
   }
 
-  // Verificar senha
   const ok = await argon2.verify(user.senhaHash, password);
   if (!ok) {
     const updatedUser = await recordFailedAttempt(user.id, email, ctx);
     const attemptsLeft = MAX_LOGIN_ATTEMPTS - updatedUser.loginAttempts;
-    
+
     if (attemptsLeft <= 0) {
-      throw new Error("Conta bloqueada devido a muitas tentativas falhas. Tente novamente em 15 minutos.");
+      throw new Error(
+        "Conta bloqueada devido a muitas tentativas falhas. Tente novamente em 15 minutos."
+      );
     }
-    
-    throw new Error(`Usuário ou senha inválidos. ${attemptsLeft} tentativas restantes.`);
+
+    throw new Error(
+      `Usuário ou senha inválidos. ${attemptsLeft} tentativas restantes.`
+    );
   }
 
-  // Login bem-sucedido - resetar tentativas
   await resetLoginAttempts(user.id, email, ctx);
 
-  // Gerar tokens (sem passar 'exp' manualmente, a função cuida disso)
   const accessToken = generateAccessToken({
     sub: user.id,
     email: user.emailPessoal ?? undefined,
@@ -198,7 +198,6 @@ export const loginService = async (
   return { accessToken, refreshToken, user };
 };
 
-/** REFRESH: emite NOVO access e faz rotação do refresh (revoga o antigo e cria outro) */
 export const refreshService = async (refreshToken: string) => {
   const refreshHash = await hashValue(refreshToken);
 
@@ -210,27 +209,24 @@ export const refreshService = async (refreshToken: string) => {
   if (!session) throw new Error("Sessão não encontrada ou expirada");
 
   if (session.expiraEm && session.expiraEm < new Date()) {
-    // expirada → marca como revogada/expirada e erra
     try {
       await prisma.sessao.update({
         where: { id: session.id },
         data: { revogadaEm: new Date() },
       });
-    } catch { }
+    } catch {}
     throw new Error("Sessão expirada");
   }
 
   const user = session.usuario;
   if (!user || !user.ativo) throw new Error("Usuário inativo");
 
-  // Novo access (sem passar 'exp' manualmente)
   const accessToken = generateAccessToken({
     sub: user.id,
     email: user.emailPessoal ?? undefined,
     role: user.papel,
   });
 
-  // Rotação do refresh: cria novo refresh + nova sessão e aponta substituição
   const newRefresh = generateRefreshToken({ sub: user.id });
   const newRefreshHash = await hashValue(newRefresh);
 
@@ -244,20 +240,17 @@ export const refreshService = async (refreshToken: string) => {
     },
   });
 
-  // Revoga a sessão antiga e liga a nova
   await prisma.sessao.update({
     where: { id: session.id },
     data: {
       revogadaEm: new Date(),
-      substituidaPorId: novaSessao.id, // requer campo na tabela; comente se ainda não migrou
-      // ultimoUsoEm: new Date(),
+      substituidaPorId: novaSessao.id,
     },
   });
 
   return { accessToken, refreshToken: newRefresh };
 };
 
-/** LOGOUT: revoga o refresh atual (idempotente) */
 export const logoutService = async (refreshToken: string) => {
   const refreshHash = await hashValue(refreshToken);
 
@@ -276,7 +269,6 @@ export const logoutService = async (refreshToken: string) => {
   return { success: true };
 };
 
-/** ME (dados públicos do usuário autenticado) */
 export const meService = async (userId: string) => {
   const user = await prisma.usuario.findUnique({
     where: { id: userId },

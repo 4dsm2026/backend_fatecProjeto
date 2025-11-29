@@ -1,15 +1,20 @@
 // src/plugins/prisma.ts
 import fp from "fastify-plugin";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../db/prisma";
 import { z } from "zod";
 import { PapelEnum } from "../validators/users";
-import type { AccessTokenPayload } from "../utils/jwt"; // 👉 importa o tipo do token
+import type { AccessTokenPayload } from "../utils/jwt";
 
 type PapelValue = z.infer<typeof PapelEnum>;
 
 export default fp(async (app) => {
-  const prisma = new PrismaClient();
-  await prisma.$connect();
+  try {
+    await prisma.$connect();
+    app.log.info("✅ Prisma conectado");
+  } catch (err) {
+    app.log.error({ err }, "❌ Erro ao conectar Prisma");
+    throw err;
+  }
 
   app.decorate("prisma", prisma);
 
@@ -20,13 +25,13 @@ export default fp(async (app) => {
 
 declare module "fastify" {
   interface FastifyInstance {
-    prisma: PrismaClient;
-    authenticate: (req: any, res: any) => Promise<void>; 
+    prisma: typeof prisma;
+    authenticate: (req: any, res: any) => Promise<void>;
     authorize: (papeis: PapelValue[]) => (req: any, res: any) => Promise<void>;
   }
 
   interface FastifyRequest {
-    prisma: PrismaClient;
-    user?: AccessTokenPayload; 
+    prisma: typeof prisma;
+    user?: AccessTokenPayload;
   }
 }

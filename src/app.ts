@@ -10,7 +10,7 @@ import prismaPlugin from "./plugins/prisma";
 import authRoutes from "./core/auth/auth.routes";
 import cookiePlugin from "./plugins/cookie";
 import authVerify from "./plugins/auth-verify";
-import authorizePlugin from './plugins/authorize'
+import authorizePlugin from "./plugins/authorize";
 import auditoriaRoutes from "./core/auditoria/auditoria.routes";
 import { usersRoutes } from "./core/users/users.routes";
 import { ticketsRoutes } from "./core/tickets/tickets.routes";
@@ -21,7 +21,7 @@ import { papeisRoutes } from "./core/papeis/papeis.routes";
 import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
 import { notificationsRoutes } from "./core/notifications/notifications.routes";
 import { anexoRoutes } from "./core/anexos/anexos.routes";
-import { PrismaClient } from "@prisma/client";
+// import { PrismaClient } from "@prisma/client"; // vamos tirar isso
 import fastifyFormbody from "@fastify/formbody";
 
 /* ====== Configuração de uploads ====== */
@@ -40,15 +40,27 @@ export async function buildApp() {
   await app.register(multipart);
 
   // ---------------------------------------------------------
-  // 🔐 CORS
+  // 🔐 CORS – agora respeitando CORS_ORIGIN da env
   // ---------------------------------------------------------
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",")
+    : [];
+
   await app.register(cors, {
-    origin: true, // libera tudo (backend já está privado por JWT)
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // curl, mobile, etc.
+
+      if (allowedOrigins.includes(origin)) {
+        return cb(null, true);
+      }
+
+      app.log.warn({ origin }, "Origin bloqueado pelo CORS");
+      return cb(new Error("Not allowed by CORS"), false);
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   });
-
 
   // ---------------------------------------------------------
   // ⚙️ Plugins principais
@@ -59,7 +71,6 @@ export async function buildApp() {
   await app.register(authorizePlugin);
   await app.register(swaggerPlugin);
   await app.register(websocket);
-
 
   // ---------------------------------------------------------
   // 📁 Servir arquivos estáticos (downloads)
@@ -85,6 +96,11 @@ export async function buildApp() {
   });
 
   // ---------------------------------------------------------
+  // ✅ Healthcheck simples pra Railway testar
+  // ---------------------------------------------------------
+  app.get("/health", async () => ({ status: "ok" }));
+
+  // ---------------------------------------------------------
   // 🛠️ Rotas
   // ---------------------------------------------------------
   app.register(authRoutes, { prefix: "/auth" });
@@ -96,68 +112,68 @@ export async function buildApp() {
   app.register(usuarioSetorRoutes, { prefix: "/admin" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(anexoRoutes, { prefix: "/" });
-  app.register(auditoriaRoutes)
+  app.register(auditoriaRoutes);
 
- // ---------------------------------------------------------
-// 🔌 WEBSOCKET
-// ---------------------------------------------------------
-const connections = new Map<string, import("ws").WebSocket>();
+  // ---------------------------------------------------------
+  // 🔌 WEBSOCKET
+  // ---------------------------------------------------------
+  const connections = new Map<string, import("ws").WebSocket>();
 
-app.get("/ws", { websocket: true }, (connection, req) => {
-  const socket = (connection as any).socket ?? (connection as any);
-  const userId = (req.query as any)?.userId;
+  app.get("/ws", { websocket: true }, (connection, req) => {
+    const socket = (connection as any).socket ?? (connection as any);
+    const userId = (req.query as any)?.userId;
 
-  if (!userId) {
-    socket.send(JSON.stringify({ error: "Usuário não autenticado (sem userId)" }));
-    socket.close();
-    return;
-  }
+    if (!userId) {
+      socket.send(
+        JSON.stringify({ error: "Usuário não autenticado (sem userId)" })
+      );
+      socket.close();
+      return;
+    }
 
-  app.log.info(`✅ Novo WS handshake recebido: userId=${userId}`);
+    app.log.info(`✅ Novo WS handshake recebido: userId=${userId}`);
 
-  // Salva a conexão do usuário
-  connections.set(userId, socket);
+    connections.set(userId, socket);
 
-  socket.on("message", async (rawMsg: string) => {
-    try {
-      const data = JSON.parse(rawMsg);
+    socket.on("message", async (rawMsg: string) => {
+      try {
+        const data = JSON.parse(rawMsg);
 
-      // Caso o front envie "nova_mensagem"
-      if (data.type === "nova_mensagem") {
-        const { chamadoId, mensagem, autorId, autor } = data;
+        if (data.type === "nova_mensagem") {
+          const { chamadoId, mensagem, autorId, autor } = data;
 
-        for (const [, client] of connections) {
-          if (client.readyState === client.OPEN) {
-            client.send(
-              JSON.stringify({
-                type: "nova_mensagem",
-                chamadoId,
-                mensagem: {
-                  id: Date.now().toString(),
-                  conteudo: mensagem,
-                  criadoEm: new Date().toISOString(),
-                  autorId,
-                  autor,
-                },
-              })
-            );
+          for (const [, client] of connections) {
+            if (client.readyState === client.OPEN) {
+              client.send(
+                JSON.stringify({
+                  type: "nova_mensagem",
+                  chamadoId,
+                  mensagem: {
+                    id: Date.now().toString(),
+                    conteudo: mensagem,
+                    criadoEm: new Date().toISOString(),
+                    autorId,
+                    autor,
+                  },
+                })
+              );
+            }
           }
         }
+      } catch (err) {
+        app.log.error({ err }, "💥 Erro ao processar WS message");
       }
-    } catch (err) {
-      app.log.error({ err }, "💥 Erro ao processar WS message");
-    }
-  });
+    });
 
-  socket.on("close", () => {
-    connections.delete(userId);
-    app.log.warn(`🔴 WS desconectado [${userId}]`);
-  });
+    socket.on("close", () => {
+      connections.delete(userId);
+      app.log.warn(`🔴 WS desconectado [${userId}]`);
+    });
 
-  socket.on("error", (err: unknown) => {
-    app.log.error({ err }, `💥 WS erro (${userId})`);
+    socket.on("error", (err: unknown) => {
+      app.log.error({ err }, `💥 WS erro (${userId})`);
+    });
   });
-});
 
   // ---------------------------------------------------------
   // 🌍 Broadcast global (chat/notificações)
@@ -170,10 +186,10 @@ app.get("/ws", { websocket: true }, (connection, req) => {
     }
   };
 
- 
+  // 👉 Aqui eu uso app.prisma (do plugin), não passo PrismaClient por parâmetro
   app.decorate(
     "notifyUsers",
-    async (userIds: string[], data: any, prisma: PrismaClient) => {
+    async (userIds: string[], data: any) => {
       for (const userId of userIds) {
         const socket = connections.get(userId);
 
@@ -181,7 +197,7 @@ app.get("/ws", { websocket: true }, (connection, req) => {
           socket.send(JSON.stringify(data));
         }
 
-        await prisma.notificacao.create({
+        await app.prisma.notificacao.create({
           data: {
             usuarioId: userId,
             titulo: data.titulo || "Nova notificação",

@@ -1,9 +1,10 @@
+// src/plugins/auth.ts
 import fp from "fastify-plugin";
 import { verifyAccessToken, verifyDownloadToken } from "../utils/jwt";
 
 export default fp(async (app) => {
   app.decorate("authenticate", async (req: any, res: any) => {
-    // 1) Se alguém chamar authenticate num OPTIONS, não faz nada
+    // Não quebra preflight CORS
     if (req.method === "OPTIONS") {
       return;
     }
@@ -20,8 +21,8 @@ export default fp(async (app) => {
         token = req.cookies.access_token;
       }
 
-      if (!token && req.query?.access_token) {
-        token = req.query.access_token;
+      if (!token && (req.query as any)?.access_token) {
+        token = (req.query as any).access_token as string;
       }
 
       if (!token) {
@@ -44,4 +45,16 @@ export default fp(async (app) => {
       return res.code(401).send({ error: "Não autorizado" });
     }
   });
+
+  // Se quiser um authorize separado:
+  app.decorate(
+    "authorize",
+    (papeis: string[]) =>
+      async (req: any, res: any) => {
+        const role = req.user?.role;
+        if (!role || !papeis.includes(role)) {
+          return res.code(403).send({ error: "Acesso negado" });
+        }
+      }
+  );
 });
