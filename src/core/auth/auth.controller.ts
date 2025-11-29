@@ -50,24 +50,38 @@ function parseExpires(v?: string | number) {
 /* ===================== Cookies helper ===================== */
 // Nomes batendo com o que o frontend/middleware espera: accessToken / refreshToken
 function setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
+  const r = res as any;
+
+  // Se o plugin de cookies não estiver disponível, não quebra o login
+  if (typeof r.setCookie !== "function") {
+    // opcional: logar algo
+    try {
+      (res as any).request?.log?.warn?.(
+        "setCookie não disponível no FastifyReply — pulando setAuthCookies"
+      );
+    } catch {}
+    return;
+  }
+
   const maxAge = parseExpires(process.env.JWT_ACCESS_EXPIRES);
 
-  (res as any)
-    .setCookie("accessToken", accessToken, {
-      httpOnly: false,                      // se quiser HttpOnly de verdade, precisa ser cookie setado pelo próprio Next
-      secure: isProd,
-      sameSite: isProd ? "none" : "lax",
-      path: "/",
-      maxAge,
-    })
-    .setCookie("refreshToken", refreshToken, {
-      httpOnly: false,
-      secure: isProd,
-      sameSite: isProd ? "none" : "lax",
-      path: "/",
-      maxAge: REFRESH_TOKEN_TTL_MS / 1000,
-    });
+  r.setCookie("accessToken", accessToken, {
+    httpOnly: false,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+    path: "/",
+    maxAge,
+  });
+
+  r.setCookie("refreshToken", refreshToken, {
+    httpOnly: false,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+    path: "/",
+    maxAge: REFRESH_TOKEN_TTL_MS / 1000,
+  });
 }
+
 
 /* ===================== Helpers de bloqueio ===================== */
 const checkAccountLock = async (prisma: any, user: any) => {
