@@ -339,10 +339,22 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
 
     const { senhaHash, loginAttempts, lockedUntil, lastFailedAttempt, ...safeUser } = user as any;
     await res.send({ user: safeUser, accessToken, refreshToken });
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro no login");
-    await res.code(500).send({ error: errMsg(e) });
+    } catch (e: any) {
+    req.log.error(
+      {
+        errMessage: e?.message,
+        errName: e?.name,
+        errStack: e?.stack,
+      },
+      "💥 Erro no login (detalhado)"
+    );
+
+    await res.code(500).send({
+      error: errMsg(e),
+      debug: e?.message ?? "unknown_error",
+    });
   }
+
 };
 
 /* ===================== PRIMEIRO ACESSO (via token) ===================== */
