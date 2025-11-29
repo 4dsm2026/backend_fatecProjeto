@@ -52,11 +52,6 @@ function parseExpires(v?: string | number) {
 function setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
   const maxAge = parseExpires(process.env.JWT_ACCESS_EXPIRES);
 
-  // IMPORTANTE:
-  // Backend (Railway) != domínio do frontend (Vercel),
-  // então o navegador não aceita 'domain: .vercel.app' vindo do Railway.
-  // Esses cookies ficarão associados ao domínio do backend.
-  // O frontend já está salvando via js-cookie também.
   (res as any)
     .setCookie("accessToken", accessToken, {
       httpOnly: false,                      // se quiser HttpOnly de verdade, precisa ser cookie setado pelo próprio Next

@@ -1,14 +1,17 @@
+// src/app.ts (ou src/build-app.ts)
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import fastifyFormbody from "@fastify/formbody";
+import fastifyCookie from "@fastify/cookie";
 import path from "path";
 import fs from "fs";
 
 import prismaPlugin from "./plugins/prisma";
 import authRoutes from "./core/auth/auth.routes";
-import cookiePlugin from "./plugins/cookie";
 import authVerify from "./plugins/auth-verify";
 import authorizePlugin from "./plugins/authorize";
 import auditoriaRoutes from "./core/auditoria/auditoria.routes";
@@ -21,8 +24,6 @@ import { papeisRoutes } from "./core/papeis/papeis.routes";
 import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
 import { notificationsRoutes } from "./core/notifications/notifications.routes";
 import { anexoRoutes } from "./core/anexos/anexos.routes";
-// import { PrismaClient } from "@prisma/client"; // vamos tirar isso
-import fastifyFormbody from "@fastify/formbody";
 
 /* ====== Configuração de uploads ====== */
 const UPLOADS_DIR = path.join(__dirname, "..", "uploads");
@@ -40,7 +41,7 @@ export async function buildApp() {
   await app.register(multipart);
 
   // ---------------------------------------------------------
-  // 🔐 CORS – agora respeitando CORS_ORIGIN da env
+  // 🔐 CORS – usando CORS_ORIGIN da env
   // ---------------------------------------------------------
   const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(",")
@@ -63,10 +64,22 @@ export async function buildApp() {
   });
 
   // ---------------------------------------------------------
+  // 🍪 Cookies (ESSENCIAL pro setCookie não quebrar)
+  // ---------------------------------------------------------
+  await app.register(fastifyCookie, {
+    secret: process.env.COOKIE_SECRET || "dev-secret",
+    parseOptions: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    },
+  });
+
+  // ---------------------------------------------------------
   // ⚙️ Plugins principais
   // ---------------------------------------------------------
   await app.register(prismaPlugin);
-  await app.register(cookiePlugin);
   await app.register(authVerify);
   await app.register(authorizePlugin);
   await app.register(swaggerPlugin);
@@ -85,10 +98,10 @@ export async function buildApp() {
   // 🧩 Logs globais
   // ---------------------------------------------------------
   app.addHook("onRoute", (r) =>
-    app.log.info({ method: r.method, url: r.url }, "ROUTE")
+    app.log.info({ method: r.method, url: r.url }, "ROUTE"),
   );
   app.addHook("onRequest", async (req) =>
-    req.log.info({ method: req.method, url: req.url }, "REQ")
+    req.log.info({ method: req.method, url: req.url }, "REQ"),
   );
   app.addHook("onSend", async (req, reply, payload) => {
     req.log.info({ statusCode: reply.statusCode }, "RES");
@@ -96,7 +109,7 @@ export async function buildApp() {
   });
 
   // ---------------------------------------------------------
-  // ✅ Healthcheck simples pra Railway testar
+  // ✅ Healthcheck pra Railway
   // ---------------------------------------------------------
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -125,7 +138,7 @@ export async function buildApp() {
 
     if (!userId) {
       socket.send(
-        JSON.stringify({ error: "Usuário não autenticado (sem userId)" })
+        JSON.stringify({ error: "Usuário não autenticado (sem userId)" }),
       );
       socket.close();
       return;
@@ -155,7 +168,7 @@ export async function buildApp() {
                     autorId,
                     autor,
                   },
-                })
+                }),
               );
             }
           }
@@ -186,7 +199,7 @@ export async function buildApp() {
     }
   };
 
-  // 👉 Aqui eu uso app.prisma (do plugin), não passo PrismaClient por parâmetro
+  // notifyUsers usando app.prisma (do plugin)
   app.decorate(
     "notifyUsers",
     async (userIds: string[], data: any) => {
@@ -201,14 +214,15 @@ export async function buildApp() {
           data: {
             usuarioId: userId,
             titulo: data.titulo || "Nova notificação",
-            mensagem: data.mensagem || "Você tem uma atualização no chamado",
+            mensagem:
+              data.mensagem || "Você tem uma atualização no chamado",
             tipo: data.tipo || "SISTEMA",
             canal: data.canal || "IN_APP",
             meta: data.meta ?? {},
           },
         });
       }
-    }
+    },
   );
 
   (global as any).fastifyAppInstance = app;
