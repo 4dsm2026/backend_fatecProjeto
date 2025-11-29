@@ -3,11 +3,16 @@ import { verifyAccessToken, verifyDownloadToken } from "../utils/jwt";
 
 export default fp(async (app) => {
   app.decorate("authenticate", async (req: any, res: any) => {
+    // 1) Se alguém chamar authenticate num OPTIONS, não faz nada
+    if (req.method === "OPTIONS") {
+      return;
+    }
+
     try {
       let token: string | undefined;
 
       const authHeader = req.headers?.authorization;
-      if (authHeader && typeof authHeader === 'string') {
+      if (authHeader && typeof authHeader === "string") {
         token = authHeader.replace(/^Bearer\s+/i, "");
       }
 
@@ -19,14 +24,20 @@ export default fp(async (app) => {
         token = req.query.access_token;
       }
 
-      if (!token) throw new Error("Token ausente");
+      if (!token) {
+        throw new Error("Token ausente");
+      }
 
       try {
         const decoded = verifyAccessToken(token);
         req.user = decoded;
       } catch (accessErr) {
         const dl = verifyDownloadToken(token);
-        req.user = { sub: dl.sub, __downloadAnexoId: dl.anexoId, __download: true };
+        req.user = {
+          sub: dl.sub,
+          __downloadAnexoId: dl.anexoId,
+          __download: true,
+        };
       }
     } catch (err) {
       app.log.warn({ err }, "Falha de autenticação JWT");
