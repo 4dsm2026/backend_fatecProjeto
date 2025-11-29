@@ -1,3 +1,4 @@
+// src/core/auth/auth.controller.ts
 import crypto from "crypto";
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
@@ -32,6 +33,7 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 min
 const DEFAULT_ACCESS_EXPIRES = 15 * 60;
+const isProd = process.env.NODE_ENV === "production";
 
 function parseExpires(v?: string | number) {
   if (!v) return DEFAULT_ACCESS_EXPIRES;
@@ -43,6 +45,33 @@ function parseExpires(v?: string | number) {
   const h = /^([0-9]+)h$/.exec(s);
   if (h) return Number(h[1]) * 3600;
   return DEFAULT_ACCESS_EXPIRES;
+}
+
+/* ===================== Cookies helper ===================== */
+// Nomes batendo com o que o frontend/middleware espera: accessToken / refreshToken
+function setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
+  const maxAge = parseExpires(process.env.JWT_ACCESS_EXPIRES);
+
+  // IMPORTANTE:
+  // Backend (Railway) != domínio do frontend (Vercel),
+  // então o navegador não aceita 'domain: .vercel.app' vindo do Railway.
+  // Esses cookies ficarão associados ao domínio do backend.
+  // O frontend já está salvando via js-cookie também.
+  (res as any)
+    .setCookie("accessToken", accessToken, {
+      httpOnly: false,                      // se quiser HttpOnly de verdade, precisa ser cookie setado pelo próprio Next
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      path: "/",
+      maxAge,
+    })
+    .setCookie("refreshToken", refreshToken, {
+      httpOnly: false,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      path: "/",
+      maxAge: REFRESH_TOKEN_TTL_MS / 1000,
+    });
 }
 
 /* ===================== Helpers de bloqueio ===================== */
@@ -310,17 +339,8 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     });
 
-    try {
-      (res as any).setCookie("access_token", accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: parseExpires(process.env.JWT_ACCESS_EXPIRES),
-      });
-    } catch {
-      req.log.debug("setCookie falhou ou plugin de cookies indisponível");
-    }
+    // 🔹 cookies (além de devolver no body)
+    setAuthCookies(res, accessToken, refreshToken);
 
     const { senhaHash, loginAttempts, lockedUntil, lastFailedAttempt, ...safeUser } = user as any;
     await res.send({ user: safeUser, accessToken, refreshToken });
@@ -393,7 +413,7 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
       patch.emailPessoal = personalEmail;
     }
 
-    const { updated, tokenUsed } = await prisma.$transaction(async (tx: any) => {
+    const { updated } = await prisma.$transaction(async (tx: any) => {
       const updatedUser = await tx.usuario.update({
         where: { id: user.id },
         data: patch,
@@ -405,12 +425,12 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
         },
       });
 
-      const updatedToken = await tx.tokenResetSenha.update({
+      await tx.tokenResetSenha.update({
         where: { id: tokenRow.id },
         data: { usadoEm: new Date() },
       });
 
-      return { updated: updatedUser, tokenUsed: updatedToken };
+      return { updated: updatedUser };
     });
 
     // autentica após concluir
@@ -429,15 +449,7 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
       expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     });
 
-    try {
-      (res as any).setCookie("access_token", accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: parseExpires(process.env.JWT_ACCESS_EXPIRES),
-      });
-    } catch { }
+    setAuthCookies(res, accessToken, refreshToken);
 
     await res.send({ user: updated, accessToken, refreshToken });
   } catch (e) {
@@ -519,15 +531,7 @@ export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
       expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     });
 
-    try {
-      (res as any).setCookie("access_token", accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: parseExpires(process.env.JWT_ACCESS_EXPIRES),
-      });
-    } catch {}
+    setAuthCookies(res, accessToken, refreshToken);
 
     await res.send({
       user: userDb,
@@ -626,6 +630,8 @@ export const register = async (req: FastifyRequest, res: FastifyReply): Promise<
       return { user, accessToken, refreshToken };
     });
 
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+
     await res.send(result);
   } catch (e: any) {
     req.log.error({ e }, "💥 Erro no registro");
@@ -672,15 +678,7 @@ export const refresh = async (req: FastifyRequest, res: FastifyReply): Promise<v
     const { token: novoRefresh } = genRT();
     await rotateSession(sessao.id, novoRefresh);
 
-    try {
-      (res as any).setCookie("access_token", accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: parseExpires(process.env.JWT_ACCESS_EXPIRES),
-      });
-    } catch { }
+    setAuthCookies(res, accessToken, novoRefresh);
 
     await res.send({ accessToken, refreshToken: novoRefresh });
   } catch (e) {
