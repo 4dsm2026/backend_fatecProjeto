@@ -225,6 +225,11 @@ export async function buildApp() {
     },
   );
 
+  app.get("/__routes", async () => {
+  return { routes: app.printRoutes() };
+});
+
+
   (global as any).fastifyAppInstance = app;
   app.log.info("🌐 Fastify App registrada em globalThis.fastifyAppInstance");
 
