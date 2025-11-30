@@ -4,6 +4,9 @@ import { ticketMessagesRoutes } from "../ticket-messages/messages.routes.js";
 export async function ticketsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate as any);
 
+  app.get("", list);
+  app.get("/", list);
+
   app.post("/", create);
   app.get("/", list);
   app.get("/:id", getOne);
