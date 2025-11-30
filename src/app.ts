@@ -118,8 +118,7 @@ export async function buildApp() {
   // ---------------------------------------------------------
   app.register(authRoutes, { prefix: "/auth" });
   app.register(usersRoutes, { prefix: "/usuarios" });
-  app.register(ticketsRoutes);
-
+  app.register(ticketsRoutes, { prefix: "/tickets" }); 
 
   app.register(catalogoRoutes, { prefix: "/catalogo" });
   app.register(setoresRoutes, { prefix: "/admin" });

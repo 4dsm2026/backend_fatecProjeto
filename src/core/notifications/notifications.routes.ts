@@ -1,3 +1,4 @@
+// core/notifications/notifications.routes.ts
 import type { FastifyInstance } from "fastify";
 import {
   list,
@@ -11,10 +12,21 @@ import {
 export async function notificationsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate as any);
 
+  // GET /notifications
   app.get("/", list);
+
+  // POST /notifications/read-all
   app.post("/read-all", readAll);
+
+  // POST /notifications/test
   app.post("/test", createTest);
-  app.patch("/:id/lida", readOne);  // A rota para marcar como lida deve ser PATCH
+
+  // PATCH /notifications/:id/lida
+  app.patch("/:id/lida", readOne);
+
+  // POST /notifications/:id/archive
   app.post("/:id/archive", archive);
+
+  // POST /notifications/:id/unarchive
   app.post("/:id/unarchive", unarchive);
 }
