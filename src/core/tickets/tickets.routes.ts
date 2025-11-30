@@ -8,7 +8,6 @@ export async function ticketsRoutes(app: FastifyInstance) {
   app.get("/", list);
 
   app.post("/", create);
-  app.get("/", list);
   app.get("/:id", getOne);
   app.patch("/:id", patch);
   app.delete("/:id", removeSoft);
