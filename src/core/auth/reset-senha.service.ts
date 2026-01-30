@@ -1,11 +1,9 @@
 import crypto from "crypto";
 import type { PrismaClient } from "@prisma/client";
-import { Resend } from "resend";
 import { hashPassword } from "../../security/password";
+import { getMailDriver } from "../../config/mail";
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
 const APP_WEB_URL = process.env.APP_WEB_URL!;
-const RESEND_FROM = process.env.RESEND_FROM || "Workflow Fatec <no-reply@alessanches.com>";
 
 
 export function validarPoliticaSenha(senha: string): boolean {
@@ -56,8 +54,7 @@ export async function enviarLinkPrimeiroAcesso(
 
   const link = `${APP_WEB_URL}/primeiro-acesso?token=${token}`;
 
-  await resend.emails.send({
-    from: RESEND_FROM,
+  await getMailDriver().send({
     to: email,
     subject: "Ative seu acesso e defina sua senha",
     html: `
@@ -108,8 +105,7 @@ export async function enviarLinkEsqueciSenha(
 
   const link = `${APP_WEB_URL}/reset-senha?token=${token}`;
 
-  await resend.emails.send({
-    from: RESEND_FROM,
+  await getMailDriver().send({
     to: email,
     subject: "Redefinição de senha — Workflow Fatec",
     html: `
