@@ -25,12 +25,11 @@ jobs:
           --health-retries=5
 
     env:
-      JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
-      JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
-      JWT_ACCESS_EXPIRES: ${{ secrets.JWT_ACCESS_EXPIRES }}
-      JWT_REFRESH_EXPIRES: ${{ secrets.JWT_REFRESH_EXPIRES }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/workflow_fatec
+      JWT_ACCESS_SECRET: ci-test-secret
+      JWT_REFRESH_SECRET: ci-test-refresh-secret
+      JWT_ACCESS_EXPIRES: 15m
+      JWT_REFRESH_EXPIRES: 7d
       NODE_ENV: test
 
     steps:
@@ -40,17 +39,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          check-latest: true
 
-      # Ativa Corepack e pnpm de forma determinística (evita erro “Unable …”)
-      - name: Enable Corepack and set pnpm
+      - name: Enable pnpm
         run: |
           corepack enable
           corepack prepare pnpm@9 --activate
-          pnpm -v
-          node -v
 
-      # Cache da store do pnpm (mais previsível que cache embutido do setup-node)
       - name: Get pnpm store path
         id: pnpm-store
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
@@ -60,8 +54,7 @@ jobs:
         with:
           path: ${{ steps.pnpm-store.outputs.STORE_PATH }}
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-
+          restore-keys: pnpm-store-${{ runner.os }}-
 
       - name: Wait for MySQL
         run: |

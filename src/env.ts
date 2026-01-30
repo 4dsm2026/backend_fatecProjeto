@@ -20,9 +20,16 @@ const envSchema = z.object({
   // Cookies
   COOKIE_SECRET: z.string().min(1).optional(),
 
-  // Email
+  // Email (driver: "ses" | "resend")
+  MAIL_DRIVER: z.enum(["ses", "resend"]).default("resend"),
+  MAIL_FROM: z.string().default("Suporte <no-reply@workflowfatec.com.br>"),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM: z.string().default("Suporte <no-reply@workflowfatec.com.br>"),
+
+  // AWS SES (quando MAIL_DRIVER=ses)
+  AWS_SES_REGION: z.string().optional(),
+  AWS_SES_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SES_SECRET_ACCESS_KEY: z.string().optional(),
 
   // App
   APP_WEB_URL: z.string().url().optional(),
