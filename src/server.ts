@@ -1,12 +1,24 @@
-import { buildApp } from "./app"
+import { buildApp } from "./app";
+import { env } from "./env";
 
-buildApp().then(app => {
-  const PORT = Number(process.env.PORT) || 3333
+async function main() {
+  const app = await buildApp();
 
-  app.listen({ port: PORT, host: "0.0.0.0" })
-    .then(() => app.log.info(`🚀 Server ouvindo na porta ${PORT}`))
-    .catch(err => {
-      console.error(err)
-      process.exit(1)
-    })
-})
+  // Graceful shutdown
+  const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+  for (const signal of signals) {
+    process.on(signal, async () => {
+      app.log.info(`${signal} recebido – encerrando...`);
+      await app.close();
+      process.exit(0);
+    });
+  }
+
+  await app.listen({ port: env.PORT, host: "0.0.0.0" });
+  app.log.info(`Server ouvindo na porta ${env.PORT}`);
+}
+
+main().catch((err) => {
+  console.error("Falha ao iniciar servidor:", err);
+  process.exit(1);
+});
