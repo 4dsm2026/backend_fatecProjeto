@@ -3,8 +3,19 @@ import fp from "fastify-plugin";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { FastifyInstance } from "fastify";
+import { env } from "../env";
 
 export default fp(async function swaggerPlugin(app: FastifyInstance) {
+  const servers =
+    env.NODE_ENV === "production" && env.APP_WEB_URL
+      ? [{ url: env.APP_WEB_URL, description: "production" }]
+      : [
+          {
+            url: `http://localhost:${env.PORT}`,
+            description: "dev",
+          },
+        ];
+
   await app.register(swagger, {
     openapi: {
       info: {
@@ -12,9 +23,7 @@ export default fp(async function swaggerPlugin(app: FastifyInstance) {
         description: "Documentação da API (Usuários & Tickets)",
         version: "1.0.0",
       },
-      servers: [
-        { url: "http://localhost:3333", description: "dev" },
-      ],
+      servers,
       components: {
         securitySchemes: {
           bearerAuth: {

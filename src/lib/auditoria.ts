@@ -1,33 +1,37 @@
 import { prisma } from "./prisma";
 
-// Modifique temporariamente a função registrarAuditoria:
+function getLogger() {
+  return (global as any).fastifyAppInstance?.log;
+}
+
 export async function registrarAuditoria({
-    feitoPorId,
-    acao,
-    alvo = null,
-    meta = null,
+  feitoPorId,
+  acao,
+  alvo = null,
+  meta = null,
 }: {
-    feitoPorId?: string | null;
-    acao: string;
-    alvo?: string | null;
-    meta?: any;
+  feitoPorId?: string | null;
+  acao: string;
+  alvo?: string | null;
+  meta?: any;
 }) {
-    try {
-        console.log('🎯 Registrando auditoria:', { acao, feitoPorId, alvo, meta });
+  const logger = getLogger();
+  try {
+    logger?.info({ acao, feitoPorId, alvo, meta }, "Registrando auditoria");
 
-        const result = await prisma.auditoria.create({
-            data: {
-                feitoPorId: feitoPorId || null,
-                acao,
-                alvo,
-                meta,
-            },
-        });
+    const result = await prisma.auditoria.create({
+      data: {
+        feitoPorId: feitoPorId || null,
+        acao,
+        alvo,
+        meta,
+      },
+    });
 
-        console.log('✅ Auditoria registrada com ID:', result.id);
-        return result;
-    } catch (error) {
-        console.error("❌ Erro ao registrar auditoria:", error);
-        throw error; // Opcional: remove o throw se quiser silencioso
-    }
+    logger?.info({ id: result.id }, "Auditoria registrada");
+    return result;
+  } catch (error) {
+    logger?.error({ error }, "Erro ao registrar auditoria");
+    throw error;
+  }
 }

@@ -1,5 +1,4 @@
-// src/app.ts (ou src/build-app.ts)
-
+// src/app.ts
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -10,6 +9,7 @@ import fastifyCookie from "@fastify/cookie";
 import path from "path";
 import fs from "fs";
 
+import { env } from "./env";
 import prismaPlugin from "./plugins/prisma";
 import authRoutes from "./core/auth/auth.routes";
 import authVerify from "./plugins/auth-verify";
@@ -19,42 +19,62 @@ import { usersRoutes } from "./core/users/users.routes";
 import { ticketsRoutes } from "./core/tickets/tickets.routes";
 import { catalogoRoutes } from "./core/catalogo/catalogo.routes";
 import swaggerPlugin from "./plugins/swagger";
+import helmetPlugin from "./plugins/helmet";
+import rateLimitPlugin from "./plugins/rateLimit";
+import { registerErrorHandler } from "./middlewares/errorHandler";
 import { setoresRoutes } from "./core/setores/setores.routes";
 import { papeisRoutes } from "./core/papeis/papeis.routes";
 import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
 import { notificationsRoutes } from "./core/notifications/notifications.routes";
 import { anexoRoutes } from "./core/anexos/anexos.routes";
+import { verifyAccessToken } from "./utils/jwt";
 
 /* ====== Configuração de uploads ====== */
-const UPLOADS_DIR = path.join(__dirname, "..", "uploads");
+const UPLOADS_DIR = path.resolve(
+  env.STORAGE_DRIVER === "local" ? env.LOCAL_STORAGE_DIR : "./uploads",
+);
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  console.log(`📁 Pasta de uploads criada em: ${UPLOADS_DIR}`);
-} else {
-  console.log(`📂 Pasta de uploads já existe em: ${UPLOADS_DIR}`);
 }
 
 export async function buildApp() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      level: env.NODE_ENV === "production" ? "info" : "debug",
+      ...(env.NODE_ENV !== "production" && {
+        transport: { target: "pino-pretty", options: { colorize: true } },
+      }),
+    },
+    trustProxy: true,
+  });
 
+  // ---------------------------------------------------------
+  // 🛡️ Security headers (Helmet)
+  // ---------------------------------------------------------
+  await app.register(helmetPlugin);
+
+  // ---------------------------------------------------------
+  // ⏱️ Rate limiting
+  // ---------------------------------------------------------
+  await app.register(rateLimitPlugin);
+
+  // ---------------------------------------------------------
+  // 📝 Body parsers
+  // ---------------------------------------------------------
   await app.register(fastifyFormbody);
   await app.register(multipart);
 
   // ---------------------------------------------------------
-  // 🔐 CORS – usando CORS_ORIGIN da env
+  // 🔐 CORS
   // ---------------------------------------------------------
-  const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(",")
+  const allowedOrigins = env.CORS_ORIGIN
+    ? env.CORS_ORIGIN.split(",").map((o) => o.trim())
     : [];
 
   await app.register(cors, {
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // curl, mobile, etc.
-
-      if (allowedOrigins.includes(origin)) {
-        return cb(null, true);
-      }
-
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
       app.log.warn({ origin }, "Origin bloqueado pelo CORS");
       return cb(new Error("Not allowed by CORS"), false);
     },
@@ -64,14 +84,14 @@ export async function buildApp() {
   });
 
   // ---------------------------------------------------------
-  // 🍪 Cookies (ESSENCIAL pro setCookie não quebrar)
+  // 🍪 Cookies
   // ---------------------------------------------------------
   await app.register(fastifyCookie, {
-    secret: process.env.COOKIE_SECRET || "dev-secret",
+    secret: env.COOKIE_SECRET || "dev-secret",
     parseOptions: {
       httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+      secure: env.NODE_ENV === "production",
       path: "/",
     },
   });
@@ -86,6 +106,11 @@ export async function buildApp() {
   await app.register(websocket);
 
   // ---------------------------------------------------------
+  // 🚨 Error handler global
+  // ---------------------------------------------------------
+  registerErrorHandler(app);
+
+  // ---------------------------------------------------------
   // 📁 Servir arquivos estáticos (downloads)
   // ---------------------------------------------------------
   await app.register(fastifyStatic, {
@@ -98,28 +123,34 @@ export async function buildApp() {
   // 🧩 Logs globais
   // ---------------------------------------------------------
   app.addHook("onRoute", (r) =>
-    app.log.info({ method: r.method, url: r.url }, "ROUTE"),
+    app.log.debug({ method: r.method, url: r.url }, "ROUTE"),
   );
   app.addHook("onRequest", async (req) =>
-    req.log.info({ method: req.method, url: req.url }, "REQ"),
+    req.log.debug({ method: req.method, url: req.url }, "REQ"),
   );
   app.addHook("onSend", async (req, reply, payload) => {
-    req.log.info({ statusCode: reply.statusCode }, "RES");
+    req.log.debug({ statusCode: reply.statusCode }, "RES");
     return payload;
   });
 
   // ---------------------------------------------------------
-  // ✅ Healthcheck pra Railway
+  // ✅ Health check (com verificação de DB)
   // ---------------------------------------------------------
-  app.get("/health", async () => ({ status: "ok" }));
+  app.get("/health", async (_req, reply) => {
+    try {
+      await app.prisma.$queryRaw`SELECT 1`;
+      return { status: "ok", db: "connected" };
+    } catch {
+      return reply.status(503).send({ status: "degraded", db: "disconnected" });
+    }
+  });
 
   // ---------------------------------------------------------
   // 🛠️ Rotas
   // ---------------------------------------------------------
   app.register(authRoutes, { prefix: "/auth" });
   app.register(usersRoutes, { prefix: "/usuarios" });
-  app.register(ticketsRoutes, { prefix: "/tickets" }); 
-
+  app.register(ticketsRoutes, { prefix: "/tickets" });
   app.register(catalogoRoutes, { prefix: "/catalogo" });
   app.register(setoresRoutes, { prefix: "/admin" });
   app.register(papeisRoutes, { prefix: "/admin" });
@@ -129,24 +160,28 @@ export async function buildApp() {
   app.register(auditoriaRoutes);
 
   // ---------------------------------------------------------
-  // 🔌 WEBSOCKET
+  // 🔌 WEBSOCKET (com autenticação via JWT)
   // ---------------------------------------------------------
   const connections = new Map<string, import("ws").WebSocket>();
 
   app.get("/ws", { websocket: true }, (connection, req) => {
     const socket = (connection as any).socket ?? (connection as any);
-    const userId = (req.query as any)?.userId;
+    const token = (req.query as any)?.token;
 
-    if (!userId) {
+    let userId: string;
+    try {
+      if (!token) throw new Error("Token ausente");
+      const payload = verifyAccessToken(token);
+      userId = payload.sub;
+    } catch {
       socket.send(
-        JSON.stringify({ error: "Usuário não autenticado (sem userId)" }),
+        JSON.stringify({ error: "Não autenticado – envie ?token=<jwt>" }),
       );
       socket.close();
       return;
     }
 
-    app.log.info(`✅ Novo WS handshake recebido: userId=${userId}`);
-
+    app.log.info(`WS conectado: userId=${userId}`);
     connections.set(userId, socket);
 
     socket.on("message", async (rawMsg: string) => {
@@ -175,17 +210,17 @@ export async function buildApp() {
           }
         }
       } catch (err) {
-        app.log.error({ err }, "💥 Erro ao processar WS message");
+        app.log.error({ err }, "Erro ao processar WS message");
       }
     });
 
     socket.on("close", () => {
       connections.delete(userId);
-      app.log.warn(`🔴 WS desconectado [${userId}]`);
+      app.log.info(`WS desconectado: userId=${userId}`);
     });
 
     socket.on("error", (err: unknown) => {
-      app.log.error({ err }, `💥 WS erro (${userId})`);
+      app.log.error({ err }, `WS erro (${userId})`);
     });
   });
 
@@ -200,7 +235,6 @@ export async function buildApp() {
     }
   };
 
-  // notifyUsers usando app.prisma (do plugin)
   app.decorate(
     "notifyUsers",
     async (userIds: string[], data: any) => {
@@ -227,12 +261,10 @@ export async function buildApp() {
   );
 
   app.get("/__routes", async () => {
-  return { routes: app.printRoutes() };
-});
-
+    return { routes: app.printRoutes() };
+  });
 
   (global as any).fastifyAppInstance = app;
-  app.log.info("🌐 Fastify App registrada em globalThis.fastifyAppInstance");
 
   return app;
 }
