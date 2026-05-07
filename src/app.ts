@@ -3,7 +3,6 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
-import fastifyStatic from "@fastify/static";
 import fastifyFormbody from "@fastify/formbody";
 import fastifyCookie from "@fastify/cookie";
 import path from "path";
@@ -48,25 +47,15 @@ export async function buildApp() {
     trustProxy: true,
   });
 
-  // ---------------------------------------------------------
-  // 🛡️ Security headers (Helmet)
-  // ---------------------------------------------------------
   await app.register(helmetPlugin);
-
-  // ---------------------------------------------------------
-  // ⏱️ Rate limiting
-  // ---------------------------------------------------------
   await app.register(rateLimitPlugin);
-
-  // ---------------------------------------------------------
-  // 📝 Body parsers
-  // ---------------------------------------------------------
   await app.register(fastifyFormbody);
-  await app.register(multipart);
 
-  // ---------------------------------------------------------
-  // 🔐 CORS
-  // ---------------------------------------------------------
+  // Limite de 10MB por arquivo (proteção contra DoS por upload)
+  await app.register(multipart, {
+    limits: { fileSize: 10 * 1024 * 1024 },
+  });
+
   const allowedOrigins = env.CORS_ORIGIN
     ? env.CORS_ORIGIN.split(",").map((o) => o.trim())
     : [];
@@ -83,9 +72,6 @@ export async function buildApp() {
     credentials: true,
   });
 
-  // ---------------------------------------------------------
-  // 🍪 Cookies
-  // ---------------------------------------------------------
   await app.register(fastifyCookie, {
     secret: env.COOKIE_SECRET || "dev-secret",
     parseOptions: {
@@ -96,46 +82,22 @@ export async function buildApp() {
     },
   });
 
-  // ---------------------------------------------------------
-  // ⚙️ Plugins principais
-  // ---------------------------------------------------------
   await app.register(prismaPlugin);
   await app.register(authVerify);
   await app.register(authorizePlugin);
   await app.register(swaggerPlugin);
   await app.register(websocket);
 
-  // ---------------------------------------------------------
-  // 🚨 Error handler global
-  // ---------------------------------------------------------
   registerErrorHandler(app);
 
-  // ---------------------------------------------------------
-  // 📁 Servir arquivos estáticos (downloads)
-  // ---------------------------------------------------------
-  await app.register(fastifyStatic, {
-    root: UPLOADS_DIR,
-    prefix: "/downloads/",
-    decorateReply: false,
-  });
+  // NOTA: /downloads/ foi removido intencionalmente.
+  // Arquivos são servidos exclusivamente via GET /anexos/:id (rota autenticada).
 
-  // ---------------------------------------------------------
-  // 🧩 Logs globais
-  // ---------------------------------------------------------
-  app.addHook("onRoute", (r) =>
-    app.log.debug({ method: r.method, url: r.url }, "ROUTE"),
-  );
   app.addHook("onRequest", async (req) =>
     req.log.debug({ method: req.method, url: req.url }, "REQ"),
   );
-  app.addHook("onSend", async (req, reply, payload) => {
-    req.log.debug({ statusCode: reply.statusCode }, "RES");
-    return payload;
-  });
 
-  // ---------------------------------------------------------
-  // ✅ Health check (com verificação de DB)
-  // ---------------------------------------------------------
+  // ✅ Health check público
   app.get("/health", async (_req, reply) => {
     try {
       await app.prisma.$queryRaw`SELECT 1`;
@@ -145,9 +107,6 @@ export async function buildApp() {
     }
   });
 
-  // ---------------------------------------------------------
-  // 🛠️ Rotas
-  // ---------------------------------------------------------
   app.register(authRoutes, { prefix: "/auth" });
   app.register(usersRoutes, { prefix: "/usuarios" });
   app.register(ticketsRoutes, { prefix: "/tickets" });
@@ -160,7 +119,9 @@ export async function buildApp() {
   app.register(auditoriaRoutes);
 
   // ---------------------------------------------------------
-  // 🔌 WEBSOCKET (com autenticação via JWT)
+  // 🔌 WebSocket — autenticado via Bearer no header
+  // AVISO: passar JWT via ?token= na query expõe o token em logs.
+  // Prefira passar via primeiro frame após conexão (protocolo de handshake).
   // ---------------------------------------------------------
   const connections = new Map<string, import("ws").WebSocket>();
 
@@ -174,9 +135,7 @@ export async function buildApp() {
       const payload = verifyAccessToken(token);
       userId = payload.sub;
     } catch {
-      socket.send(
-        JSON.stringify({ error: "Não autenticado – envie ?token=<jwt>" }),
-      );
+      socket.send(JSON.stringify({ error: "Não autenticado" }));
       socket.close();
       return;
     }
@@ -187,25 +146,21 @@ export async function buildApp() {
     socket.on("message", async (rawMsg: string) => {
       try {
         const data = JSON.parse(rawMsg);
-
         if (data.type === "nova_mensagem") {
           const { chamadoId, mensagem, autorId, autor } = data;
-
           for (const [, client] of connections) {
             if (client.readyState === client.OPEN) {
-              client.send(
-                JSON.stringify({
-                  type: "nova_mensagem",
-                  chamadoId,
-                  mensagem: {
-                    id: Date.now().toString(),
-                    conteudo: mensagem,
-                    criadoEm: new Date().toISOString(),
-                    autorId,
-                    autor,
-                  },
-                }),
-              );
+              client.send(JSON.stringify({
+                type: "nova_mensagem",
+                chamadoId,
+                mensagem: {
+                  id: Date.now().toString(),
+                  conteudo: mensagem,
+                  criadoEm: new Date().toISOString(),
+                  autorId,
+                  autor,
+                },
+              }));
             }
           }
         }
@@ -224,46 +179,32 @@ export async function buildApp() {
     });
   });
 
-  // ---------------------------------------------------------
-  // 🌍 Broadcast global (chat/notificações)
-  // ---------------------------------------------------------
   (globalThis as any).broadcastWS = (data: any) => {
     for (const [, socket] of connections) {
-      if (socket.readyState === socket.OPEN) {
-        socket.send(JSON.stringify(data));
-      }
+      if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
     }
   };
 
-  app.decorate(
-    "notifyUsers",
-    async (userIds: string[], data: any) => {
-      for (const userId of userIds) {
-        const socket = connections.get(userId);
+  app.decorate("notifyUsers", async (userIds: string[], data: any) => {
+    for (const userId of userIds) {
+      const socket = connections.get(userId);
+      if (socket?.readyState === socket?.OPEN) socket.send(JSON.stringify(data));
 
-        if (socket && socket.readyState === socket.OPEN) {
-          socket.send(JSON.stringify(data));
-        }
-
-        await app.prisma.notificacao.create({
-          data: {
-            usuarioId: userId,
-            titulo: data.titulo || "Nova notificação",
-            mensagem:
-              data.mensagem || "Você tem uma atualização no chamado",
-            tipo: data.tipo || "SISTEMA",
-            canal: data.canal || "IN_APP",
-            meta: data.meta ?? {},
-          },
-        });
-      }
-    },
-  );
-
-  app.get("/__routes", async () => {
-    return { routes: app.printRoutes() };
+      await app.prisma.notificacao.create({
+        data: {
+          usuarioId: userId,
+          titulo: data.titulo ?? "Nova notificação",
+          mensagem: data.mensagem ?? "Você tem uma atualização no chamado",
+          tipo: data.tipo ?? "SISTEMA",
+          canal: data.canal ?? "IN_APP",
+          meta: data.meta ?? {},
+        },
+      });
+    }
   });
 
+  // Referência global usada por messages.service — necessária por limitação de arquitetura
+  // TODO: refatorar para injeção de dependência via plugin Fastify
   (global as any).fastifyAppInstance = app;
 
   return app;

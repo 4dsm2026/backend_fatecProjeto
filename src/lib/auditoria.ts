@@ -4,6 +4,10 @@ function getLogger() {
   return (global as any).fastifyAppInstance?.log;
 }
 
+/**
+ * Registra uma entrada de auditoria.
+ * Nunca lança exceção — falhas de auditoria não devem derrubar o fluxo principal.
+ */
 export async function registrarAuditoria({
   feitoPorId,
   acao,
@@ -14,24 +18,13 @@ export async function registrarAuditoria({
   acao: string;
   alvo?: string | null;
   meta?: any;
-}) {
+}): Promise<void> {
   const logger = getLogger();
   try {
-    logger?.info({ acao, feitoPorId, alvo, meta }, "Registrando auditoria");
-
-    const result = await prisma.auditoria.create({
-      data: {
-        feitoPorId: feitoPorId || null,
-        acao,
-        alvo,
-        meta,
-      },
+    await prisma.auditoria.create({
+      data: { feitoPorId: feitoPorId ?? null, acao, alvo, meta },
     });
-
-    logger?.info({ id: result.id }, "Auditoria registrada");
-    return result;
   } catch (error) {
-    logger?.error({ error }, "Erro ao registrar auditoria");
-    throw error;
+    logger?.error({ error, acao, alvo }, "Erro ao registrar auditoria (não-fatal)");
   }
 }

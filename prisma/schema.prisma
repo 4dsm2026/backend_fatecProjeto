@@ -170,9 +170,9 @@ model Usuario {
 }
 
 model Sessao {
-  id          String   @id @default(cuid()) // pode servir como JTI
+  id          String   @id @default(cuid())
   usuarioId   String
-  refreshHash String   @db.VarChar(255)
+  refreshHash String   @unique @db.VarChar(255)
   userAgent   String?
   ip          String?  @db.VarChar(64)
   expiraEm    DateTime
@@ -186,7 +186,6 @@ model Sessao {
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
-  @@unique([refreshHash])
   @@index([usuarioId])
   @@index([expiraEm])
   @@index([revogadaEm])
@@ -196,7 +195,7 @@ model Sessao {
 model TokenResetSenha {
   id        String    @id @default(cuid())
   usuarioId String
-  tokenHash String
+  tokenHash String    @unique
   expiraEm  DateTime
   usadoEm   DateTime?
   criadoEm  DateTime  @default(now())
@@ -392,6 +391,7 @@ model Auditoria {
 
   @@index([feitoEm])
   @@index([feitoPorId])
+  @@index([acao])
   @@map("auditoria")
 }
 

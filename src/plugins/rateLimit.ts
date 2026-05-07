@@ -5,13 +5,12 @@ import { FastifyInstance } from "fastify";
 
 export default fp(async function rateLimitPlugin(app: FastifyInstance) {
   await app.register(rateLimit, {
+    global: true,
     max: 100,
     timeWindow: "1 minute",
     allowList: ["127.0.0.1", "::1"],
-    keyGenerator: (req) => {
-      return req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim()
-        || req.ip;
-    },
+    keyGenerator: (req) =>
+      req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ?? req.ip,
     errorResponseBuilder: (_req, context) => ({
       statusCode: 429,
       error: "Too Many Requests",
@@ -19,3 +18,13 @@ export default fp(async function rateLimitPlugin(app: FastifyInstance) {
     }),
   });
 });
+
+/** Limite estrito para rotas de autenticação (login, reset, primeiro-acesso). */
+export const authRateLimit = {
+  config: {
+    rateLimit: {
+      max: 10,
+      timeWindow: "1 minute",
+    },
+  },
+};
