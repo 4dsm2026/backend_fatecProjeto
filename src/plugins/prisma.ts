@@ -1,6 +1,6 @@
 // src/plugins/prisma.ts
 import fp from "fastify-plugin";
-import { prisma } from "../db/prisma";
+import { prisma } from "../lib/prisma";
 import { z } from "zod";
 import { PapelEnum } from "../validators/users";
 import type { AccessTokenPayload } from "../utils/jwt";
