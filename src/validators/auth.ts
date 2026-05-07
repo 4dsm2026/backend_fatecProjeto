@@ -8,12 +8,12 @@ export const zRA = zStringTrim
 
 export const LoginSchema = z
   .object({
-    email: zEmail.optional(),   
-    ra: zRA.optional(),       
+    email: zEmail.optional(),
+    ra: zRA.optional(),
     password: zStringTrim.min(8, "Senha deve ter ao menos 8 caracteres"),
   })
   .refine((data) => !!data.email !== !!data.ra, {
-    path: ["email"], 
+    path: ["email"],
     message: "Informe e-mail institucional (funcionário) OU RA (aluno)",
   });
 
@@ -22,17 +22,16 @@ export const RefreshSchema = z.object({
 });
 
 export const RegisterSchema = z.object({
-  email: zEmail, 
+  email: zEmail,
   password: zStringTrim.min(8),
   role: zPapelOptional,
   name: zStringTrim.min(2, "Nome muito curto"),
-  educationalEmail: zEmail.optional(), 
-  ra: zRA.optional(),                 
+  educationalEmail: zEmail.optional(),
+  ra: zRA.optional(),
 });
 
-
 export const FirstAccessBodySchema = z.object({
-  userId: z.string().min(1, "ID inválido"),
+  token: zStringTrim.min(10, "Token inválido"),
   newPassword: zStringTrim
     .min(8, "Mínimo de 8 caracteres")
     .regex(/[A-Z]/, "Inclua ao menos uma letra maiúscula")
