@@ -48,13 +48,10 @@ function parseExpires(v?: string | number) {
 }
 
 /* ===================== Cookies helper ===================== */
-// Nomes batendo com o que o frontend/middleware espera: accessToken / refreshToken
 function setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
   const r = res as any;
 
-  // Se o plugin de cookies não estiver disponível, não quebra o login
   if (typeof r.setCookie !== "function") {
-    // opcional: logar algo
     try {
       (res as any).request?.log?.warn?.(
         "setCookie não disponível no FastifyReply — pulando setAuthCookies"
@@ -165,7 +162,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
   const userAgent = String(req.headers["user-agent"] || "");
   const identificador = email ?? ra ?? "";
 
-  // 🔵 AUDITORIA: tentativa de login (antes de tudo)
   await registrarAuditoria({
     feitoPorId: null,
     acao: "login_tentativa",
@@ -193,7 +189,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       : await prisma.usuario.findUnique({ where: { ra: ra! }, select: baseSelect });
 
     if (!user) {
-      // 🔵 AUDITORIA: usuário inexistente
       await registrarAuditoria({
         feitoPorId: null,
         acao: "login_falha_usuario_inexistente",
@@ -210,13 +205,11 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       return;
     }
 
-    // Bloqueio temporário
     const isLocked = await checkAccountLock(prisma, user);
     if (isLocked) {
       const remainingTime = Math.ceil((user.lockedUntil!.getTime() - Date.now()) / 1000);
       const remainingMinutes = Math.max(1, Math.ceil(remainingTime / 60));
 
-      // 🔵 AUDITORIA: conta bloqueada
       await registrarAuditoria({
         feitoPorId: user.id,
         acao: "login_falha_conta_bloqueada",
@@ -245,7 +238,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     }
 
     if (!user.ativo) {
-      // 🔵 AUDITORIA: usuário inativo
       await registrarAuditoria({
         feitoPorId: user.id,
         acao: "login_falha_usuario_inativo",
@@ -263,7 +255,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     }
 
     if (!user.senhaHash) {
-      // 🔵 AUDITORIA: hash ausente
       await registrarAuditoria({
         feitoPorId: user.id,
         acao: "login_falha_hash_ausente",
@@ -285,7 +276,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       const updatedUser = await recordFailedAttempt(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
       const attemptsLeft = MAX_LOGIN_ATTEMPTS - updatedUser.loginAttempts;
 
-      // 🔵 AUDITORIA: senha incorreta
       await registrarAuditoria({
         feitoPorId: user.id,
         acao: "login_falha_senha_incorreta",
@@ -303,7 +293,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
 
     // Primeiro acesso obrigatório
     if (user.precisaTrocarSenha) {
-      // 🔵 AUDITORIA: primeiro acesso (senha padrão)
       await registrarAuditoria({
         feitoPorId: user.id,
         acao: "login_primeiro_acesso",
@@ -313,10 +302,22 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
 
       await resetLoginAttempts(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
 
+      // Gera token de primeiro acesso para o frontend redirecionar corretamente
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      await prisma.tokenResetSenha.create({
+        data: {
+          usuarioId: user.id,
+          tokenHash,
+          expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24), // 24h
+        },
+      });
+
       req.log.info({ userId: user.id }, "🔁 precisaTrocarSenha ativo — exigir troca de senha");
       await res.code(428).send({
         code: "PASSWORD_CHANGE_REQUIRED",
         message: "É necessário trocar a senha no primeiro acesso.",
+        token: rawToken,
         user: { id: user.id, nome: user.nome, ra: user.ra, papel: user.papel },
       });
       return;
@@ -325,7 +326,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     // Login OK
     await resetLoginAttempts(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
 
-    // 🔵 AUDITORIA: login bem-sucedido
     await registrarAuditoria({
       feitoPorId: user.id,
       acao: "login_sucesso",
@@ -348,7 +348,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     });
 
-    // 🔹 cookies (além de devolver no body)
     setAuthCookies(res, accessToken, refreshToken);
 
     const { senhaHash, loginAttempts, lockedUntil, lastFailedAttempt, ...safeUser } = user as any;
@@ -414,7 +413,6 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
       return void (await res.code(403).send({ error: "Usuário inativo" }));
     }
 
-    // Validar e-mail pessoal (se informado)
     if (personalEmail) {
       const dupe = await prisma.usuario.findUnique({
         where: { emailPessoal: personalEmail },
@@ -454,7 +452,6 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
       return { updated: updatedUser };
     });
 
-    // autentica após concluir
     const accessToken = generateAccessToken({
       sub: updated.id,
       email: updated.emailPessoal ?? "",
@@ -515,13 +512,12 @@ export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
       return void (await res.code(400).send({ error: "Senha não atende aos critérios mínimos." }));
     }
 
-    const basicUser = await consumirTokenSenha(prisma, token, newPassword); // id, nome, ra, papel
+    const basicUser = await consumirTokenSenha(prisma, token, newPassword);
 
     if (!basicUser) {
       return void (await res.code(400).send({ error: "Token inválido ou expirado." }));
     }
 
-    // Buscar e-mail para o JWT
     const userDb = await prisma.usuario.findUnique({
       where: { id: basicUser.id },
       select: {
