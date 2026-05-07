@@ -14,40 +14,16 @@ import {
   buildRouteValidator,
   zEmail,
   zStringTrim,
-  zPapelOptional,
 } from "../../utils/zod-helpers";
 import { z } from "zod";
 import {
+  LoginSchema,
+  RefreshSchema,
+  RegisterSchema,
   FirstAccessSchema,
   EsqueciSenhaSchema,
   ResetSenhaSchema,
 } from "../../validators/auth";
-
-const zRA = zStringTrim
-  .min(3)
-  .max(32)
-  .regex(/^[A-Za-z0-9._-]+$/, "RA inválido");
-
-export const LoginSchema = z
-  .object({
-    email: zEmail.optional(),
-    ra: zRA.optional(),
-    password: zStringTrim.min(8),
-  })
-  .refine((d) => (!!d.email) !== (!!d.ra), {
-    message: "Informe email (funcionário) OU RA (aluno).",
-  });
-
-const RefreshSchema = z.object({ refreshToken: z.string().min(20) });
-
-const RegisterSchema = z.object({
-  email: zEmail,
-  password: zStringTrim.min(8),
-  role: zPapelOptional,
-  name: zStringTrim.min(2),
-  educationalEmail: zEmail.optional(),
-  ra: zStringTrim.max(32).optional(),
-});
 
 const GetUserQuerySchema = z.object({
   ra: zStringTrim.optional(),
@@ -78,68 +54,17 @@ const preQuery =
   };
 
 export default async function authRoutes(app: FastifyInstance) {
-  // POST /auth/login
-  app.post(
-    "/login",
-    { preHandler: [preBody(LoginSchema)] },
-    login
-  );
-
-  // POST /auth/refresh
-  app.post(
-    "/refresh",
-    { preHandler: [preBody(RefreshSchema)] },
-    refresh
-  );
-
-  // POST /auth/logout
-  app.post(
-    "/logout",
-    { preHandler: [preBody(RefreshSchema)] },
-    logout
-  );
-
-  // POST /auth/register
-  app.post(
-    "/register",
-    { preHandler: [preBody(RegisterSchema)] },
-    register
-  );
-
-  // POST /auth/primeiro-acesso
-  app.post(
-    "/primeiro-acesso",
-    { preHandler: [preBody(FirstAccessSchema)] },
-    firstAccess
-  );
-
-  // POST /auth/esqueci-senha
-  app.post(
-    "/esqueci-senha",
-    { preHandler: [preBody(EsqueciSenhaSchema)] },
-    forgotPassword
-  );
-
-  // POST /auth/reset-senha
-  app.post(
-    "/reset-senha",
-    { preHandler: [preBody(ResetSenhaSchema)] },
-    resetPassword
-  );
-
-  // GET /auth/me  (precisa estar autenticado)
-  app.get(
-    "/me",
-    { preHandler: [app.authenticate as any] },
-    me
-  );
-
-  // GET /auth/usuarios  (auth + validação de query)
+  app.post("/login", { preHandler: [preBody(LoginSchema)] }, login);
+  app.post("/refresh", { preHandler: [preBody(RefreshSchema)] }, refresh);
+  app.post("/logout", { preHandler: [preBody(RefreshSchema)] }, logout);
+  app.post("/register", { preHandler: [preBody(RegisterSchema)] }, register);
+  app.post("/primeiro-acesso", { preHandler: [preBody(FirstAccessSchema)] }, firstAccess);
+  app.post("/esqueci-senha", { preHandler: [preBody(EsqueciSenhaSchema)] }, forgotPassword);
+  app.post("/reset-senha", { preHandler: [preBody(ResetSenhaSchema)] }, resetPassword);
+  app.get("/me", { preHandler: [app.authenticate as any] }, me);
   app.get(
     "/usuarios",
-    {
-      preHandler: [app.authenticate as any, preQuery(GetUserQuerySchema)],
-    },
-    getUser
+    { preHandler: [app.authenticate as any, preQuery(GetUserQuerySchema)] },
+    getUser,
   );
 }

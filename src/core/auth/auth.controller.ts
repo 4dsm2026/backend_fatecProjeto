@@ -302,7 +302,6 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
 
       await resetLoginAttempts(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
 
-      // Gera token de primeiro acesso para o frontend redirecionar corretamente
       const rawToken = crypto.randomBytes(32).toString("hex");
       const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
       await prisma.tokenResetSenha.create({
@@ -785,7 +784,7 @@ export const getUser = async (req: FastifyRequest, res: FastifyReply): Promise<v
   if (ra) where.ra = ra;
   if (email) where.emailPessoal = email;
   if (educationalEmail) where.emailEducacional = educationalEmail;
-  if (name) where.nome = { contains: name, mode: "insensitive" as const };
+  if (name) where.nome = { contains: name };
 
   try {
     const users = await prisma.usuario.findMany({
