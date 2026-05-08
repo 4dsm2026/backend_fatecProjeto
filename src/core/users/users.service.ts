@@ -24,6 +24,25 @@ const baseSelect = {
   criadoEm: true,
   atualizadoEm: true,
   deletadoEm: true,
+  // Dados acadêmicos
+  unidadeFatec: true,
+  curso: true,
+  eixoTecnologico: true,
+  turno: true,
+  turma: true,
+  semestreAtual: true,
+  matrizCurricular: true,
+  situacaoAcademica: true,
+  anoSemestreIngresso: true,
+  coordenadorCurso: true,
+  // Contato e acessibilidade
+  telefoneCelular: true,
+  whatsapp: true,
+  canalPreferencialContato: true,
+  melhorPeriodoContato: true,
+  necessitaAtendimentoAcessivel: true,
+  tipoAcessibilidade: true,
+  observacoesAtendimento: true,
 } satisfies Prisma.UsuarioSelect;
 
 async function logAuditoria(
@@ -140,20 +159,42 @@ export async function updateUser(
   data: UserUpdateDTO,
   opts?: ServiceOpts,
 ): Promise<UserResponse> {
+  const d = data as any;
+
   const patch: Prisma.UsuarioUncheckedUpdateInput = {
-    nome: data.nome ?? undefined,
-    emailPessoal: data.emailPessoal ?? undefined,
+    nome:            data.nome            ?? undefined,
+    emailPessoal:    data.emailPessoal    ?? undefined,
     emailEducacional: data.emailEducacional ?? undefined,
-    ra: data.ra ?? undefined,
-    cursoNome: (data as any).cursoNome ?? undefined,
-    cursoSigla: (data as any).cursoSigla ?? undefined,
-    papel: (data.papel as any) ?? undefined,
-    ativo: typeof data.ativo === 'boolean' ? data.ativo : undefined,
-    anonimizado: typeof data.anonimizado === 'boolean' ? data.anonimizado : undefined,
+    ra:              data.ra              ?? undefined,
+    cursoNome:       d.cursoNome          ?? undefined,
+    cursoSigla:      d.cursoSigla         ?? undefined,
+    papel:           (data.papel as any)  ?? undefined,
+    ativo:           typeof data.ativo === 'boolean'      ? data.ativo      : undefined,
+    anonimizado:     typeof data.anonimizado === 'boolean' ? data.anonimizado : undefined,
+    // Dados acadêmicos
+    unidadeFatec:        d.unidadeFatec        ?? undefined,
+    curso:               d.curso               ?? undefined,
+    eixoTecnologico:     d.eixoTecnologico     ?? undefined,
+    turno:               d.turno               ?? undefined,
+    turma:               d.turma               ?? undefined,
+    semestreAtual:       d.semestreAtual       ?? undefined,
+    matrizCurricular:    d.matrizCurricular    ?? undefined,
+    situacaoAcademica:   d.situacaoAcademica   ?? undefined,
+    anoSemestreIngresso: d.anoSemestreIngresso ?? undefined,
+    coordenadorCurso:    d.coordenadorCurso    ?? undefined,
+    // Contato e acessibilidade
+    telefoneCelular:               d.telefoneCelular               ?? undefined,
+    whatsapp:                      d.whatsapp                      ?? undefined,
+    canalPreferencialContato:      d.canalPreferencialContato      ?? undefined,
+    melhorPeriodoContato:          d.melhorPeriodoContato          ?? undefined,
+    necessitaAtendimentoAcessivel: typeof d.necessitaAtendimentoAcessivel === 'boolean'
+      ? d.necessitaAtendimentoAcessivel : undefined,
+    tipoAcessibilidade:      d.tipoAcessibilidade      ?? undefined,
+    observacoesAtendimento:  d.observacoesAtendimento  ?? undefined,
   };
 
   if ('organizacaoId' in data) patch.organizacaoId = data.organizacaoId as any;
-  if ((data as any).senha) patch.senhaHash = await hashPassword((data as any).senha);
+  if (d.senha) patch.senhaHash = await hashPassword(d.senha);
 
   const before = await prisma.usuario.findUnique({ where: { id }, select: baseSelect });
   const updated = await prisma.usuario.update({ where: { id }, data: patch, select: baseSelect });
@@ -192,9 +233,13 @@ export async function softDeleteUser(
       anonimizado: true,
       nome: 'Usuário Anônimo',
       // RA é PII — anonimizado para compliance (LGPD)
-      ra: before.ra ? `anon_${id}` : null,
+      ra: (before as any).ra ? `anon_${id}` : null,
       emailPessoal: `anonp_${id}@${anonDomain}`,
-      emailEducacional: before.emailEducacional ? `anone_${id}@${anonEduDomain}` : null,
+      emailEducacional: (before as any).emailEducacional ? `anone_${id}@${anonEduDomain}` : null,
+      // Limpa dados de contato/acessibilidade (PII)
+      telefoneCelular: null,
+      whatsapp: null,
+      observacoesAtendimento: null,
     },
     select: baseSelect,
   });

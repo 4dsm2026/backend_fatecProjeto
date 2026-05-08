@@ -149,6 +149,27 @@ model Usuario {
   lastFailedAttempt DateTime?
   passwordUpdatedAt DateTime?
 
+  // Dados acadêmicos (sincronizados do sistema acadêmico — somente leitura pelo aluno)
+  unidadeFatec            String?
+  curso                   String?
+  eixoTecnologico         String?
+  turno                   String?
+  turma                   String?
+  semestreAtual           String?
+  matrizCurricular        String?
+  situacaoAcademica       String?
+  anoSemestreIngresso     String?
+  coordenadorCurso        String?
+
+  // Contato e atendimento (editável pelo aluno)
+  telefoneCelular               String?  @db.VarChar(20)
+  whatsapp                      String?  @db.VarChar(20)
+  canalPreferencialContato      String?
+  melhorPeriodoContato          String?
+  necessitaAtendimentoAcessivel Boolean  @default(false)
+  tipoAcessibilidade            String?
+  observacoesAtendimento        String?  @db.Text
+
   organizacao Organizacao? @relation(fields: [organizacaoId], references: [id])
 
   chamadosCriados    Chamado[]                @relation("ChamadosCriados")
@@ -275,6 +296,22 @@ model Chamado {
   encerradoEm  DateTime?
   deletadoEm   DateTime?
 
+  // Campos do wizard do catálogo acadêmico
+  catalogoServicoId     String?
+  catalogoCategoriaId   String?
+  catalogoCategoriaNome String?
+  setorProvavel         String?
+  dadosAcademicos       Json?
+  camposEspecificos     Json?
+  origem                String?
+
+  // Controle e SLA
+  precisaAcaoDoAluno Boolean   @default(false)
+  observacaoInterna  String?   @db.Text
+  slaHoras           Int?
+  slaDias            Int?
+  vencimentoSla      DateTime?
+
   organizacao Organizacao? @relation(fields: [organizacaoId], references: [id])
   servico     Servico?     @relation(fields: [servicoId], references: [id])
   setor       Setor?       @relation(fields: [setorId], references: [id])
@@ -295,6 +332,8 @@ model Chamado {
   @@index([setorId])
   @@index([servicoId])
   @@index([organizacaoId])
+  @@index([catalogoServicoId])
+  @@index([origem])
   @@map("chamados")
 }
 
@@ -420,7 +459,7 @@ model LoginTentativa {
   sucesso   Boolean
   ip        String?  @db.VarChar(64)
   userAgent String?
-  motivo    String?
+  motivo    String?  
   criadoEm  DateTime @default(now())
 
   usuario Usuario? @relation("LoginTentativasDoUsuario", fields: [usuarioId], references: [id], onDelete: SetNull)
