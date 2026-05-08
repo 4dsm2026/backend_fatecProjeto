@@ -108,6 +108,17 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
   const resolvedCatalogoCatId = catId && isCatalogSlug(catId) ? catId : (data.catalogoCategoriaId ?? null);
   const resolvedCatNome = data.catalogoCategoriaNome ?? data.categoriaNome ?? null;
 
+  // Auto-routing: tenta encontrar setor pelo setorProvavel quando não há setor FK direto
+  let dbSetorId: string | null = data.setorId && !isCatalogSlug(data.setorId) ? data.setorId : null;
+  if (!dbSetorId && data.setorProvavel) {
+    const keyword = data.setorProvavel.split('/')[0].trim();
+    const matched = await prisma.setor.findFirst({
+      where: { nome: { contains: keyword } },
+      select: { id: true },
+    });
+    if (matched) dbSetorId = matched.id;
+  }
+
   const ticket = await prisma.chamado.create({
     data: {
       titulo:        data.titulo,
@@ -116,7 +127,7 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
       nivel:         data.nivel ?? 'N1',
       status:        'ABERTO',
       servicoId:     dbServicoid,
-      setorId:       data.setorId       ?? null,
+      setorId:       dbSetorId,
       clienteId:     data.clienteId     ?? null,
       contratoId:    data.contratoId    ?? null,
       responsavelId: data.responsavelId ?? null,
