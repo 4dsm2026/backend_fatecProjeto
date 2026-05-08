@@ -2,33 +2,19 @@ import { z } from 'zod'
 
 export const PapelEnum = z.enum(['USUARIO','BACKOFFICE','TECNICO','ADMINISTRADOR'])
 
-/**
- * CREATE
- * - Aluno (com RA): senha opcional, emailEducacional OU emailPessoal obrigatório
- * - Staff (sem RA): emailPessoal + senha obrigatórios
- */
 export const UserCreateSchema = z.object({
   body: z.object({
     organizacaoId: z.string().cuid().optional().nullable(),
-
-    // pra aluno você aceita sem nome no front, então deixei opcional
     nome: z.string().min(2).max(160).optional(),
-
     emailPessoal: z.string().email().optional(),
     emailEducacional: z.string().email().optional().nullable(),
-
     ra: z.string().max(32).optional().nullable(),
-
     papel: PapelEnum.default('USUARIO'),
     ativo: z.boolean().optional().default(true),
-
-    // 👇 antes era obrigatório, agora é opcional
     senha: z.string().min(8).optional(),
   }).superRefine((data, ctx) => {
     const isAluno = !!data.ra;
-
     if (isAluno) {
-      // ALUNO: precisa de algum email (educacional OU pessoal)
       if (!data.emailEducacional && !data.emailPessoal) {
         ctx.addIssue({
           code: 'custom',
@@ -36,11 +22,8 @@ export const UserCreateSchema = z.object({
           message: 'Aluno precisa de e-mail educacional ou pessoal.',
         });
       }
-      // senha pode ser omitida – o service usa a senha padrão
       return;
     }
-
-    // STAFF: precisa de email pessoal + senha
     if (!data.emailPessoal) {
       ctx.addIssue({
         code: 'custom',
@@ -48,7 +31,6 @@ export const UserCreateSchema = z.object({
         message: 'Email pessoal é obrigatório para funcionários.',
       });
     }
-
     if (!data.senha) {
       ctx.addIssue({
         code: 'custom',
@@ -59,9 +41,6 @@ export const UserCreateSchema = z.object({
   }),
 })
 
-/**
- * UPDATE – segue quase igual
- */
 export const UserUpdateSchema = z.object({
   body: z.object({
     organizacaoId: z.string().cuid().optional().nullable(),
@@ -73,6 +52,27 @@ export const UserUpdateSchema = z.object({
     ativo: z.boolean().optional(),
     anonimizado: z.boolean().optional(),
     senha: z.string().min(8).optional(),
+
+    // Dados acadêmicos (gerenciados pelo admin)
+    unidadeFatec:        z.string().max(128).optional().nullable(),
+    curso:               z.string().max(128).optional().nullable(),
+    eixoTecnologico:     z.string().max(128).optional().nullable(),
+    turno:               z.string().max(64).optional().nullable(),
+    turma:               z.string().max(64).optional().nullable(),
+    semestreAtual:       z.string().max(32).optional().nullable(),
+    matrizCurricular:    z.string().max(128).optional().nullable(),
+    situacaoAcademica:   z.string().max(128).optional().nullable(),
+    anoSemestreIngresso: z.string().max(32).optional().nullable(),
+    coordenadorCurso:    z.string().max(128).optional().nullable(),
+
+    // Contato e acessibilidade (editável pelo aluno)
+    telefoneCelular:               z.string().max(20).optional().nullable(),
+    whatsapp:                      z.string().max(20).optional().nullable(),
+    canalPreferencialContato:      z.string().max(64).optional().nullable(),
+    melhorPeriodoContato:          z.string().max(64).optional().nullable(),
+    necessitaAtendimentoAcessivel: z.boolean().optional(),
+    tipoAcessibilidade:            z.string().max(256).optional().nullable(),
+    observacoesAtendimento:        z.string().max(2000).optional().nullable(),
   })
 })
 
