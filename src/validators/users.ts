@@ -4,7 +4,7 @@ export const PapelEnum = z.enum(['USUARIO','BACKOFFICE','TECNICO','ADMINISTRADOR
 
 export const UserCreateSchema = z.object({
   body: z.object({
-    organizacaoId: z.string().cuid().optional().nullable(),
+    organizacaoId: z.string().min(1).optional().nullable(),
     nome: z.string().min(2).max(160).optional(),
     emailPessoal: z.string().email().optional(),
     emailEducacional: z.string().email().optional().nullable(),
@@ -43,7 +43,7 @@ export const UserCreateSchema = z.object({
 
 export const UserUpdateSchema = z.object({
   body: z.object({
-    organizacaoId: z.string().cuid().optional().nullable(),
+    organizacaoId: z.string().min(1).optional().nullable(),
     nome: z.string().min(2).max(160).optional(),
     emailPessoal: z.string().email().optional(),
     emailEducacional: z.string().email().optional().nullable(),
@@ -82,11 +82,11 @@ export const UserListSchema = z.object({
     perPage: z.coerce.number().int().min(1).max(100).default(20),
     q: z.string().trim().min(1).optional(),
     papel: PapelEnum.optional(),
-    organizacaoId: z.string().cuid().optional(),
+    organizacaoId: z.string().min(1).optional(),
     ativo: z.union([z.literal('true'), z.literal('false')]).optional(),
   })
 })
 
 export const ParamsWithIdSchema = z.object({
-  params: z.object({ id: z.string().cuid() })
+  params: z.object({ id: z.string().min(1) })
 })
