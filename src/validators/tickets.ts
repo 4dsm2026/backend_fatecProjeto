@@ -20,38 +20,72 @@ export const ParamsWithIdSchema = z.object({
   params: z.object({ id: z.string().min(1) }),
 })
 
+/**
+ * Campos obrigatórios em camposEspecificos por servicoId do catálogo.
+ * Mantido em sincronia com _forms/index.ts no frontend.
+ */
+const CAMPOS_OBRIGATORIOS_POR_SERVICO: Record<string, string[]> = {
+  'secretaria-declaracao-matricula':   ['finalidade', 'destinatario', 'formatoDesejado'],
+  'secretaria-historico-escolar':      ['finalidade', 'tipoHistorico'],
+  'secretaria-aproveitamento-estudos': ['instituicaoOrigem', 'cursoOrigem', 'disciplinaCursada', 'cargaHoraria', 'disciplinaPretendida'],
+  'secretaria-revisao-nota':           ['disciplina', 'tipoAvaliacao', 'notaLancada', 'justificativa'],
+  'secretaria-correcao-dados-siga':    ['tipoDadoIncorreto', 'ondeAparece', 'informacaoAtual', 'informacaoCorreta'],
+};
+
+const TicketBodySchema = z.object({
+  titulo:    z.string().min(3),
+  descricao: z.string().min(3),
+  prioridade: z.enum(PrioridadeChamadoValues).optional().default('MEDIA'),
+  nivel:      z.enum(NivelChamadoValues).optional().default('N1'),
+  // FK fields (DB IDs)
+  servicoId:     z.string().nullish(),
+  setorId:       z.string().nullish(),
+  clienteId:     z.string().nullish(),
+  contratoId:    z.string().nullish(),
+  responsavelId: z.string().nullish(),
+  organizacaoId: z.string().nullish(),
+  // Campos do wizard do catálogo acadêmico
+  catalogoServicoId:     z.string().nullish(),
+  catalogoCategoriaId:   z.string().nullish(),
+  catalogoCategoriaNome: z.string().nullish(),
+  categoriaId:           z.string().nullish(),
+  categoriaNome:         z.string().nullish(),
+  setorProvavel:         z.string().max(256).nullish(),
+  dadosAcademicos:       z.record(z.unknown()).nullish(),
+  camposEspecificos:     z.record(z.unknown()).nullish(),
+  origem:                z.string().max(64).nullish(),
+  precisaAcaoDoAluno:    z.boolean().optional(),
+  planoMigracao:         z.string().nullish(),
+  anexos: z.array(z.object({
+    nome:    z.string(),
+    tamanho: z.number(),
+    tipo:    z.string(),
+  })).nullish(),
+}).superRefine((body, ctx) => {
+  // Resolve o servicoId do catálogo (slug com hífens)
+  const sid =
+    body.catalogoServicoId ??
+    (typeof body.servicoId === 'string' && body.servicoId.includes('-') ? body.servicoId : null);
+  if (!sid) return;
+
+  const required = CAMPOS_OBRIGATORIOS_POR_SERVICO[sid];
+  if (!required?.length) return;
+
+  const campos = (body.camposEspecificos ?? {}) as Record<string, unknown>;
+  for (const key of required) {
+    const val = campos[key];
+    if (val === undefined || val === null || String(val).trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Campo obrigatório ausente para o serviço "${sid}": "${key}"`,
+        path: ['camposEspecificos', key],
+      });
+    }
+  }
+});
+
 export const TicketCreateSchema = z.object({
-  body: z.object({
-    titulo:    z.string().min(3),
-    descricao: z.string().min(3),
-    prioridade: z.enum(PrioridadeChamadoValues).optional().default('MEDIA'),
-    nivel:      z.enum(NivelChamadoValues).optional().default('N1'),
-    // FK fields (DB IDs)
-    servicoId:     z.string().nullish(),
-    setorId:       z.string().nullish(),
-    clienteId:     z.string().nullish(),
-    contratoId:    z.string().nullish(),
-    responsavelId: z.string().nullish(),
-    organizacaoId: z.string().nullish(),
-    // Campos do wizard do catálogo acadêmico
-    catalogoServicoId:     z.string().nullish(),
-    catalogoCategoriaId:   z.string().nullish(),
-    catalogoCategoriaNome: z.string().nullish(),
-    categoriaId:           z.string().nullish(),   // alias enviado pelo wizard
-    categoriaNome:         z.string().nullish(),   // alias enviado pelo wizard
-    setorProvavel:         z.string().max(256).nullish(),
-    dadosAcademicos:       z.record(z.unknown()).nullish(),
-    camposEspecificos:     z.record(z.unknown()).nullish(),
-    origem:                z.string().max(64).nullish(),
-    precisaAcaoDoAluno:    z.boolean().optional(),
-    // Campos aceitos mas ignorados (planejamento de migração)
-    planoMigracao:         z.string().nullish(),
-    anexos: z.array(z.object({
-      nome:    z.string(),
-      tamanho: z.number(),
-      tipo:    z.string(),
-    })).nullish(),
-  }),
+  body: TicketBodySchema,
 })
 
 export const TicketUpdateSchema = z.object({
