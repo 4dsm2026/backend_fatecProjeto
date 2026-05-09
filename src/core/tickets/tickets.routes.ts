@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { create, getOne, list, patch, removeSoft } from "./tickets.controller.js";
+import { create, getOne, list, patch, removeSoft, stats } from "./tickets.controller.js";
 import { ticketMessagesRoutes } from "../ticket-messages/messages.routes.js";
 
 export async function ticketsRoutes(app: FastifyInstance) {
-  // tudo de tickets exige auth
   app.addHook("preHandler", app.authenticate as any);
+
+  // GET /tickets/stats  — deve vir ANTES de /:id para não ser interceptado como param
+  app.get("/stats", stats);
 
   // GET /tickets
   app.get("/", list);
@@ -21,6 +23,5 @@ export async function ticketsRoutes(app: FastifyInstance) {
   // DELETE /tickets/:id
   app.delete("/:id", removeSoft);
 
-  // mensagens do ticket (vai virar /tickets/:ticketId/mensagens/... lá no register)
   app.register(ticketMessagesRoutes, { prefix: "" });
 }
