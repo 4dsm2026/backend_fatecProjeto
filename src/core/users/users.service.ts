@@ -66,6 +66,7 @@ export async function createUser(
   data: UserCreateDTO,
   opts?: ServiceOpts,
 ): Promise<UserResponse> {
+  const d = data as any;
   const isAluno = !!data.ra;
 
   if (!data.nome) throw new Error('Nome é obrigatório.');
@@ -73,7 +74,7 @@ export async function createUser(
     throw new Error('É obrigatório informar e-mail pessoal ou educacional.');
 
   const DEFAULT_TEMP_PASSWORD = process.env.DEFAULT_TEMP_PASSWORD ?? 'Mudar123#';
-  const senhaPlano = isAluno ? DEFAULT_TEMP_PASSWORD : (data as any).senha ?? DEFAULT_TEMP_PASSWORD;
+  const senhaPlano = isAluno ? DEFAULT_TEMP_PASSWORD : (d.senha ?? DEFAULT_TEMP_PASSWORD);
   const senhaHash = await hashPassword(senhaPlano);
 
   const created = await prisma.usuario.create({
@@ -82,13 +83,19 @@ export async function createUser(
       emailPessoal: (data.emailPessoal ?? data.emailEducacional)!,
       emailEducacional: data.emailEducacional ?? null,
       ra: data.ra ?? null,
-      cursoNome: (data as any).cursoNome ?? null,
-      cursoSigla: (data as any).cursoSigla ?? null,
+      cursoNome:  d.cursoNome  ?? null,
+      cursoSigla: d.cursoSigla ?? null,
       senhaHash,
       papel: (data.papel as any) ?? 'USUARIO',
       ativo: data.ativo ?? true,
       precisaTrocarSenha: isAluno,
       organizacaoId: data.organizacaoId ?? null,
+      // Dados acadêmicos opcionais
+      unidadeFatec:        d.unidadeFatec        ?? null,
+      turno:               d.turno               ?? null,
+      turma:               d.turma               ?? null,
+      semestreAtual:       d.semestreAtual       ?? null,
+      anoSemestreIngresso: d.anoSemestreIngresso ?? null,
     },
     select: baseSelect,
   });
@@ -120,7 +127,6 @@ export async function listUsers(
     ...(q.papel ? { papel: q.papel as any } : {}),
     ...(q.organizacaoId ? { organizacaoId: q.organizacaoId } : {}),
     ...(typeof q.ativo !== 'undefined' ? { ativo: q.ativo === 'true' } : {}),
-    // mode:'insensitive' é ignorado no MySQL — segue o collation da coluna
     ...(q.q
       ? {
           OR: [
@@ -232,11 +238,9 @@ export async function softDeleteUser(
       ativo: false,
       anonimizado: true,
       nome: 'Usuário Anônimo',
-      // RA é PII — anonimizado para compliance (LGPD)
       ra: (before as any).ra ? `anon_${id}` : null,
       emailPessoal: `anonp_${id}@${anonDomain}`,
       emailEducacional: (before as any).emailEducacional ? `anone_${id}@${anonEduDomain}` : null,
-      // Limpa dados de contato/acessibilidade (PII)
       telefoneCelular: null,
       whatsapp: null,
       observacoesAtendimento: null,

@@ -12,6 +12,15 @@ export const UserCreateSchema = z.object({
     papel: PapelEnum.default('USUARIO'),
     ativo: z.boolean().optional().default(true),
     senha: z.string().min(8).optional(),
+    // Dados do curso
+    cursoNome:  z.string().max(128).optional().nullable(),
+    cursoSigla: z.string().max(16).optional().nullable(),
+    // Dados acadêmicos (preenchidos pelo admin no cadastro/importação)
+    unidadeFatec:        z.string().max(128).optional().nullable(),
+    turno:               z.string().max(64).optional().nullable(),
+    turma:               z.string().max(64).optional().nullable(),
+    semestreAtual:       z.string().max(32).optional().nullable(),
+    anoSemestreIngresso: z.string().max(32).optional().nullable(),
   }).superRefine((data, ctx) => {
     const isAluno = !!data.ra;
     if (isAluno) {
@@ -52,6 +61,10 @@ export const UserUpdateSchema = z.object({
     ativo: z.boolean().optional(),
     anonimizado: z.boolean().optional(),
     senha: z.string().min(8).optional(),
+
+    // Dados do curso
+    cursoNome:  z.string().max(128).optional().nullable(),
+    cursoSigla: z.string().max(16).optional().nullable(),
 
     // Dados acadêmicos (gerenciados pelo admin)
     unidadeFatec:        z.string().max(128).optional().nullable(),
