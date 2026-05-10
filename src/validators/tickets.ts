@@ -22,14 +22,33 @@ export const ParamsWithIdSchema = z.object({
 
 /**
  * Campos obrigatórios em camposEspecificos por servicoId do catálogo.
- * Mantido em sincronia com _forms/index.ts no frontend.
+ * Mantido em sincronia com os IDs reais dos campos definidos em
+ * app/(dashboard)/aluno/catalogo/[servicoId]/page.tsx no frontend.
  */
 const CAMPOS_OBRIGATORIOS_POR_SERVICO: Record<string, string[]> = {
-  'secretaria-declaracao-matricula':   ['finalidade', 'destinatario', 'formatoDesejado'],
-  'secretaria-historico-escolar':      ['finalidade', 'tipoHistorico'],
-  'secretaria-aproveitamento-estudos': ['instituicaoOrigem', 'cursoOrigem', 'disciplinaCursada', 'cargaHoraria', 'disciplinaPretendida'],
-  'secretaria-revisao-nota':           ['disciplina', 'tipoAvaliacao', 'notaLancada', 'justificativa'],
-  'secretaria-correcao-dados-siga':    ['tipoDadoIncorreto', 'ondeAparece', 'informacaoAtual', 'informacaoCorreta'],
+  // Secretaria
+  'secretaria-declaracao-matricula':   ['finalidade'],
+  'secretaria-historico-escolar':      ['semestreReferencia', 'formatoDesejado'],
+  'secretaria-aproveitamento-estudos': ['instituicaoOrigem', 'disciplinasOrigem', 'disciplinasPretendidas', 'justificativa'],
+  'secretaria-revisao-nota':           ['disciplina', 'avaliacao', 'justificativa'],
+  'secretaria-correcao-dados-siga':    ['dadoAlterar', 'novoValor'],
+  'secretaria-rematricula-fora-prazo': ['justificativa'],
+  // Coordenação
+  'coordenacao-duvida-matriz-curricular':              ['tipoDemanda', 'justificativa'],
+  'coordenacao-reuniao':                               ['tipoDemanda', 'justificativa'],
+  'coordenacao-analise-disciplina-equivalencia':       ['tipoDemanda', 'justificativa'],
+  'coordenacao-orientacao-tg-tcc-projeto-integrador':  ['tipoDemanda', 'justificativa'],
+  // Estágio
+  'estagio-termo-compromisso': ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
+  'estagio-termo-aditivo':     ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
+  'estagio-relatorio':         ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
+  'estagio-rescisao':          ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
+  'estagio-duvida-obrigatorio-nao-obrigatorio': ['tipoEstagio', 'duvida'],
+  // Sistemas / TI
+  'sistemas-problema-acesso-siga':           ['tipoProblema'],
+  'sistemas-dados-divergentes-siga':         ['tipoProblema'],
+  'sistemas-email-institucional':            ['emailInstitucional', 'tipoProblema'],
+  'sistemas-redefinicao-senha-institucional':['emailInstitucional', 'tipoProblema'],
 };
 
 const TicketBodySchema = z.object({
