@@ -32,15 +32,15 @@ export async function createTicketMessage(
   });
 
   const userIds = new Set<string>();
-  if (chamado?.criadoPorId) userIds.add(chamado.criadoPorId);
-  if (chamado?.responsavelId) userIds.add(chamado.responsavelId);
+  if (chamado?.criadoPorId && chamado.criadoPorId !== autorId) userIds.add(chamado.criadoPorId);
+  if (chamado?.responsavelId && chamado.responsavelId !== autorId) userIds.add(chamado.responsavelId);
 
   if (chamado?.setorId) {
     const vinculos = await prisma.usuarioSetor.findMany({
       where: { setorId: chamado.setorId, usuario: { ativo: true } },
       select: { usuarioId: true },
     });
-    vinculos.forEach(v => userIds.add(v.usuarioId));
+    vinculos.forEach(v => { if (v.usuarioId !== autorId) userIds.add(v.usuarioId); });
   }
 
   // 📡 Envia notificação persistente + broadcast em tempo real
@@ -56,7 +56,7 @@ export async function createTicketMessage(
   }
 
   // 🔔 2. Notificação persistente (banco + push realtime)
-  if (app?.notifyUsers) {
+  if (app?.notifyUsers && userIds.size > 0) {
     await app.notifyUsers(
       Array.from(userIds),
       {
@@ -68,6 +68,7 @@ export async function createTicketMessage(
           chamadoId,
           autorId,
           conteudo,
+          protocolo: chamado?.protocolo,
         },
       },
       prisma
