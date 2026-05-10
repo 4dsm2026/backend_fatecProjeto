@@ -81,7 +81,6 @@ const TicketBodySchema = z.object({
     tipo:    z.string(),
   })).nullish(),
 }).superRefine((body, ctx) => {
-  // Resolve o servicoId do catálogo (slug com hífens)
   const sid =
     body.catalogoServicoId ??
     (typeof body.servicoId === 'string' && body.servicoId.includes('-') ? body.servicoId : null);
