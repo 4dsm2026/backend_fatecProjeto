@@ -149,7 +149,6 @@ model Usuario {
   lastFailedAttempt DateTime?
   passwordUpdatedAt DateTime?
 
-  // Dados acadêmicos (sincronizados do sistema acadêmico — somente leitura pelo aluno)
   unidadeFatec            String?
   curso                   String?
   eixoTecnologico         String?
@@ -161,7 +160,6 @@ model Usuario {
   anoSemestreIngresso     String?
   coordenadorCurso        String?
 
-  // Contato e atendimento (editável pelo aluno)
   telefoneCelular               String?  @db.VarChar(20)
   whatsapp                      String?  @db.VarChar(20)
   canalPreferencialContato      String?
@@ -227,9 +225,6 @@ model TokenResetSenha {
   @@map("tokens_reset_senha")
 }
 
-/**
- * ---------- CLIENTES & CONTRATOS (Backoffice) ----------
- */
 model Cliente {
   id           String    @id @default(cuid())
   nome         String
@@ -277,7 +272,7 @@ model Chamado {
   organizacaoId String?
   protocolo     String?           @unique
   titulo        String
-  descricao     String
+  descricao     String            @db.Text
   nivel         NivelChamado      @default(N1)
   status        StatusChamado     @default(ABERTO)
   prioridade    PrioridadeChamado @default(MEDIA)
@@ -296,7 +291,6 @@ model Chamado {
   encerradoEm  DateTime?
   deletadoEm   DateTime?
 
-  // Campos do wizard do catálogo acadêmico
   catalogoServicoId     String?
   catalogoCategoriaId   String?
   catalogoCategoriaNome String?
@@ -305,7 +299,6 @@ model Chamado {
   camposEspecificos     Json?
   origem                String?
 
-  // Controle e SLA
   precisaAcaoDoAluno Boolean   @default(false)
   observacaoInterna  String?   @db.Text
   slaHoras           Int?
@@ -357,7 +350,7 @@ model Mensagem {
   id           String    @id @default(cuid())
   chamadoId    String
   autorId      String
-  conteudo     String
+  conteudo     String    @db.Text
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
   deletadoEm   DateTime?
@@ -391,9 +384,6 @@ model Anexo {
   @@map("anexos")
 }
 
-/**
- * ---------- TAGS ----------
- */
 model Tag {
   id       String       @id @default(cuid())
   nome     String       @unique
@@ -415,9 +405,6 @@ model ChamadoTag {
   @@map("chamados_tags")
 }
 
-/**
- * ---------- AUDITORIA & E-MAILS ----------
- */
 model Auditoria {
   id         String    @id @default(cuid())
   feitoPorId String?
@@ -449,9 +436,6 @@ model EmailEnvio {
   @@map("email_envios")
 }
 
-/**
- * ---------- LOGIN (AUDITORIA) ----------
- */
 model LoginTentativa {
   id        String   @id @default(cuid())
   email     String
@@ -469,9 +453,6 @@ model LoginTentativa {
   @@map("login_tentativas")
 }
 
-/**
- * ---------- NOTIFICAÇÕES ----------
- */
 enum TipoNotificacao {
   CHAMADO_CRIADO
   CHAMADO_ATRIBUIDO
@@ -492,7 +473,7 @@ model Notificacao {
   id        String           @id @default(cuid())
   usuarioId String
   titulo    String
-  mensagem  String
+  mensagem  String           @db.Text
   tipo      TipoNotificacao
   canal     CanalNotificacao @default(IN_APP)
 
