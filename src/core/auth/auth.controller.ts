@@ -33,7 +33,10 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 const DEFAULT_ACCESS_EXPIRES = 15 * 60;
-const isProd = process.env.NODE_ENV === "production";
+
+// COOKIE_SECURE=true apenas quando o site roda em HTTPS.
+// NODE_ENV=production não garante HTTPS (ex: IP direto na AWS sem TLS).
+const cookieSecure = process.env.COOKIE_SECURE === "true";
 
 function parseExpires(v?: string | number) {
   if (!v) return DEFAULT_ACCESS_EXPIRES;
@@ -59,15 +62,15 @@ function setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: st
   const maxAge = parseExpires(process.env.JWT_ACCESS_EXPIRES);
   r.setCookie("accessToken", accessToken, {
     httpOnly: false,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+    secure: cookieSecure,
+    sameSite: cookieSecure ? "none" : "lax",
     path: "/",
     maxAge,
   });
   r.setCookie("refreshToken", refreshToken, {
     httpOnly: false,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+    secure: cookieSecure,
+    sameSite: cookieSecure ? "none" : "lax",
     path: "/",
     maxAge: REFRESH_TOKEN_TTL_MS / 1000,
   });
