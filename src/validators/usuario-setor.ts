@@ -5,23 +5,25 @@ const pag = {
   perPage: z.coerce.number().int().min(1).max(100).default(20).optional(),
 };
 
+const zId = z.string().min(1);
+
 export const VincularUsuarioSetorSchema = z.object({
-  params: z.object({ usuarioId: z.string().cuid() }),
+  params: z.object({ usuarioId: zId }),
   body: z.object({
-    setorId: z.string().cuid(),
-    papelId: z.string().cuid().optional().nullable(),
+    setorId: zId,
+    papelId: zId.optional().nullable(),
   }),
 });
 
 export const AlterarPapelUsuarioSetorSchema = z.object({
-  params: z.object({ usuarioSetorId: z.string().cuid() }),
+  params: z.object({ usuarioSetorId: zId }),
   body: z.object({
-    papelId: z.string().cuid().optional().nullable(),
+    papelId: zId.optional().nullable(),
   }),
 });
 
 export const ListUsuariosDoSetorSchema = z.object({
-  params: z.object({ setorId: z.string().cuid() }),
+  params: z.object({ setorId: zId }),
   query: z.object({
     ...pag,
     search: z.string().min(1).optional(),
@@ -29,6 +31,6 @@ export const ListUsuariosDoSetorSchema = z.object({
 });
 
 export const ListSetoresDoUsuarioSchema = z.object({
-  params: z.object({ usuarioId: z.string().cuid() }),
+  params: z.object({ usuarioId: zId }),
   query: z.object({ ...pag }),
 });
