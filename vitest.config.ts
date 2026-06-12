@@ -5,7 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     setupFiles: ['./tests/setup.ts'],
-    include: ['tests/produtos/**/*.test.ts'],
+    include: ['tests/**/*.test.ts'],
     testTimeout: 30_000,
     pool: 'forks',
     reporters: ['verbose'],
