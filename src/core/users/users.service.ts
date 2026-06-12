@@ -74,7 +74,7 @@ export async function createUser(
     throw new Error('É obrigatório informar e-mail pessoal ou educacional.');
 
   const DEFAULT_TEMP_PASSWORD = process.env.DEFAULT_TEMP_PASSWORD ?? 'Mudar123#';
-  const senhaPlano = d.senhaInicial ?? (isAluno ? DEFAULT_TEMP_PASSWORD : (d.senha ?? DEFAULT_TEMP_PASSWORD));
+  const senhaPlano = d.senha ?? DEFAULT_TEMP_PASSWORD;
   const senhaHash = await hashPassword(senhaPlano);
 
   const created = await prisma.usuario.create({
