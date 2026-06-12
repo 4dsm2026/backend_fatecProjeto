@@ -27,6 +27,7 @@ import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
 import { notificationsRoutes } from "./core/notifications/notifications.routes";
 import { anexoRoutes } from "./core/anexos/anexos.routes";
 import { verifyAccessToken } from "./utils/jwt";
+import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
 
 /* ====== Configuração de uploads ====== */
 const UPLOADS_DIR = path.resolve(
@@ -206,6 +207,8 @@ export async function buildApp() {
   // Referência global usada por messages.service — necessária por limitação de arquitetura
   // TODO: refatorar para injeção de dependência via plugin Fastify
   (global as any).fastifyAppInstance = app;
+
+  scheduleCleanupAnexos(app.prisma, UPLOADS_DIR);
 
   return app;
 }
