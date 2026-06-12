@@ -1,33 +1,26 @@
+import { vi, describe, it, expect, afterEach } from 'vitest'
 import { PrismaClient } from '@prisma/client';
-import * as NotifyModule from '../../src/core/notifications/notify'; 
 
-// -----------------------------------------------------
-// 1. MOCKS ESSENCIAIS (DEFINIDOS PRIMEIRO)
-// -----------------------------------------------------
-
-// Define a função mockada usando LET no escopo superior
-let mockCreateTicket: jest.Mock;
-
-jest.mock('../../src/core/tickets/tickets.service', () => ({
- 
-   createTicket: mockCreateTicket = jest.fn(), 
-   getTicketById: jest.fn(),
-   listTickets: jest.fn(),
-   updateTicket: jest.fn(),
-   softDeleteTicket: jest.fn(),
+// vi.hoisted ensures the variable is available when the vi.mock factory runs
+const { mockCreateTicket } = vi.hoisted(() => ({
+  mockCreateTicket: vi.fn(),
 }));
 
-import * as TicketController from '../../src/core/tickets/tickets.controller'; 
+vi.mock('../../src/core/tickets/tickets.service', () => ({
+  createTicket: mockCreateTicket,
+  getTicketById: vi.fn(),
+  listTickets: vi.fn(),
+  updateTicket: vi.fn(),
+  softDeleteTicket: vi.fn(),
+}));
 
-// -----------------------------------------------------
-// 2. CONSTANTES
-// -----------------------------------------------------
+import * as NotifyModule from '../../src/core/notifications/notify';
+import * as TicketController from '../../src/core/tickets/tickets.controller';
 
 const MOCK_CRIADOR_ID = 'user-creator-id-123';
 const MOCK_ORGANIZACAO_ID = 'org-id-001';
-const mockPrismaClient = {} as PrismaClient; 
-const mockNotifyMany = jest.spyOn(NotifyModule, 'notifyMany').mockResolvedValue(undefined as any);
-
+const mockPrismaClient = {} as PrismaClient;
+const mockNotifyMany = vi.spyOn(NotifyModule, 'notifyMany').mockResolvedValue(undefined as any);
 
 const mockCreatedTicket = {
   id: 'tck-007',
@@ -47,23 +40,13 @@ const mockCreatedTicket = {
   criadoPor: { id: MOCK_CRIADOR_ID, nome: 'User Teste' },
 };
 
-// -----------------------------------------------------
-// 3. SUITE DE TESTES
-// ----------------------------------------------------
-
 describe('TicketController - Criação (POST /tickets)', () => {
 
   afterEach(() => {
-    jest.clearAllMocks();
-    // Limpeza da função mockada
-    if (mockCreateTicket) {
-      mockCreateTicket.mockClear();
-    }
+    vi.clearAllMocks();
+    mockCreateTicket.mockClear();
   });
 
-  // =======================================================
-  // CENÁRIO 1: Criação com Sucesso (201)
-  // =======================================================
   it('deve criar um novo chamado com dados mínimos e retornar 201', async () => {
     mockCreateTicket.mockResolvedValueOnce(mockCreatedTicket as any);
 
@@ -76,50 +59,41 @@ describe('TicketController - Criação (POST /tickets)', () => {
 
     const mockRequest: any = {
       body: requestBody,
-      server: { prisma: mockPrismaClient }, 
-      log: { error: jest.fn() },
-      user: { sub: MOCK_CRIADOR_ID }, 
+      server: { prisma: mockPrismaClient },
+      log: { error: vi.fn() },
+      user: { sub: MOCK_CRIADOR_ID },
     };
 
-    const mockReply: any = { code: jest.fn().mockReturnThis(), send: jest.fn() };
+    const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() };
 
     await TicketController.create(mockRequest, mockReply);
 
     expect(mockReply.code).toHaveBeenCalledWith(201);
     expect(mockReply.send).toHaveBeenCalledWith(mockCreatedTicket);
-    
     expect(mockCreateTicket).toHaveBeenCalledWith(
-      mockPrismaClient, 
+      mockPrismaClient,
       expect.objectContaining(requestBody),
-      expect.objectContaining({ 
-        feitoPorId: MOCK_CRIADOR_ID,
-      })
+      expect.objectContaining({ feitoPorId: MOCK_CRIADOR_ID })
     );
   });
 
-  // =======================================================
-  // CENÁRIO 2: Falha de Autenticação (401)
-  // =======================================================
   it('deve retornar 401 se o usuário não estiver autenticado (falta req.user.sub)', async () => {
     const mockRequest: any = {
       body: { titulo: 'Falha', descricao: 'Falha' },
       server: { prisma: mockPrismaClient },
-      log: { error: jest.fn() },
-      user: undefined, 
+      log: { error: vi.fn() },
+      user: undefined,
     };
 
-    const mockReply: any = { code: jest.fn().mockReturnThis(), send: jest.fn() };
+    const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() };
 
     await TicketController.create(mockRequest, mockReply);
 
     expect(mockCreateTicket).not.toHaveBeenCalled();
-    expect(mockReply.code).toHaveBeenCalledWith(401); 
+    expect(mockReply.code).toHaveBeenCalledWith(401);
     expect(mockReply.send).toHaveBeenCalledWith({ error: "Não autenticado" });
   });
 
-  // =======================================================
-  // CENÁRIO 3: Falha Interna no Service (500)
-  // =======================================================
   it('deve retornar 500 se o Service lançar uma exceção não tratada', async () => {
     const MOCK_ERROR = new Error("Database connection failed");
     mockCreateTicket.mockRejectedValueOnce(MOCK_ERROR);
@@ -127,16 +101,16 @@ describe('TicketController - Criação (POST /tickets)', () => {
     const mockRequest: any = {
       body: { titulo: 'Erro 500', descricao: 'Descrição do erro.', organizacaoId: MOCK_ORGANIZACAO_ID, servicoId: 'svc-1' },
       server: { prisma: mockPrismaClient },
-      log: { error: jest.fn() }, 
-      user: { sub: MOCK_CRIADOR_ID }, 
+      log: { error: vi.fn() },
+      user: { sub: MOCK_CRIADOR_ID },
     };
 
-    const mockReply: any = { code: jest.fn().mockReturnThis(), send: jest.fn() };
+    const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() };
 
     await TicketController.create(mockRequest, mockReply);
 
     expect(mockReply.code).toHaveBeenCalledWith(500);
     expect(mockReply.send).toHaveBeenCalledWith({ error: MOCK_ERROR.message });
-    expect(mockRequest.log.error).toHaveBeenCalled(); 
+    expect(mockRequest.log.error).toHaveBeenCalled();
   });
 });
