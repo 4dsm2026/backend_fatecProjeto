@@ -187,7 +187,7 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     return;
   }
 
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   const { email, ra, password } = parsed.data!.body! as { email?: string; ra?: string; password: string };
 
   const ip = req.ip;
@@ -315,7 +315,7 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
     personalEmail?: string;
   };
 
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
 
   try {
     if (!validarPoliticaSenha(newPassword)) {
@@ -373,7 +373,7 @@ export const forgotPassword = async (req: FastifyRequest, res: FastifyReply) => 
   const parsed = forgotPasswordValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
   const { email } = parsed.data!.body! as { email: string };
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     await enviarLinkEsqueciSenha(prisma, email.trim().toLowerCase());
     await res.send({ message: "Se existir uma conta com esse e-mail, enviaremos um link para redefinir a senha." });
@@ -390,7 +390,7 @@ export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
   const parsed = resetPasswordValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
   const { token, newPassword } = parsed.data!.body! as { token: string; newPassword: string };
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     if (!validarPoliticaSenha(newPassword)) {
       return void (await res.code(400).send({ error: "Senha não atende aos critérios mínimos." }));
@@ -419,7 +419,7 @@ const registerValidator = buildRouteValidator({ body: RegisterSchema });
 export const register = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
   const parsed = registerValidator.parse(req);
   if ("error" in parsed) { await res.code(400).send(parsed.error); return; }
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   const { email, password, role, name, educationalEmail, ra } = parsed.data!.body! as {
     email: string; password: string; role?: any; name: string; educationalEmail?: string; ra?: string;
   };
@@ -459,7 +459,7 @@ const refreshValidator = buildRouteValidator({ body: RefreshSchema });
 export const refresh = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
   const parsed = refreshValidator.parse(req);
   if ("error" in parsed) { await res.code(400).send(parsed.error); return; }
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   const { refreshToken } = parsed.data!.body! as { refreshToken: string };
   try {
     const sessao = await verifyAndGetSession(refreshToken);
@@ -483,7 +483,7 @@ export const refresh = async (req: FastifyRequest, res: FastifyReply): Promise<v
 export const logout = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
   const parsed = refreshValidator.parse(req);
   if ("error" in parsed) { await res.code(400).send(parsed.error); return; }
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   const { refreshToken } = parsed.data!.body! as { refreshToken: string };
   try {
     const sessao = await verifyAndGetSession(refreshToken);
@@ -497,8 +497,8 @@ export const logout = async (req: FastifyRequest, res: FastifyReply): Promise<vo
 
 /* ===================== ME ===================== */
 export const me = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
-  const prisma = (req.server as any).prisma;
-  const authUser = (req as any).user as { sub?: string } | undefined;
+  const prisma = req.server.prisma;
+  const authUser = req.user as { sub?: string } | undefined;
   if (!authUser?.sub) { await res.code(401).send({ error: "Não autenticado" }); return; }
   try {
     const user = await prisma.usuario.findUnique({
@@ -520,8 +520,8 @@ export const trocarSenha = async (req: FastifyRequest, res: FastifyReply): Promi
   const parsed = trocarSenhaValidator.parse(req);
   if ("error" in parsed) { await res.code(400).send(parsed.error); return; }
 
-  const prisma = (req.server as any).prisma;
-  const authUser = (req as any).user as { sub?: string } | undefined;
+  const prisma = req.server.prisma;
+  const authUser = req.user as { sub?: string } | undefined;
   if (!authUser?.sub) { await res.code(401).send({ error: "Não autenticado" }); return; }
 
   const { senhaAtual, novaSenha } = parsed.data!.body! as { senhaAtual: string; novaSenha: string };
@@ -567,7 +567,7 @@ export const trocarSenha = async (req: FastifyRequest, res: FastifyReply): Promi
 
 /* ===================== GET /usuarios (consulta simples) ===================== */
 export const getUser = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   const { ra, email, id, name, educationalEmail } = (req.query ?? {}) as {
     ra?: string; email?: string; id?: string; name?: string; educationalEmail?: string;
   };

@@ -128,9 +128,8 @@ export async function buildApp() {
   const connections = new Map<string, import("ws").WebSocket>();
   const AUTH_TIMEOUT_MS = 10_000;
 
-  app.get("/ws", { websocket: true }, (connection, req) => {
+  app.get("/ws", { websocket: true }, (connection, _req) => {
     const socket = (connection as any).socket ?? (connection as any);
-    const queryToken = (req.query as any)?.token;
 
     let userId: string | null = null;
     let authTimer: ReturnType<typeof setTimeout> | null = null;
@@ -147,15 +146,14 @@ export async function buildApp() {
       }
     }
 
-    // Fallback legado: token na query. Caso ausente, aguarda o frame de auth.
-    if (!authenticate(queryToken)) {
-      authTimer = setTimeout(() => {
-        if (!userId) {
-          socket.send(JSON.stringify({ error: "Timeout de autenticação" }));
-          socket.close();
-        }
-      }, AUTH_TIMEOUT_MS);
-    }
+    // Autenticação exclusivamente pelo 1º frame { type: "auth", token } — o
+    // token nunca vai na URL (evita vazamento em logs). Fecha se não chegar.
+    authTimer = setTimeout(() => {
+      if (!userId) {
+        socket.send(JSON.stringify({ error: "Timeout de autenticação" }));
+        socket.close();
+      }
+    }, AUTH_TIMEOUT_MS);
 
     socket.on("message", async (rawMsg: string) => {
       let data: any;

@@ -161,6 +161,12 @@ export async function consumirTokenSenha(
       where: { id: token.id },
       data: { usadoEm: new Date() },
     }),
+    // Redefinir a senha deve encerrar as sessões antigas (consistente com
+    // POST /auth/trocar-senha), impedindo que um refresh anterior siga válido.
+    prisma.sessao.updateMany({
+      where: { usuarioId: token.usuarioId, revogadaEm: null },
+      data: { revogadaEm: new Date() },
+    }),
   ]);
 
   const user = await prisma.usuario.findUnique({

@@ -14,7 +14,7 @@ const testeValidator = buildRouteValidator({ body: ComunicacaoTesteSchema.shape.
 
 /* GET /admin/comunicacoes */
 export async function list(req: FastifyRequest, res: FastifyReply) {
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const data = await listTemplates(prisma);
     await res.send({ data });
@@ -28,7 +28,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 export async function upsert(req: FastifyRequest, res: FastifyReply) {
   const parsed = upsertValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const saved = await upsertTemplate(prisma, parsed.data!.params!.chave, parsed.data!.body!);
     await res.send(saved);
