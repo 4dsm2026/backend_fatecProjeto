@@ -8,24 +8,9 @@ import {
   createTicketMessage,
   listTicketMessages,
 } from "./messages.service";
-import { getTicketOwnerId } from "../tickets/tickets.service";
+import { alunoSemAcessoAoChamado } from "../tickets/tickets.service";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-/**
- * Alunos (papel USUARIO) só podem ler/escrever mensagens dos próprios chamados.
- * Retorna true quando o acesso deve ser negado (chamado inexistente ou de outro
- * aluno); false quando liberado.
- */
-async function alunoSemAcessoAoChamado(
-  prisma: any,
-  chamadoId: string,
-  authUser: { sub: string; role: string } | undefined,
-): Promise<boolean> {
-  if (!authUser || authUser.role !== "USUARIO") return false;
-  const donoId = await getTicketOwnerId(prisma, chamadoId);
-  return donoId !== authUser.sub;
-}
 
 const createValidator = buildRouteValidator({
   params: CreateMessageSchema.shape.params,

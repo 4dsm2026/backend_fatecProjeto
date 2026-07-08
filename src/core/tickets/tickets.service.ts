@@ -179,6 +179,22 @@ export async function getTicketOwnerId(prisma: Ctx, id: string): Promise<string 
   return found?.criadoPorId ?? null;
 }
 
+/**
+ * Regra de posse compartilhada (anti-IDOR): alunos (papel USUARIO) só acessam
+ * os próprios chamados. Retorna true quando o acesso deve ser NEGADO — seja
+ * porque o chamado é de outro aluno, seja porque não existe (mesma resposta
+ * 404, sem vazar existência). Para papéis de equipe, nunca nega.
+ */
+export async function alunoSemAcessoAoChamado(
+  prisma: Ctx,
+  chamadoId: string,
+  authUser: { sub: string; role: string } | undefined,
+): Promise<boolean> {
+  if (!authUser || authUser.role !== 'USUARIO') return false;
+  const donoId = await getTicketOwnerId(prisma, chamadoId);
+  return donoId !== authUser.sub;
+}
+
 export async function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
   const baseInclude: any = ticketInclude(include);
   baseInclude.mensagens = {
