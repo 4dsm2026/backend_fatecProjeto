@@ -3,24 +3,10 @@ import fs from 'fs';
 import { buildRouteValidator } from '../../utils/zod-helpers';
 import { ListAnexosSchema, ParamsWithTicketIdSchema, UploadAnexoSchema, DownloadAnexoSchema } from './anexos.types';
 import { listAnexosByTicketId, createAnexo, getAnexoForDownload } from './anexos.service';
-import { getTicketOwnerId } from '../tickets/tickets.service';
+import { alunoSemAcessoAoChamado } from '../tickets/tickets.service';
 import { generateDownloadToken } from '../../utils/jwt';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-/**
- * Alunos (papel USUARIO) só acessam anexos dos próprios chamados. Retorna true
- * quando o acesso deve ser negado (chamado inexistente ou de outro aluno).
- */
-async function alunoSemAcessoAoChamado(
-  prisma: any,
-  chamadoId: string,
-  authUser: { sub: string; role: string } | undefined,
-): Promise<boolean> {
-  if (!authUser || authUser.role !== 'USUARIO') return false;
-  const donoId = await getTicketOwnerId(prisma, chamadoId);
-  return donoId !== authUser.sub;
-}
 
 const listValidator = buildRouteValidator({
     params: ListAnexosSchema.shape.params 
