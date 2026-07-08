@@ -17,7 +17,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "backfill:outros": "node scripts/backfill-outros-setor.js"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.978.0",
