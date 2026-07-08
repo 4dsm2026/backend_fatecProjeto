@@ -362,7 +362,8 @@ export async function statsTickets(
     : [];
   const setorNomeMap = Object.fromEntries(setoresDb.map(s => [s.id, s.nome]));
   const porSetor = setorGroups.map(g => ({
-    setor: g.setorId ? (setorNomeMap[g.setorId] ?? g.setorId) : '—',
+    setorId: g.setorId ?? null,
+    setorNome: g.setorId ? (setorNomeMap[g.setorId] ?? g.setorId) : '—',
     total: g._count.id,
   }));
 
@@ -379,7 +380,8 @@ export async function statsTickets(
     : [];
   const respNomeMap = Object.fromEntries(respsDb.map(r => [r.id, r.nome]));
   const porResponsavel = respGroups.map(g => ({
-    responsavel: g.responsavelId ? (respNomeMap[g.responsavelId] ?? '—') : '—',
+    responsavelId: g.responsavelId ?? null,
+    responsavelNome: g.responsavelId ? (respNomeMap[g.responsavelId] ?? '—') : '—',
     total: g._count.id,
   }));
 

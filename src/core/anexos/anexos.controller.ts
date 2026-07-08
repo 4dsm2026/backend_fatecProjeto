@@ -3,9 +3,24 @@ import fs from 'fs';
 import { buildRouteValidator } from '../../utils/zod-helpers';
 import { ListAnexosSchema, ParamsWithTicketIdSchema, UploadAnexoSchema, DownloadAnexoSchema } from './anexos.types';
 import { listAnexosByTicketId, createAnexo, getAnexoForDownload } from './anexos.service';
+import { getTicketOwnerId } from '../tickets/tickets.service';
 import { generateDownloadToken } from '../../utils/jwt';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Alunos (papel USUARIO) só acessam anexos dos próprios chamados. Retorna true
+ * quando o acesso deve ser negado (chamado inexistente ou de outro aluno).
+ */
+async function alunoSemAcessoAoChamado(
+  prisma: any,
+  chamadoId: string,
+  authUser: { sub: string; role: string } | undefined,
+): Promise<boolean> {
+  if (!authUser || authUser.role !== 'USUARIO') return false;
+  const donoId = await getTicketOwnerId(prisma, chamadoId);
+  return donoId !== authUser.sub;
+}
 
 const listValidator = buildRouteValidator({
     params: ListAnexosSchema.shape.params 
@@ -24,9 +39,13 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
     if ('error' in parsed) return res.code(400).send(parsed.error);
 
     const prisma = (req.server as any).prisma;
+    const authUser = (req as any).user as { sub: string; role: string } | undefined;
     const { id: chamadoId } = parsed.data!.params!;
 
     try {
+        if (await alunoSemAcessoAoChamado(prisma, chamadoId, authUser))
+            return res.code(404).send({ error: "Chamado não encontrado" });
+
         const anexos = await listAnexosByTicketId(prisma, chamadoId);
         return res.send(anexos);
     } catch (e: any) {
@@ -43,12 +62,16 @@ export async function upload(req: FastifyRequest, res: FastifyReply) {
      if ('error' in parsed) return res.code(400).send(parsed.error);
 
     const prisma = (req.server as any).prisma;
-    const userId = (req as any).user?.sub as string | undefined;
+    const authUser = (req as any).user as { sub: string; role: string } | undefined;
+    const userId = authUser?.sub;
     if (!userId) return res.code(401).send({ error: "Não autenticado" });
 
     const { id: chamadoId } = parsed.data!.params!;
 
     try {
+        if (await alunoSemAcessoAoChamado(prisma, chamadoId, authUser))
+            return res.code(404).send({ error: "Chamado não encontrado" });
+
         const anexo = await createAnexo(prisma, req, chamadoId, userId);
         return res.code(201).send(anexo);
     } catch (e: any) {
