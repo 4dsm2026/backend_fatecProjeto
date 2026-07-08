@@ -93,7 +93,20 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
   let dbSetorId: string | null = data.setorId && !isCatalogSlug(data.setorId) ? data.setorId : null;
   if (!dbSetorId && data.setorProvavel) {
     const keyword = data.setorProvavel.split('/')[0].trim();
-    const matched = await prisma.setor.findFirst({ where: { nome: { contains: keyword } }, select: { id: true } });
+    // 1) Setor cujo nome CONTÉM o keyword (ex.: keyword "Secretaria" → "Secretaria Acadêmica").
+    let matched = await prisma.setor.findFirst({ where: { nome: { contains: keyword } }, select: { id: true } });
+    // 2) Fallback bidirecional: keyword mais específico que o nome do setor
+    //    (ex.: keyword "Secretaria Acadêmica" → setor "Secretaria"). Sem isso,
+    //    a maioria dos chamados do catálogo nascia órfã (setorId nulo).
+    if (!matched && keyword) {
+      const kw = keyword.toLowerCase();
+      const setores = await prisma.setor.findMany({ select: { id: true, nome: true } });
+      const found = setores.find((s) => {
+        const nome = s.nome.toLowerCase();
+        return kw.includes(nome) || nome.includes(kw);
+      });
+      if (found) matched = { id: found.id };
+    }
     if (matched) dbSetorId = matched.id;
   }
 

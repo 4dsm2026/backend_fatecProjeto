@@ -84,6 +84,31 @@ describe('POST /tickets — Abrir Chamado', () => {
     expect(res.statusCode).toBe(201)
   })
 
+  it('201 — roteia por setorProvavel mais específico que o nome do setor', async () => {
+    // setorProvavel "Secretaria Acadêmica" deve casar com o setor "Secretaria"
+    // (matching bidirecional) — sem isso o chamado nasceria órfão.
+    const ticket = makeTicket()
+    prismaMock.setor.findFirst.mockResolvedValueOnce(null) // sem match direto por contains
+    prismaMock.setor.findMany.mockResolvedValueOnce([{ id: 'setor-secretaria', nome: 'Secretaria' }])
+    prismaMock.chamado.create.mockResolvedValueOnce(ticket)
+    prismaMock.chamado.findFirst.mockResolvedValueOnce({ ...ticket, servico: null, criadoPor: null })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tickets',
+      headers: bearerAuth(userToken),
+      payload: {
+        titulo: 'Solicitação para a secretaria',
+        descricao: 'Preciso resolver uma pendência acadêmica no sistema',
+        setorProvavel: 'Secretaria Acadêmica',
+      },
+    })
+
+    expect(res.statusCode).toBe(201)
+    const createArg = prismaMock.chamado.create.mock.calls[0][0]
+    expect(createArg.data.setorId).toBe('setor-secretaria')
+  })
+
   it('400 — body inválido (título muito curto)', async () => {
     const res = await app.inject({
       method: 'POST',
