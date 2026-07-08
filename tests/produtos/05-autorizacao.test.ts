@@ -128,6 +128,66 @@ describe('IDOR — chamados de outro aluno', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe('IDOR — anexos de chamado de outro aluno', () => {
+  it('GET /tickets/:id/anexos — 404 para aluno que não é dono', async () => {
+    prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/tickets/${IDS.ticket}/anexos`,
+      headers: bearerAuth(alunoIntrusoToken),
+    })
+
+    expect(res.statusCode).toBe(404)
+    expect(prismaMock.anexo.findMany).not.toHaveBeenCalled()
+  })
+
+  it('POST /tickets/:id/anexos — 404 para aluno que não é dono', async () => {
+    prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tickets/${IDS.ticket}/anexos`,
+      headers: bearerAuth(alunoIntrusoToken),
+      payload: {},
+    })
+
+    expect(res.statusCode).toBe(404)
+    expect(prismaMock.anexo.create).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IDOR — marcar notificação de outro usuário como lida', () => {
+  it('PATCH /notifications/:id/lida escopa a atualização por usuarioId', async () => {
+    prismaMock.notificacao.updateMany.mockResolvedValue({ count: 1 })
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/notifications/notif-de-outro/lida',
+      headers: bearerAuth(alunoIntrusoToken),
+    })
+
+    expect([200, 204]).toContain(res.statusCode)
+    // A cláusula where DEVE conter o usuarioId de quem chama (não só o id).
+    const arg = prismaMock.notificacao.updateMany.mock.calls[0][0]
+    expect(arg.where).toMatchObject({ id: 'notif-de-outro', usuarioId: 'outro-aluno-999' })
+  })
+
+  it('PATCH /notifications/:id/lida — 404 quando não há match (id de outro dono)', async () => {
+    prismaMock.notificacao.updateMany.mockResolvedValue({ count: 0 })
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/notifications/notif-de-outro/lida',
+      headers: bearerAuth(alunoIntrusoToken),
+    })
+
+    expect(res.statusCode).toBe(404)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
   it('403 quando aluno tenta se promover a ADMINISTRADOR', async () => {
     const res = await app.inject({
