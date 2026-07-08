@@ -189,7 +189,7 @@ export async function buildApp() {
   app.decorate("notifyUsers", async (userIds: string[], data: any) => {
     for (const userId of userIds) {
       const socket = connections.get(userId);
-      if (socket?.readyState === socket?.OPEN) socket.send(JSON.stringify(data));
+      if (socket && socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
 
       await app.prisma.notificacao.create({
         data: {
