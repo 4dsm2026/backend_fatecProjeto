@@ -43,6 +43,7 @@ const baseSelect = {
   necessitaAtendimentoAcessivel: true,
   tipoAcessibilidade: true,
   observacoesAtendimento: true,
+  notificacoesInApp: true,
 } satisfies Prisma.UsuarioSelect;
 
 async function logAuditoria(
@@ -197,6 +198,7 @@ export async function updateUser(
       ? d.necessitaAtendimentoAcessivel : undefined,
     tipoAcessibilidade:      d.tipoAcessibilidade      ?? undefined,
     observacoesAtendimento:  d.observacoesAtendimento  ?? undefined,
+    notificacoesInApp:       typeof d.notificacoesInApp === 'boolean' ? d.notificacoesInApp : undefined,
   };
 
   if ('organizacaoId' in data) patch.organizacaoId = data.organizacaoId as any;

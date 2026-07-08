@@ -221,7 +221,18 @@ export async function buildApp() {
   };
 
   app.decorate("notifyUsers", async (userIds: string[], data: any) => {
+    if (!userIds.length) return;
+
+    // Respeita a preferência: só entrega a quem optou por notificações in-app.
+    const optIn = await app.prisma.usuario.findMany({
+      where: { id: { in: userIds }, notificacoesInApp: true },
+      select: { id: true },
+    });
+    const alvos = new Set(optIn.map((u: { id: string }) => u.id));
+
     for (const userId of userIds) {
+      if (!alvos.has(userId)) continue;
+
       const socket = connections.get(userId);
       if (socket && socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
 

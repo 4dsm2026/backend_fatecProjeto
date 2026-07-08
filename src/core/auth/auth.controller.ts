@@ -172,6 +172,7 @@ const userPublicSelect = {
   necessitaAtendimentoAcessivel: true,
   tipoAcessibilidade: true,
   observacoesAtendimento: true,
+  notificacoesInApp: true,
 } as const;
 
 /* ===================== LOGIN ===================== */
