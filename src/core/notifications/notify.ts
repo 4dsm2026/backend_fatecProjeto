@@ -31,8 +31,17 @@ export async function notifyMany(
   }
 ) {
   if (!usuarios.length) return;
+
+  // Respeita a preferência do usuário: só notifica quem tem notificacoesInApp=true.
+  const optIn = await prisma.usuario.findMany({
+    where: { id: { in: usuarios }, notificacoesInApp: true },
+    select: { id: true },
+  });
+  const alvos = optIn.map((u) => u.id);
+  if (!alvos.length) return;
+
   await prisma.notificacao.createMany({
-    data: usuarios.map((usuarioId) => ({
+    data: alvos.map((usuarioId) => ({
       usuarioId,
       titulo: data.titulo,
       mensagem: data.mensagem,
