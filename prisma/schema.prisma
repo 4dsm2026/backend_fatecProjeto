@@ -501,3 +501,19 @@ model Notificacao {
   @@index([tipo, canal])
   @@map("notificacoes")
 }
+
+/// Templates de e-mail editáveis pelo admin (tela de Comunicações).
+model ComunicacaoTemplate {
+  id          String   @id @default(cuid())
+  chave       String   @unique
+  nome        String
+  descricao   String?  @db.Text
+  habilitado  Boolean  @default(true)
+  assunto     String   @db.Text
+  corpo       String   @db.Text
+  variaveis   Json?
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@map("comunicacao_templates")
+}

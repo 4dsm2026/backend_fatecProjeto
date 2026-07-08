@@ -9,6 +9,7 @@ import {
   firstAccess,
   forgotPassword,
   resetPassword,
+  trocarSenha,
 } from "./auth.controller";
 import {
   buildRouteValidator,
@@ -62,6 +63,7 @@ export default async function authRoutes(app: FastifyInstance) {
   app.post("/esqueci-senha", { preHandler: [preBody(EsqueciSenhaSchema)] }, forgotPassword);
   app.post("/reset-senha", { preHandler: [preBody(ResetSenhaSchema)] }, resetPassword);
   app.get("/me", { preHandler: [app.authenticate as any] }, me);
+  app.post("/trocar-senha", { preHandler: [app.authenticate as any] }, trocarSenha);
   app.get(
     "/usuarios",
     { preHandler: [app.authenticate as any, preQuery(GetUserQuerySchema)] },

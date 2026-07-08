@@ -24,6 +24,7 @@ import { registerErrorHandler } from "./middlewares/errorHandler";
 import { setoresRoutes } from "./core/setores/setores.routes";
 import { papeisRoutes } from "./core/papeis/papeis.routes";
 import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
+import { comunicacoesRoutes } from "./core/comunicacoes/comunicacoes.routes";
 import { notificationsRoutes } from "./core/notifications/notifications.routes";
 import { anexoRoutes } from "./core/anexos/anexos.routes";
 import { verifyAccessToken } from "./utils/jwt";
@@ -115,38 +116,70 @@ export async function buildApp() {
   app.register(setoresRoutes, { prefix: "/admin" });
   app.register(papeisRoutes, { prefix: "/admin" });
   app.register(usuarioSetorRoutes, { prefix: "/admin" });
+  app.register(comunicacoesRoutes, { prefix: "/admin" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(anexoRoutes, { prefix: "/" });
   app.register(auditoriaRoutes);
 
   // ---------------------------------------------------------
-  // 🔌 WebSocket — autenticado via Bearer no header
-  // AVISO: passar JWT via ?token= na query expõe o token em logs.
-  // Prefira passar via primeiro frame após conexão (protocolo de handshake).
+  // 🔌 WebSocket — autenticado por handshake no primeiro frame.
+  // O cliente envia { type: "auth", token } logo após conectar, evitando
+  // o JWT na query string (que vaza em logs de acesso/proxy).
+  // O token via ?token= ainda é aceito como fallback de compatibilidade.
   // ---------------------------------------------------------
   const connections = new Map<string, import("ws").WebSocket>();
+  const AUTH_TIMEOUT_MS = 10_000;
 
   app.get("/ws", { websocket: true }, (connection, req) => {
     const socket = (connection as any).socket ?? (connection as any);
-    const token = (req.query as any)?.token;
+    const queryToken = (req.query as any)?.token;
 
-    let userId: string;
-    try {
-      if (!token) throw new Error("Token ausente");
-      const payload = verifyAccessToken(token);
-      userId = payload.sub;
-    } catch {
-      socket.send(JSON.stringify({ error: "Não autenticado" }));
-      socket.close();
-      return;
+    let userId: string | null = null;
+    let authTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function authenticate(token: unknown): boolean {
+      if (typeof token !== "string" || !token) return false;
+      try {
+        userId = verifyAccessToken(token).sub;
+        connections.set(userId, socket);
+        app.log.info(`WS conectado: userId=${userId}`);
+        return true;
+      } catch {
+        return false;
+      }
     }
 
-    app.log.info(`WS conectado: userId=${userId}`);
-    connections.set(userId, socket);
+    // Fallback legado: token na query. Caso ausente, aguarda o frame de auth.
+    if (!authenticate(queryToken)) {
+      authTimer = setTimeout(() => {
+        if (!userId) {
+          socket.send(JSON.stringify({ error: "Timeout de autenticação" }));
+          socket.close();
+        }
+      }, AUTH_TIMEOUT_MS);
+    }
 
     socket.on("message", async (rawMsg: string) => {
+      let data: any;
       try {
-        const data = JSON.parse(rawMsg);
+        data = JSON.parse(rawMsg);
+      } catch {
+        return;
+      }
+
+      // Handshake: enquanto não autenticado, só o frame { type: "auth" } vale.
+      if (!userId) {
+        if (data?.type === "auth" && authenticate(data.token)) {
+          if (authTimer) { clearTimeout(authTimer); authTimer = null; }
+          socket.send(JSON.stringify({ type: "auth_ok" }));
+        } else {
+          socket.send(JSON.stringify({ error: "Não autenticado" }));
+          socket.close();
+        }
+        return;
+      }
+
+      try {
         if (data.type === "nova_mensagem") {
           const { chamadoId, mensagem, autorId, autor } = data;
           for (const [, client] of connections) {
@@ -171,12 +204,15 @@ export async function buildApp() {
     });
 
     socket.on("close", () => {
-      connections.delete(userId);
-      app.log.info(`WS desconectado: userId=${userId}`);
+      if (authTimer) { clearTimeout(authTimer); authTimer = null; }
+      if (userId) {
+        connections.delete(userId);
+        app.log.info(`WS desconectado: userId=${userId}`);
+      }
     });
 
     socket.on("error", (err: unknown) => {
-      app.log.error({ err }, `WS erro (${userId})`);
+      app.log.error({ err }, `WS erro (${userId ?? "não autenticado"})`);
     });
   });
 

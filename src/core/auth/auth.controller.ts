@@ -9,6 +9,7 @@ import {
   FirstAccessSchema,
   EsqueciSenhaSchema,
   ResetSenhaSchema,
+  TrocarSenhaSchema,
 } from "../../validators/auth";
 import { hashPassword, verifyPassword } from "../../security/password";
 import { generateAccessToken } from "../../utils/jwt";
@@ -507,6 +508,58 @@ export const me = async (req: FastifyRequest, res: FastifyReply): Promise<void> 
     await res.send(user);
   } catch (e) {
     req.log.error({ e }, "💥 Erro no /me");
+    await res.code(500).send({ error: errMsg(e) });
+  }
+};
+
+/* ===================== TROCAR SENHA (autenticado) ===================== */
+const trocarSenhaValidator = buildRouteValidator({ body: TrocarSenhaSchema });
+
+export const trocarSenha = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
+  const parsed = trocarSenhaValidator.parse(req);
+  if ("error" in parsed) { await res.code(400).send(parsed.error); return; }
+
+  const prisma = (req.server as any).prisma;
+  const authUser = (req as any).user as { sub?: string } | undefined;
+  if (!authUser?.sub) { await res.code(401).send({ error: "Não autenticado" }); return; }
+
+  const { senhaAtual, novaSenha } = parsed.data!.body! as { senhaAtual: string; novaSenha: string };
+
+  try {
+    const user = await prisma.usuario.findUnique({
+      where: { id: authUser.sub },
+      select: { id: true, senhaHash: true },
+    });
+    if (!user?.senhaHash) { await res.code(404).send({ error: "Usuário não encontrado" }); return; }
+
+    const senhaConfere = await verifyPassword(user.senhaHash, senhaAtual);
+    if (!senhaConfere) {
+      await registrarAuditoria({ feitoPorId: user.id, acao: "troca_senha_falha", alvo: user.id, meta: { motivo: "senha_atual_incorreta" } });
+      await res.code(400).send({ error: "Senha atual incorreta" });
+      return;
+    }
+
+    if (!validarPoliticaSenha(novaSenha)) {
+      await res.code(400).send({ error: "A nova senha não atende aos critérios mínimos." });
+      return;
+    }
+
+    const novoHash = await hashPassword(novaSenha);
+    await prisma.usuario.update({
+      where: { id: user.id },
+      data: { senhaHash: novoHash, precisaTrocarSenha: false, passwordUpdatedAt: new Date() },
+    });
+
+    // Invalida as demais sessões: uma troca de senha deve encerrar acessos antigos.
+    await prisma.sessao.updateMany({
+      where: { usuarioId: user.id, revogadaEm: null },
+      data: { revogadaEm: new Date() },
+    });
+
+    await registrarAuditoria({ feitoPorId: user.id, acao: "troca_senha_sucesso", alvo: user.id, meta: {} });
+    await res.send({ message: "Senha alterada com sucesso" });
+  } catch (e) {
+    req.log.error({ e }, "💥 Erro ao trocar senha");
     await res.code(500).send({ error: errMsg(e) });
   }
 };
