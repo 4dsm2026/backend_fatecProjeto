@@ -9,6 +9,7 @@ import {
 import {
   createTicket,
   getTicketById,
+  getTicketOwnerId,
   listTickets,
   updateTicket,
   softDeleteTicket,
@@ -17,6 +18,22 @@ import {
 import type { TicketsListQuery } from "./tickets.types";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/**
+ * Alunos (papel USUARIO) só podem acessar os próprios chamados. Retorna true
+ * quando o acesso deve ser negado. Para papéis de equipe, nunca nega.
+ * Retorna null quando o chamado não existe (o chamador devolve 404).
+ */
+async function alunoSemAcessoAoChamado(
+  prisma: any,
+  chamadoId: string,
+  authUser: { sub: string; role: string } | undefined,
+): Promise<boolean | null> {
+  if (!authUser || authUser.role !== "USUARIO") return false;
+  const donoId = await getTicketOwnerId(prisma, chamadoId);
+  if (donoId === null) return null;
+  return donoId !== authUser.sub;
+}
 
 const createValidator = buildRouteValidator({ body: TicketCreateSchema.shape.body });
 const listValidator   = buildRouteValidator({ query: TicketListSchema.shape.query });
@@ -52,8 +69,16 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
   const prisma = (req.server as any).prisma;
+  const authUser = (req as any).user as { sub: string; role: string } | undefined;
   try {
-    const ticket = await getTicketById(prisma, parsed.data!.params!.id, [
+    const id = parsed.data!.params!.id;
+
+    const semAcesso = await alunoSemAcessoAoChamado(prisma, id, authUser);
+    // Chamado inexistente ou de outro aluno: mesma resposta 404 (não vaza existência).
+    if (semAcesso !== false)
+      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+
+    const ticket = await getTicketById(prisma, id, [
       "cliente", "contrato", "servico", "setor", "responsavel", "criadoPor", "historico",
     ]);
 
@@ -118,12 +143,19 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
   const prisma     = (req.server as any).prisma;
-  const feitoPorId = (req as any).user?.sub as string | undefined;
+  const authUser   = (req as any).user as { sub: string; role: string } | undefined;
+  const feitoPorId = authUser?.sub;
 
   try {
+    const id = parsed.data!.params!.id;
+
+    const semAcesso = await alunoSemAcessoAoChamado(prisma, id, authUser);
+    if (semAcesso !== false)
+      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+
     const ticket = await updateTicket(
       prisma,
-      parsed.data!.params!.id,
+      id,
       parsed.data!.body!,
       { feitoPorId },
     );
@@ -142,12 +174,19 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
   const prisma     = (req.server as any).prisma;
-  const feitoPorId = (req as any).user?.sub as string | undefined;
+  const authUser   = (req as any).user as { sub: string; role: string } | undefined;
+  const feitoPorId = authUser?.sub;
 
   try {
+    const id = parsed.data!.params!.id;
+
+    const semAcesso = await alunoSemAcessoAoChamado(prisma, id, authUser);
+    if (semAcesso !== false)
+      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+
     const ticket = await softDeleteTicket(
       prisma,
-      parsed.data!.params!.id,
+      id,
       { feitoPorId },
     );
     await res.send(ticket);

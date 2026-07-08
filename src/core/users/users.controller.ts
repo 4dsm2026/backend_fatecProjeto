@@ -84,10 +84,25 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   if ('error' in parsed) return void (await res.code(400).send(parsed.error))
 
   const prisma = (req.server as any).prisma
-  const feitoPorId = (req as any).user?.sub as string | undefined
+  const authUser = (req as any).user as { sub: string; role: string } | undefined
+  const feitoPorId = authUser?.sub
+  const alvoId = parsed.data!.params!.id
+  const body = parsed.data!.body! as Record<string, unknown>
+
+  // Aluno (USUARIO) só pode editar o próprio cadastro e nunca campos
+  // privilegiados — sem isso, um aluno poderia se promover a ADMINISTRADOR
+  // ou reativar/desativar contas via PATCH /usuarios/:id.
+  if (authUser?.role === 'USUARIO') {
+    if (alvoId !== authUser.sub)
+      return void (await res.code(403).send({ error: 'Acesso negado' }))
+    for (const campo of ['papel', 'ativo', 'anonimizado', 'organizacaoId']) {
+      if (campo in body)
+        return void (await res.code(403).send({ error: `Campo não permitido: ${campo}` }))
+    }
+  }
 
   try {
-    const user = await updateUser(prisma, parsed.data!.params!.id, parsed.data!.body!, {
+    const user = await updateUser(prisma, alvoId, body as any, {
       feitoPorId,
     })
     await res.send(user)
