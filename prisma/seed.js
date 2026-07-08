@@ -50,6 +50,21 @@ async function main() {
     if (!found) await prisma.servico.create({ data: s });
   }
 
+  // Categoria/Serviço "Outros" — antes era uma entrada só hardcoded no
+  // frontend (catalogoCategoriaId "outros" / catalogoServicoId
+  // "outros-solicitacao-geral"). Passa a ser um registro real, com ids
+  // estáveis iguais aos que o wizard já envia, aparecendo na listagem oficial.
+  await prisma.categoria.upsert({
+    where:  { id: 'outros' },
+    create: { id: 'outros', nome: 'Outra solicitação', descricao: 'Solicitações que não se encaixam nos demais serviços', organizacaoId: org.id },
+    update: { nome: 'Outra solicitação' },
+  });
+  await prisma.servico.upsert({
+    where:  { id: 'outros-solicitacao-geral' },
+    create: { id: 'outros-solicitacao-geral', nome: 'Solicitação geral (Outros)', descricao: 'Descreva livremente sua necessidade; a Secretaria fará a triagem.', categoriaId: 'outros', ativo: true },
+    update: { ativo: true, categoriaId: 'outros' },
+  });
+
   // Admin (login imediato, sem troca de senha)
   const admin = await prisma.usuario.upsert({
     where:  { emailPessoal: 'admin@example.com' },
