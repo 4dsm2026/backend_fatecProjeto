@@ -26,8 +26,8 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const authUser = (req as any).user as { sub: string; role: string } | undefined;
+  const prisma = req.server.prisma;
+  const authUser = req.user as { sub: string; role: string } | undefined;
   const userId = authUser?.sub;
   if (!userId) return void (await res.code(401).send({ error: "Não autenticado" }));
 
@@ -53,8 +53,8 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const authUser = (req as any).user as { sub: string; role: string } | undefined;
+  const prisma = req.server.prisma;
+  const authUser = req.user as { sub: string; role: string } | undefined;
 
   try {
     const { id } = parsed.data!.params!;

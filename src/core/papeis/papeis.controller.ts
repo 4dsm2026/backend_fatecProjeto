@@ -14,7 +14,7 @@ const updateValidator = buildRouteValidator({
 
 /* GET /papeis */
 export async function list(_req: FastifyRequest, res: FastifyReply) {
-  const prisma = (_req.server as any).prisma;
+  const prisma = _req.server.prisma;
   try {
     const data = await listPapeis(prisma);
     await res.send(data);
@@ -28,7 +28,7 @@ export async function list(_req: FastifyRequest, res: FastifyReply) {
 export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const papel = await createPapel(prisma, parsed.data!.body!);
     await res.code(201).send(papel);
@@ -42,7 +42,7 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
 export async function getOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const papel = await getPapel(prisma, parsed.data!.params!.id);
     if (!papel) return void (await res.code(404).send({ error: "Papel não encontrado" }));
@@ -57,7 +57,7 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
 export async function patch(req: FastifyRequest, res: FastifyReply) {
   const parsed = updateValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const papel = await updatePapel(prisma, parsed.data!.params!.id, parsed.data!.body!);
     await res.send(papel);
@@ -72,7 +72,7 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
 export async function removeHard(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     await deletePapel(prisma, parsed.data!.params!.id);
     await res.code(204).send();

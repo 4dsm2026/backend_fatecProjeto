@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 export async function catalogoRoutes(app: FastifyInstance) {
   app.get("/", async (req, res) => {
-    const prisma = (req.server as any).prisma;
+    const prisma = req.server.prisma;
 
     try {
       const categorias = await prisma.categoria.findMany({

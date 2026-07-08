@@ -20,8 +20,8 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const userId = (req as any).user?.sub as string | undefined;
+  const prisma = req.server.prisma;
+  const userId = req.user?.sub as string | undefined;
   if (!userId) return void (await res.code(401).send({ error: "Não autenticado" }));
 
   try {
@@ -38,8 +38,8 @@ export async function readOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const userId = (req as any).user?.sub as string | undefined;
+  const prisma = req.server.prisma;
+  const userId = req.user?.sub as string | undefined;
   if (!userId) return void (await res.code(401).send({ error: "Não autenticado" }));
 
   try {
@@ -58,8 +58,8 @@ export async function archive(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const userId = (req as any).user?.sub as string | undefined;
+  const prisma = req.server.prisma;
+  const userId = req.user?.sub as string | undefined;
   if (!userId) return void (await res.code(401).send({ error: "Não autenticado" }));
 
   try {
@@ -78,8 +78,8 @@ export async function unarchive(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const userId = (req as any).user?.sub as string | undefined;
+  const prisma = req.server.prisma;
+  const userId = req.user?.sub as string | undefined;
   if (!userId) return void (await res.code(401).send({ error: "Não autenticado" }));
 
   try {
@@ -95,8 +95,8 @@ export async function unarchive(req: FastifyRequest, res: FastifyReply) {
 
 /* POST /notifications/read-all */
 export async function readAll(req: FastifyRequest, res: FastifyReply) {
-  const prisma = (req.server as any).prisma;
-  const userId = (req as any).user?.sub as string | undefined;
+  const prisma = req.server.prisma;
+  const userId = req.user?.sub as string | undefined;
   if (!userId) return void (await res.code(401).send({ error: "Não autenticado" }));
 
   try {
@@ -110,8 +110,8 @@ export async function readAll(req: FastifyRequest, res: FastifyReply) {
 
 /* POST /notifications/test */
 export async function createTest(req: FastifyRequest, res: FastifyReply) {
-  const prisma = (req.server as any).prisma;
-  const userId = (req as any).user?.sub as string | undefined;
+  const prisma = req.server.prisma;
+  const userId = req.user?.sub as string | undefined;
   if (!userId) return void (await res.code(401).send({ error: "Não autenticado" }));
 
   try {

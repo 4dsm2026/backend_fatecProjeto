@@ -29,8 +29,8 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req)
   if ('error' in parsed) return void (await res.code(400).send(parsed.error))
 
-  const prisma = (req.server as any).prisma
-  const feitoPorId = (req as any).user?.sub as string | undefined
+  const prisma = req.server.prisma
+  const feitoPorId = req.user?.sub as string | undefined
 
   try {
     const user = await createUser(prisma, parsed.data!.body!, { feitoPorId })
@@ -52,7 +52,7 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req)
   if ('error' in parsed) return void (await res.code(400).send(parsed.error))
 
-  const prisma = (req.server as any).prisma
+  const prisma = req.server.prisma
   try {
     const user = await getUserById(prisma, parsed.data!.params!.id)
     if (!user) return void (await res.code(404).send({ error: 'Usuário não encontrado' }))
@@ -68,7 +68,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req)
   if ('error' in parsed) return void (await res.code(400).send(parsed.error))
 
-  const prisma = (req.server as any).prisma
+  const prisma = req.server.prisma
   try {
     const page = await listUsers(prisma, parsed.data!.query!)
     await res.send(page)
@@ -83,8 +83,8 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   const parsed = updateValidator.parse(req)
   if ('error' in parsed) return void (await res.code(400).send(parsed.error))
 
-  const prisma = (req.server as any).prisma
-  const authUser = (req as any).user as { sub: string; role: string } | undefined
+  const prisma = req.server.prisma
+  const authUser = req.user as { sub: string; role: string } | undefined
   const feitoPorId = authUser?.sub
   const alvoId = parsed.data!.params!.id
   const body = parsed.data!.body! as Record<string, unknown>
@@ -122,8 +122,8 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req)
   if ('error' in parsed) return void (await res.code(400).send(parsed.error))
 
-  const prisma = (req.server as any).prisma
-  const feitoPorId = (req as any).user?.sub as string | undefined
+  const prisma = req.server.prisma
+  const feitoPorId = req.user?.sub as string | undefined
 
   try {
     const user = await softDeleteUser(prisma, parsed.data!.params!.id, { feitoPorId })

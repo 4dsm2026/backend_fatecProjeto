@@ -32,8 +32,8 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const feitoPorId = (req as any).user?.sub as string | undefined;
+  const prisma = req.server.prisma;
+  const feitoPorId = req.user?.sub as string | undefined;
 
   try {
     if (!feitoPorId)
@@ -52,8 +52,8 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const authUser = (req as any).user as { sub: string; role: string } | undefined;
+  const prisma = req.server.prisma;
+  const authUser = req.user as { sub: string; role: string } | undefined;
   try {
     const id = parsed.data!.params!.id;
 
@@ -80,8 +80,8 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma = (req.server as any).prisma;
-  const authUser = (req as any).user as { sub: string; role: string } | undefined;
+  const prisma = req.server.prisma;
+  const authUser = req.user as { sub: string; role: string } | undefined;
 
   if (!authUser)
     return void (await res.code(401).send({ error: "Não autenticado" }));
@@ -104,8 +104,8 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 
 /* ============ GET /tickets/stats ============ */
 export async function stats(req: FastifyRequest, res: FastifyReply) {
-  const prisma   = (req.server as any).prisma;
-  const authUser = (req as any).user as { sub: string; role: string } | undefined;
+  const prisma   = req.server.prisma;
+  const authUser = req.user as { sub: string; role: string } | undefined;
 
   if (!authUser)
     return void (await res.code(401).send({ error: "Não autenticado" }));
@@ -125,8 +125,8 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   const parsed = updateValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma     = (req.server as any).prisma;
-  const authUser   = (req as any).user as { sub: string; role: string } | undefined;
+  const prisma     = req.server.prisma;
+  const authUser   = req.user as { sub: string; role: string } | undefined;
   const feitoPorId = authUser?.sub;
 
   try {
@@ -155,8 +155,8 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
 
-  const prisma     = (req.server as any).prisma;
-  const authUser   = (req as any).user as { sub: string; role: string } | undefined;
+  const prisma     = req.server.prisma;
+  const authUser   = req.user as { sub: string; role: string } | undefined;
   const feitoPorId = authUser?.sub;
 
   try {

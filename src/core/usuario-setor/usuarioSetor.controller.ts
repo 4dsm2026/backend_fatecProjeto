@@ -37,7 +37,7 @@ const listSetoresValidator = buildRouteValidator({
 export async function vincular(req: FastifyRequest, res: FastifyReply) {
   const parsed = vincularValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const r = await vincularUsuarioSetor(prisma, parsed.data!.params!.usuarioId, parsed.data!.body!);
     await res.code(201).send(r);
@@ -52,7 +52,7 @@ export async function vincular(req: FastifyRequest, res: FastifyReply) {
 export async function alterarPapel(req: FastifyRequest, res: FastifyReply) {
   const parsed = alterarValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const r = await alterarPapelUsuarioSetor(prisma, parsed.data!.params!.usuarioSetorId, parsed.data!.body!);
     await res.send(r);
@@ -65,7 +65,7 @@ export async function alterarPapel(req: FastifyRequest, res: FastifyReply) {
 
 /* DELETE /usuarios-setores/:usuarioSetorId */
 export async function desvincular(req: FastifyRequest, res: FastifyReply) {
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   const usuarioSetorId = (req.params as any)?.usuarioSetorId as string;
   if (!usuarioSetorId) return void (await res.code(400).send({ error: "usuarioSetorId obrigatório" }));
   try {
@@ -82,7 +82,7 @@ export async function desvincular(req: FastifyRequest, res: FastifyReply) {
 export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply) {
   const parsed = listUsersValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const r = await listarUsuariosDoSetor(prisma, parsed.data!.params!.setorId, parsed.data!.query!);
     await res.send(r);
@@ -96,7 +96,7 @@ export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply
 export async function listSetoresDoUsuario(req: FastifyRequest, res: FastifyReply) {
   const parsed = listSetoresValidator.parse(req);
   if ("error" in parsed) return void (await res.code(400).send(parsed.error));
-  const prisma = (req.server as any).prisma;
+  const prisma = req.server.prisma;
   try {
     const r = await listarSetoresDoUsuario(prisma, parsed.data!.params!.usuarioId, parsed.data!.query!);
     await res.send(r);

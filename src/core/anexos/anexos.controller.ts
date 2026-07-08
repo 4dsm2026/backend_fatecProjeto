@@ -24,8 +24,8 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
     const parsed = listValidator.parse(req); 
     if ('error' in parsed) return res.code(400).send(parsed.error);
 
-    const prisma = (req.server as any).prisma;
-    const authUser = (req as any).user as { sub: string; role: string } | undefined;
+    const prisma = req.server.prisma;
+    const authUser = req.user as { sub: string; role: string } | undefined;
     const { id: chamadoId } = parsed.data!.params!;
 
     try {
@@ -47,8 +47,8 @@ export async function upload(req: FastifyRequest, res: FastifyReply) {
      const parsed = uploadValidator.parse(req); 
      if ('error' in parsed) return res.code(400).send(parsed.error);
 
-    const prisma = (req.server as any).prisma;
-    const authUser = (req as any).user as { sub: string; role: string } | undefined;
+    const prisma = req.server.prisma;
+    const authUser = req.user as { sub: string; role: string } | undefined;
     const userId = authUser?.sub;
     if (!userId) return res.code(401).send({ error: "Não autenticado" });
 
@@ -72,13 +72,13 @@ export async function download(req: FastifyRequest, res: FastifyReply) {
     const parsed = downloadValidator.parse(req); 
     if ('error' in parsed) return res.code(400).send(parsed.error);
 
-    const prisma = (req.server as any).prisma;
-     const userId = (req as any).user?.sub as string | undefined;
+    const prisma = req.server.prisma;
+     const userId = req.user?.sub as string | undefined;
      if (!userId) return res.code(401).send({ error: "Não autenticado" });
 
     const { anexoId } = parsed.data!.params!;
 
-    const userRole = (req as any).user?.role as string | undefined;
+    const userRole = req.user?.role as string | undefined;
 
     try {
         const { filePath, fileName, mimeType } = await getAnexoForDownload(prisma, anexoId, userId, userRole);
@@ -98,16 +98,16 @@ export async function download(req: FastifyRequest, res: FastifyReply) {
 
 /* POST /anexos/:anexoId/download-token */
 export async function generateDownloadTokenRoute(req: FastifyRequest, res: FastifyReply): Promise<any> {
-    const userId = (req as any).user?.sub as string | undefined;
+    const userId = req.user?.sub as string | undefined;
     if (!userId) return res.code(401).send({ error: "Não autenticado" });
 
     const anexoId = (req.params as any)?.anexoId as string | undefined;
     if (!anexoId) return res.code(400).send({ error: 'Parâmetro anexoId ausente' });
 
-    const prisma = (req.server as any).prisma;
+    const prisma = req.server.prisma;
 
     try {
-        const userRole = (req as any).user?.role as string | undefined;
+        const userRole = req.user?.role as string | undefined;
         await getAnexoForDownload(prisma, anexoId, userId, userRole);
 
         const token: string = generateDownloadToken({ sub: userId, anexoId }, { expiresIn: '5m' });
