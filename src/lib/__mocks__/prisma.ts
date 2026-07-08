@@ -79,6 +79,7 @@ function buildMock() {
       create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     tokenResetSenha: {
       create: vi.fn(),
@@ -97,6 +98,10 @@ function buildMock() {
     historicoStatusChamado: {
       create: vi.fn(),
       findMany: vi.fn(),
+    },
+    comunicacaoTemplate: {
+      findMany: vi.fn(),
+      upsert: vi.fn(),
     },
   }
   // $transaction passes the mock itself as the tx client so inner calls work

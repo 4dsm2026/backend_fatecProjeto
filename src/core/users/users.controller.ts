@@ -92,10 +92,13 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   // Aluno (USUARIO) só pode editar o próprio cadastro e nunca campos
   // privilegiados — sem isso, um aluno poderia se promover a ADMINISTRADOR
   // ou reativar/desativar contas via PATCH /usuarios/:id.
+  // 'senha' também é bloqueada: a troca de senha do próprio usuário passa por
+  // POST /auth/trocar-senha, que exige a senha atual (reautenticação). O reset
+  // por administrador via PATCH continua permitido para papéis de equipe.
   if (authUser?.role === 'USUARIO') {
     if (alvoId !== authUser.sub)
       return void (await res.code(403).send({ error: 'Acesso negado' }))
-    for (const campo of ['papel', 'ativo', 'anonimizado', 'organizacaoId']) {
+    for (const campo of ['papel', 'ativo', 'anonimizado', 'organizacaoId', 'senha']) {
       if (campo in body)
         return void (await res.code(403).send({ error: `Campo não permitido: ${campo}` }))
     }
