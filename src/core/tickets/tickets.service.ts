@@ -153,6 +153,19 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
   });
 }
 
+/**
+ * Retorna apenas o dono (criadoPorId) de um chamado não deletado, ou null se
+ * não existir. Usado para verificação de posse (IDOR) sem carregar o chamado
+ * inteiro.
+ */
+export async function getTicketOwnerId(prisma: Ctx, id: string): Promise<string | null> {
+  const found = await prisma.chamado.findFirst({
+    where: { id, deletadoEm: null },
+    select: { criadoPorId: true },
+  });
+  return found?.criadoPorId ?? null;
+}
+
 export async function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
   const baseInclude: any = ticketInclude(include);
   baseInclude.mensagens = {

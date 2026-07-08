@@ -196,7 +196,10 @@ describe('GET /tickets/stats — Estatísticas', () => {
 describe('GET /tickets/:id — Buscar Chamado', () => {
   it('200 — retorna chamado existente', async () => {
     const ticket = makeTicket()
-    prismaMock.chamado.findFirst.mockResolvedValueOnce(ticket)
+    // 1ª chamada: verificação de posse (IDOR); 2ª: carga completa do chamado.
+    prismaMock.chamado.findFirst
+      .mockResolvedValueOnce({ criadoPorId: ticket.criadoPorId })
+      .mockResolvedValueOnce(ticket)
 
     const res = await app.inject({
       method: 'GET',
