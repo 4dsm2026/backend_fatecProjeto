@@ -215,6 +215,15 @@ describe('GET /tickets/stats — Estatísticas', () => {
     const res = await app.inject({ method: 'GET', url: '/tickets/stats' })
     expect(res.statusCode).toBe(401)
   })
+
+  it('403 — aluno (USUARIO) não acessa estatísticas globais', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/tickets/stats',
+      headers: bearerAuth(userToken),
+    })
+    expect(res.statusCode).toBe(403)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
