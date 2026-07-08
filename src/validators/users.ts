@@ -12,7 +12,6 @@ export const UserCreateSchema = z.object({
     papel: PapelEnum.default('USUARIO'),
     ativo: z.boolean().optional().default(true),
     senha: z.string().min(8).optional(),
-    senhaInicial: z.string().min(8).optional(),
     // Dados do curso
     cursoNome:  z.string().max(128).optional().nullable(),
     cursoSigla: z.string().max(16).optional().nullable(),

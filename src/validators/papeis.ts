@@ -8,10 +8,10 @@ export const PapelCreateSchema = z.object({
 });
 
 export const PapelUpdateSchema = z.object({
-  params: z.object({ id: z.string().cuid() }),
+  params: z.object({ id: z.string().min(1) }),
   body: PapelCreateSchema.shape.body.partial(),
 });
 
 export const PapelIdSchema = z.object({
-  params: z.object({ id: z.string().cuid() }),
+  params: z.object({ id: z.string().min(1) }),
 });
