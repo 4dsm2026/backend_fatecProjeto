@@ -1,19 +1,217 @@
-# 🚀 Projeto backend - Guia de Commits e Colaboração
+<a href="https://github.com/seu-usuario" target="_blank">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:B71C1C,100:FF1744&height=200&section=header&text=WorkFlow&fontSize=80&fontAlignY=35&animation=fadeIn&fontColor=white" width="100%"/>
+</a>
 
-## 📋 Índice
+![Status](https://img.shields.io/badge/status-ativo-brightgreen)
 
-* [Convenção de Commits](#-convenção-de-commits)
-* [Estrutura das Mensagens](#-estrutura-das-mensagens)
-* [Tipos de Commit](#-tipos-de-commit)
-* [Exemplos Práticos](#-exemplos-práticos)
-* [Workflow do Git](#-workflow-do-git)
-* [Branches](#-estratégia-de-branches)
-* [Pull Requests](#-pull-requests)
-* [Comandos Úteis](#-comandos-úteis)
-* [Ferramentas Recomendadas](#-ferramentas-recomendadas)
-* [Automação (Husky + Commitlint + PR Template)](#-automação-husky--commitlint--pr-template)
+## 🚀 Do Zero ao Deploy Local
+
+**Guia definitivo para rodar backend e frontend localmente — na ordem certa, sem surpresas.**
+
+Siga cada etapa rigorosamente. Pular passos é o caminho mais curto para dores de cabeça com **CORS**, **tokens inconsistentes** e **variáveis de ambiente mal configuradas**. Nós já passamos por isso para que você não precise.
+
+**Equipe Docs/DevOps** 
 
 ---
+## 🧰 Pré-requisitos
+
+![Node.js](https://img.shields.io/badge/-Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white&labelColor=2D2D2D)
+![pnpm](https://img.shields.io/badge/-pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white&labelColor=2D2D2D)
+![Docker](https://img.shields.io/badge/-Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white&labelColor=2D2D2D)
+
+# ⚠️ ATENÇÃO! ⚠️
+<!-- Badge -->
+<p align="center">
+  <img src="https://img.shields.io/badge/%F0%9F%9A%A8-USE%20SEMPRE%20pnpm-FF0000?style=for-the-badge&logo=pnpm&logoColor=white&labelColor=1E1E1E" 
+       alt="Use sempre pnpm" />
+</p>
+
+<!-- Aviso -->
+<blockquote>
+  <p align="center">
+    <strong>⚠️ IMPORTANTE:</strong> Use sempre <code>pnpm</code>, <strong>nunca</strong> <code>npm</code>.
+  </p>
+  <p align="center">
+    Ambos os repositórios possuem <code>pnpm-lock.yaml</code>. Instalar ou rodar com <code>npm</code> gera 
+    <strong>inconsistência de versões</strong> e pode até <strong>não funcionar</strong> 
+    (<code>npm run dev</code> falha porque as dependências não batem com o que o projeto espera).
+  </p>
+</blockquote>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/%F0%9F%90%B3-Docker%20Desktop%20instalado%20%26%20ABERTO-2496ED?style=for-the-badge&logo=docker&logoColor=white&labelColor=1E1E1E" 
+       alt="Docker Desktop instalado e aberto" />
+</p>
+
+## 1. Backend
+```bash
+git clone https://github.com/maysanazario/backend_fatecProjeto.git
+cd backend_fatecProjeto
+pnpm install
+```
+Se aparecer `ERR_PNPM_IGNORED_BUILDS`, rode:
+```bash
+pnpm approve-builds
+# marca todos pressionando a tecla 'a' (prisma, @prisma/client, argon2, esbuild, etc.) e confirma pressionando 'enter'
+pnpm install
+```
+## Banco de dados (Docker)
+
+```bash
+docker compose up -d
+```
+
+Sobe MySQL 8 e o Adminer (`http://localhost:8080`).
+
+<blockquote>
+  <p align="center">
+    <strong>⚠️ IMPORTANTE:</strong> A porta exposta é <code>3307</code>, <strong>não</strong> <code>3306</code>.
+  </p>
+  <p align="center">
+    O <code>docker-compose.yml</code> mapeia essa porta de propósito, para <strong>não conflitar</strong> 
+    com um MySQL local que a pessoa já tenha. O <code>.env.example</code> mostra <code>3306</code> — 
+    <strong>precisa trocar</strong>.
+  </p>
+</blockquote>
+
+<blockquote>
+  <p align="center">
+    <strong>⚠️ AVISO DE PORTAS (Ambiente Acadêmico / Redes Restritas)</strong>
+  </p>
+  
+  <p align="left">
+    <strong>1️⃣ MySQL:</strong>
+    <br />
+    &nbsp;&nbsp;• Porta no host: <code>3307</code>
+    <br />
+    &nbsp;&nbsp;• Porta no container: <code>3306</code>
+    <br />
+    &nbsp;&nbsp;• <em>(Mapeamento feito propositalmente para não conflitar com MySQL local)</em>
+  </p>
+  
+  <p align="left">
+    <strong>2️⃣ Adminer (Interface Web):</strong>
+    <br />
+    &nbsp;&nbsp;• Acesse: <code>http://localhost:8080</code>
+    <br />
+    &nbsp;&nbsp;• Server: <code>db</code> | User: <code>root</code> | Pass: <code>root</code> | DB: <code>workflow_fatec</code>
+  </p>
+  
+  <p align="left">
+    <strong>3️⃣ Se a porta 8080 estiver em uso:</strong>
+    <br />
+    &nbsp;&nbsp;• Edite o <code>docker-compose.yml</code>
+    <br />
+    &nbsp;&nbsp;• Altere <code>"8080:8080"</code> para <code>"8081:8080"</code> (ou porta disponível)
+    <br />
+    &nbsp;&nbsp;• Exemplo: <code>ports: - "8081:8080"</code>
+  </p>
+</blockquote>
+
+## Variáveis de ambiente
+
+```bash
+cp .env.example .env
+```
+
+No `.env`, ajuste:
+
+```dotenv
+DATABASE_URL="mysql://root:root@localhost:3307/workflow_fatec"
+CORS_ORIGIN=http://localhost:3000,http://192.168.152.1:3000
+APP_WEB_URL=http://localhost:3000
+```
+
+- `CORS_ORIGIN` por padrão vem `http://localhost:5173` (porta de outro framework) — se não trocar pra `3000`, o login falha com "Failed to fetch" (é CORS bloqueado, mas o navegador não deixa claro).
+- `APP_WEB_URL` é usado pra montar os links de e-mail (reset de senha, primeiro acesso).
+- **Anote os valores de `JWT_ACCESS_SECRET`, `JWT_ISSUER` e `JWT_AUDIENCE`** — o frontend precisa dos mesmos valores exatos (ver seção do frontend).
+
+## Banco: gerar client e aplicar schema
+
+```bash
+pnpm prisma:generate
+pnpm prisma:migrate
+```
+
+### Popular com usuários de teste
+
+```bash
+pnpm prisma:seed
+```
+
+Cria:
+
+| Papel | Login | Senha | Observação |
+|---|---|---|---|
+| Administrador | `admin@example.com` | `wf-fatec2026` | Entra direto |
+| Secretaria (Backoffice) | `ana.costa@fatec.sp.gov.br` | `Fatec@2026` | Pede troca de senha no 1º acesso |
+| Aluno | RA `123456789` | `Fatec@2026` | Pede troca de senha no 1º acesso |
+| Aluno | RA `987654321` | `Fatec@2026` | Pede troca de senha no 1º acesso |
+| Aluno | RA `998877665` | `Fatec@2026` | Pede troca de senha no 1º acesso |
+
+### Rodar
+
+```bash
+pnpm dev
+```
+
+Sobe em `http://localhost:3333`.
+
+---
+## 2. Frontend
+
+```bash
+git clone https://github.com/maysanazario/frontend_fatecProjeto.git
+cd frontend_fatecProjeto
+pnpm install
+```
+
+Se aparecer `ERR_PNPM_IGNORED_BUILDS`, mesmo procedimento do backend (`pnpm approve-builds` + `pnpm install` de novo).
+
+### Variáveis de ambiente
+
+```bash
+cp .env.example .env.local
+```
+
+⚠️ **Tem que ser `.env.local`, não `.env`** — é a convenção do Next.js, e sem isso `NEXT_PUBLIC_API_BASE_URL` fica vazia (o fetch do login cai em `localhost:3000/auth/login`, que não existe, e dá 404 disfarçado de erro genérico).
+
+No `.env.local`:
+
+```dotenv
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3333
+JWT_ACCESS_SECRET=<mesmo valor do .env do backend>
+JWT_ISSUER=<mesmo valor do .env do backend>
+JWT_AUDIENCE=<mesmo valor do .env do backend>
+```
+
+⚠️ **Ponto que mais confunde:** o `middleware.ts` do frontend valida o JWT de novo no servidor (pra proteger as rotas `/admin` e `/aluno`). Se `JWT_ACCESS_SECRET` (e issuer/audience) não forem **idênticos** aos do backend, a verificação falha silenciosamente — o login parece funcionar (token é gerado, toast de sucesso aparece), mas a pessoa é redirecionada de volta pro `/login` sem nenhuma mensagem de erro.
+
+### Rodar
+
+```bash
+pnpm dev
+```
+
+Sobe em `http://localhost:3000`.
+
+---
+
+## Ordem recomendada pra testar do zero
+
+1. Backend rodando (`pnpm dev` no terminal 1)
+2. Frontend rodando (`pnpm dev` no terminal 2)
+3. Acessar `http://localhost:3000/login`
+4. Testar aba "Funcionário" com `admin@example.com` / `wf-fatec2026` → deve cair em `/admin/home`
+5. Testar aba "Aluno (RA)" com RA `123456789` / `Fatec@2026` → espera-se erro 428 (obrigatoriedade de trocar senha), fluxo de "Primeiro acesso"
+
+## Bug conhecido (ainda não corrigido em produção)
+
+Na tela de login, os campos das abas "Funcionário" e "Aluno (RA)" compartilhavam o mesmo estado (`identifier`), e havia uma troca automática de aba enquanto a pessoa digitava um e-mail (detectava padrão de RA no meio da digitação). Corrigido localmente em `app/(public)/login/LoginContent.tsx`:
+- Removida a troca automática de aba em `handleIdentifierChange`.
+- Criada `handleModeChange`, que limpa o campo (`identifier`) ao trocar de aba manualmente.
+
+# Guia de Commits e Colaboração
 
 ## 🎯 Convenção de Commits
 
