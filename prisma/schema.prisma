@@ -184,6 +184,7 @@ model Usuario {
   usuarioSetores     UsuarioSetor[]
   loginTentativas    LoginTentativa[]         @relation("LoginTentativasDoUsuario")
   notificacoes       Notificacao[]            @relation("NotificacoesDoUsuario")
+  sugestoes          Sugestao[]
 
   @@index([emailPessoal])
   @@index([organizacaoId])
@@ -519,4 +520,22 @@ model ComunicacaoTemplate {
   atualizadoEm DateTime @updatedAt
 
   @@map("comunicacao_templates")
+}
+
+/// Caixa de Sugestões: mensagem livre enviada por um aluno/funcionário,
+/// vinculada ao usuário autenticado (o R.A. é obtido via relação com Usuario,
+/// não duplicado aqui). Limite de 1000 caracteres definido em aplicação —
+/// ajustar caso o padrão real do banco use outro valor (ver TODO em
+/// src/validators/sugestoes.ts).
+model Sugestao {
+  id        String   @id @default(cuid())
+  usuarioId String
+  conteudo  String   @db.Text
+  criadoEm  DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([criadoEm])
+  @@map("sugestoes")
 }
