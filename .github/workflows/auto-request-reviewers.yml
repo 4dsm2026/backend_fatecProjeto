@@ -23,16 +23,17 @@ jobs:
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
 
-            // Mapeamento: Slug do GitHub Team -> Líderes responsáveis
+            // Mapeamento atualizado: Slug do GitHub Team -> Líderes responsáveis
             const TEAM_LEADERS = {
               'novas-funcs-um': ['MDAS-3510'],
               'novas-funcs-dois': ['ghzzzz1'],
               'qa': ['malusouza2212'],
-              'docs-devops': ['maysanazario', 'Rian-Nito'],
-              'refatoracao': ['maysanazario', 'Rian-Nito']
+              'docs-devops': ['maysanazario'],
+              'refatoracao': ['Julianaap02-prog'],
+              'ux-ui': ['victoriaheloisaa']
             };
 
-            const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito', 'MDAS-3510', 'ghzzzz1'];
+            const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito'];
             let leadsToRequest = [];
 
             // 1. Identifica dinamicamente se o autor faz parte dos times
@@ -44,7 +45,7 @@ jobs:
                   username: author,
                 });
 
-                if (response.data.state === 'active') {
+                if (response.data && response.data.state === 'active') {
                   core.info(`Autor ${author} identificado no time: ${teamSlug}`);
                   leadsToRequest.push(...leaders);
                 }
@@ -73,7 +74,6 @@ jobs:
                 }
               );
 
-              // Adapte o regex conforme as pastas do seu projeto backend
               const touchesCriticalBackendFiles = changedFiles.some(({ filename }) =>
                 /^(prisma|src\/db|src\/config|src\/models|migrations)\//.test(filename) ||
                 /\.(sql|prisma)$/.test(filename) ||
