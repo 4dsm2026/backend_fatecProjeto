@@ -7,7 +7,6 @@ on:
 permissions:
   pull-requests: write
   contents: read
-  members: read
 
 jobs:
   request-reviewers:
@@ -17,25 +16,26 @@ jobs:
       - name: Identify Team and Request Leader
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Use o secret gerado com acesso à Org (read:org)
+          github-token: ${{ secrets.ORG_READ_TOKEN }}
           script: |
             const org = context.repo.owner;
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
 
-            // Mapeamento: Slug exato do GitHub Team -> Usuário(s) Líder(es)
+            // Mapeamento: Slug do GitHub Team -> Líderes responsáveis
             const TEAM_LEADERS = {
               'novas-funcs-um': ['MDAS-3510'],
               'novas-funcs-dois': ['ghzzzz1'],
               'qa': ['malusouza2212'],
               'docs-devops': ['maysanazario', 'Rian-Nito'],
-              'refatoracao': ['maysanazario', 'Rian-Nito'],
+              'refatoracao': ['maysanazario', 'Rian-Nito']
             };
 
             const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito', 'MDAS-3510', 'ghzzzz1'];
             let leadsToRequest = [];
 
-            // 1. Identifica os times da organização aos quais o autor pertence
+            // 1. Identifica dinamicamente se o autor faz parte dos times
             for (const [teamSlug, leaders] of Object.entries(TEAM_LEADERS)) {
               try {
                 const response = await github.rest.teams.getMembershipForUserInOrg({
@@ -55,13 +55,13 @@ jobs:
               }
             }
 
-            // Fallback se o desenvolvedor não estiver em nenhum time mapeado
+            // Fallback: autor sem time identificado
             if (leadsToRequest.length === 0) {
               core.info(`Autor ${author} sem time mapeado. Aplicando líderes padrão.`);
               leadsToRequest = [...DEFAULT_LEADS];
             }
 
-            // 2. Análise de arquivos críticos de Backend (Banco, Migrations e Schemas)
+            // 2. Análise específica de Backend (Migrations, Schemas, ORM, Configurações)
             try {
               const { data: changedFiles } = await github.paginate(
                 github.rest.pulls.listFiles,
@@ -73,24 +73,25 @@ jobs:
                 }
               );
 
-              const touchesDbOrConfig = changedFiles.some(({ filename }) =>
-                /^(prisma|src\/db|src\/config)\//.test(filename) ||
+              // Adapte o regex conforme as pastas do seu projeto backend
+              const touchesCriticalBackendFiles = changedFiles.some(({ filename }) =>
+                /^(prisma|src\/db|src\/config|src\/models|migrations)\//.test(filename) ||
                 /\.(sql|prisma)$/.test(filename) ||
-                filename === 'package.json'
+                filename === 'package.json' ||
+                filename === '.env.example'
               );
 
-              if (touchesDbOrConfig) {
-                core.info('PR altera banco/configurações críticas; incluindo líderes de arquitetura/refatoração.');
+              if (touchesCriticalBackendFiles) {
+                core.info('PR altera banco/configurações críticas; incluindo líderes de refatoração.');
                 leadsToRequest.push(...TEAM_LEADERS['refatoracao']);
               }
             } catch (error) {
               core.warning(`Não foi possível analisar arquivos modificados: ${error.message}`);
             }
 
-            // 3. Limpeza: remove placeholders, duplicados e o próprio autor do PR
-            const reviewers = leadsToRequest
+            // 3. Sanitização: remove duplicatas e impede o autor de se auto-atribuir
+            const reviewers = [...new Set(leadsToRequest)]
               .filter((lead) => !lead.startsWith('TO_DO_'))
-              .filter((lead, index, list) => list.indexOf(lead) === index)
               .filter((lead) => lead.toLowerCase() !== author.toLowerCase());
 
             if (reviewers.length === 0) {
@@ -102,12 +103,12 @@ jobs:
 
             try {
               await github.rest.pulls.requestReviewers({
-                owner: context.repo.owner,
+                owner: org,
                 repo: context.repo.repo,
                 pull_number: prNumber,
-                reviewers,
+                reviewers: reviewers,
               });
-              core.info(`Revisores atribuídos com sucesso.`);
+              core.info('Revisores atribuídos com sucesso.');
             } catch (error) {
               core.warning(`Falha ao atribuir revisores: ${error.message}`);
             }
