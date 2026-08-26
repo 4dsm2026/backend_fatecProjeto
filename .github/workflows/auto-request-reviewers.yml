@@ -23,7 +23,7 @@ jobs:
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
 
-            // Mapeamento atualizado: Slug do GitHub Team -> Líderes responsáveis
+            // Mapeamento: Slug do GitHub Team -> Líderes responsáveis
             const TEAM_LEADERS = {
               'novas-funcs-um': ['MDAS-3510'],
               'novas-funcs-dois': ['ghzzzz1'],
@@ -34,9 +34,11 @@ jobs:
             };
 
             const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito'];
-            let leadsToRequest = [];
 
-            // 1. Identifica dinamicamente se o autor faz parte dos times
+            // 1. Sempre inclui os líderes padrão em todas as revisões
+            let leadsToRequest = [...DEFAULT_LEADS];
+
+            // 2. Identifica dinamicamente o time do autor e adiciona o líder correspondente
             for (const [teamSlug, leaders] of Object.entries(TEAM_LEADERS)) {
               try {
                 const response = await github.rest.teams.getMembershipForUserInOrg({
@@ -56,13 +58,7 @@ jobs:
               }
             }
 
-            // Fallback: autor sem time identificado
-            if (leadsToRequest.length === 0) {
-              core.info(`Autor ${author} sem time mapeado. Aplicando líderes padrão.`);
-              leadsToRequest = [...DEFAULT_LEADS];
-            }
-
-            // 2. Análise específica de Backend (Migrations, Schemas, ORM, Configurações)
+            // 3. Análise de arquivos críticos de Backend (Banco, Configurações, Migrations)
             try {
               const { data: changedFiles } = await github.paginate(
                 github.rest.pulls.listFiles,
@@ -89,7 +85,7 @@ jobs:
               core.warning(`Não foi possível analisar arquivos modificados: ${error.message}`);
             }
 
-            // 3. Sanitização: remove duplicatas e impede o autor de se auto-atribuir
+            // 4. Sanitização: remove duplicatas e impede o autor de se auto-atribuir
             const reviewers = [...new Set(leadsToRequest)]
               .filter((lead) => !lead.startsWith('TO_DO_'))
               .filter((lead) => lead.toLowerCase() !== author.toLowerCase());
