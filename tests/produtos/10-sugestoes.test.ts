@@ -34,24 +34,29 @@ beforeEach(() => {
 describe('POST /sugestoes — Caixa de Sugestões', () => {
 
   it('201 — cria uma nova sugestão com sucesso', async () => {
-    // PREPARAR (Arrange): Criamos uma sugestão falsa para o banco de dados fingir que salvou
+    // PREPARAR (Arrange): Criamos uma sugestão falsa contendo o emailContato obrigatório
     const novaSugestaoFalsa = {
       id: 'sug_123',
       conteudo: 'Testando a urna direto pelo motor, sem navegador!',
       usuarioId: 'usu_123',
+      emailContato: 'aluno@fatec.sp.gov.br',
+      status: 'NAO_RESPONDIDO',
+      resposta: null,
+      respondidoPorId: null,
+      respondidoEm: null,
       criadoEm: new Date()
     }
     
-    // ATENÇÃO: se o Lucas chamou a tabela de "Sugestao" (maiúsculo) ou diferente no código, ajuste aqui:
-    prismaMock.sugestao.create.mockResolvedValueOnce(novaSugestaoFalsa) 
+    prismaMock.sugestao.create.mockResolvedValueOnce(novaSugestaoFalsa as any) 
 
-    // AGIR (Act): O Fastify atira os dados contra a rota como se fosse o navegador
+    // AGIR (Act): O Fastify atira os dados contra a rota enviando o e-mail no payload
     const res = await app.inject({
       method: 'POST',
-      url: '/sugestoes', // Se a rota for no singular, mude para /sugestao
-      headers: bearerAuth(userToken), // Passando o crachá de login falso
+      url: '/sugestoes', 
+      headers: bearerAuth(userToken), 
       payload: {
-        conteudo: 'Testando a urna direto pelo motor, sem navegador!'
+        conteudo: 'Testando a urna direto pelo motor, sem navegador!',
+        emailContato: 'aluno@fatec.sp.gov.br'
       },
     })
 
