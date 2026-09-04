@@ -85,7 +85,7 @@ export async function buildApp() {
   });
 
   await app.register(fastifyCookie, {
-    secret: env.COOKIE_SECRET || "dev-secret",
+    secret: env.COOKIE_SECRET,
     parseOptions: {
       httpOnly: true,
       sameSite: env.NODE_ENV === "production" ? "none" : "lax",

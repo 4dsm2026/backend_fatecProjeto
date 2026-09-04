@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 
 /**
  * Hash deterministico SHA-256 para valores não-senhas (tokens, lookup keys).
