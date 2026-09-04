@@ -2,9 +2,6 @@ import fs from "fs/promises";
 import path from "path";
 import type { PrismaClient } from "@prisma/client";
 
-const BUSINESS_DAY_RETENTION = 7;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 /** Adds N business days (Mon–Fri) to a date, returning a new Date. */
 function addBusinessDays(date: Date, days: number): Date {
   const result = new Date(date);
@@ -17,10 +14,6 @@ function addBusinessDays(date: Date, days: number): Date {
   return result;
 }
 
-function shouldDeleteAnexo(enviadoEm: Date, now: Date): boolean {
-  return addBusinessDays(enviadoEm, BUSINESS_DAY_RETENTION) <= now;
-}
-
 /** Deletes attachments whose 7-business-day retention window has elapsed. */
 export async function runCleanupAnexos(
   prisma: PrismaClient,
@@ -28,7 +21,7 @@ export async function runCleanupAnexos(
 ): Promise<void> {
   const now = new Date();
   // 7 calendar days is the minimum for 7 business days — safe pre-filter
-  const preFilter = new Date(now.getTime() - BUSINESS_DAY_RETENTION * MS_PER_DAY);
+  const preFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const candidates = await prisma.anexo.findMany({
     where: { enviadoEm: { lt: preFilter } },
@@ -37,7 +30,8 @@ export async function runCleanupAnexos(
 
   let deleted = 0;
   for (const anexo of candidates) {
-    if (!shouldDeleteAnexo(anexo.enviadoEm, now)) continue;
+    const expiraEm = addBusinessDays(anexo.enviadoEm, 7);
+    if (expiraEm > now) continue;
 
     try {
       const filePath = path.isAbsolute(anexo.caminhoArquivo)

@@ -11,12 +11,10 @@ export interface MailDriver {
   send(opts: SendMailOptions): Promise<void>;
 }
 
-const DEFAULT_MAIL_FROM = "Suporte <no-reply@workflowfatec.com.br>";
-
 // ---------- AWS SES ----------
 class SESMailDriver implements MailDriver {
-  private readonly client: SESClient;
-  private readonly from: string;
+  private client: SESClient;
+  private from: string;
 
   constructor(from: string) {
     this.from = from;
@@ -47,10 +45,8 @@ class SESMailDriver implements MailDriver {
 
 // ---------- Resend (fallback) ----------
 class ResendMailDriver implements MailDriver {
-  private readonly from: string;
-  private readonly resend: {
-    emails: { send: (payload: { from: string; to: string; subject: string; html: string }) => Promise<unknown> };
-  };
+  private from: string;
+  private resend: any;
 
   constructor(from: string) {
     this.from = from;
@@ -79,7 +75,7 @@ export function getMailDriver(): MailDriver {
   const from =
     process.env.MAIL_FROM ||
     process.env.RESEND_FROM ||
-    DEFAULT_MAIL_FROM;
+    "Suporte <no-reply@workflowfatec.com.br>";
 
   if (driver === "ses") {
     _instance = new SESMailDriver(from);
