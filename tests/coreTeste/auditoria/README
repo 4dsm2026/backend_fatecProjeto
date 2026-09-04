@@ -104,6 +104,150 @@ Cria duas datas (`new Date('2026-01-01')` e `new Date('2026-01-31')`, formato IS
 
 ---
 
+## `auditoria.controller.ts` — camada HTTP
+
+Diferente do `service` (que mocka o Prisma), aqui o `AuditoriaService` inteiro é substituído por um **fake service** injetado direto no construtor do controller — não precisa de `vi.mock`. O `req`/`reply` também são objetos falsos montados na mão. `reply` sempre tem `send: vi.fn()`, e `code: vi.fn().mockReturnThis()` (necessário para a chamada encadeada `reply.code(201).send(...)` usada em `registrar`).
+
+### `listar` — devolve todos os logs
+
+Código testado:
+```typescript
+listar = async (req: FastifyRequest, reply: FastifyReply) => {
+  const logs = await this.service.listar();
+  return reply.send(logs);
+};
+```
+
+Teste:
+```typescript
+it('deve listar todos os logs de auditoria', async () => {
+    const fakeService: any = {
+        listar: vi.fn().mockResolvedValue([
+            { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
+        ])
+    }
+
+    const controller = new AuditoriaController(fakeService)
+
+    const mockRequest: any = {}
+    const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() }
+
+    await controller.listar(mockRequest, mockReply)
+
+    expect(fakeService.listar).toHaveBeenCalled()
+    expect(mockReply.send).toHaveBeenCalledWith([
+        { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
+    ])
+})
+```
+Como `listar()` não recebe parâmetros, `req` pode ser um objeto vazio (`{}`) — ele nunca é lido pelo método. O `expect(fakeService.listar).toHaveBeenCalled()` (sem `With`) confirma só que foi chamado, já que não há argumento a conferir.
+
+### `listarPorUsuario` — lê o `id` da URL (`req.params`)
+
+Código testado:
+```typescript
+listarPorUsuario = async (req: FastifyRequest<{ Params: ListarPorUsuarioParams }>, reply) => {
+  const { id } = req.params;
+  const logs = await this.service.listarPorUsuario(id);
+  return reply.send(logs);
+};
+```
+
+Teste:
+```typescript
+it('deve listar os logs de auditoria por usuário', async () => {
+    const fakeService: any = {
+        listarPorUsuario: vi.fn().mockResolvedValue([
+            { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
+        ])
+    }
+    const controller = new AuditoriaController(fakeService)
+
+    const mockRequest: any = { params: { id: 'user-admin-88' } }
+    const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() }
+
+    await controller.listarPorUsuario(mockRequest, mockReply)
+
+    expect(fakeService.listarPorUsuario).toHaveBeenCalledWith('user-admin-88')
+    expect(mockReply.send).toHaveBeenCalledWith([
+        { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
+    ])
+})
+```
+O `mockRequest` precisa ter `params: { id }` aninhado — igual à URL real (`/auditoria/usuario/:id`), não um `id` solto na raiz do objeto.
+
+### `listarPorPeriodo` — lê `inicio`/`fim` da query string e converte pra `Date`
+
+Código testado:
+```typescript
+listarPorPeriodo = async (req: FastifyRequest<{ Querystring: ListarPorPeriodoQuery }>, reply) => {
+  const { inicio, fim } = req.query;
+  const logs = await this.service.listarPorPeriodo(new Date(inicio), new Date(fim));
+  return reply.send(logs);
+};
+```
+
+Teste:
+```typescript
+it('Deve listar os logs de auditoria por periodo', async () => {
+    const fakeService: any = {
+        listarPorPeriodo: vi.fn().mockResolvedValue([
+            { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
+        ])
+    }
+    const controller = new AuditoriaController(fakeService)
+
+    const mockRequest: any = { query: { inicio: '2026-01-01', fim: '2026-01-31' } }
+    const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() }
+
+    await controller.listarPorPeriodo(mockRequest, mockReply)
+
+    expect(fakeService.listarPorPeriodo).toHaveBeenCalledWith(
+        new Date('2026-01-01'),
+        new Date('2026-01-31')
+    )
+    expect(mockReply.send).toHaveBeenCalledWith([
+        { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
+    ])
+})
+```
+Ponto importante: `req.query.inicio`/`fim` chegam como **strings** (vêm de texto na URL), mas o controller converte pra `new Date(...)` antes de repassar pro service — por isso o `expect` compara com objetos `Date`, não com as strings originais. O Vitest compara `Date` pelo valor, não pela referência, então dois `new Date('2026-01-01')` criados separadamente ainda são considerados iguais.
+
+### `registrar` — lê o corpo da requisição e responde com status 201
+
+Código testado:
+```typescript
+registrar = async (req: FastifyRequest<{ Body: RegistrarAuditoriaDTO }>, reply: FastifyReply) => {
+  const log = await this.service.registrar(req.body);
+  return reply.code(201).send(log);
+};
+```
+
+Teste:
+```typescript
+it('deve registrar um novo log de auditoria', async () => {
+    const fakeService: any = {
+        registrar: vi.fn().mockResolvedValue({ id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' })
+    }
+
+    const controller = new AuditoriaController(fakeService)
+
+    const mockRequest: any = {
+        body: { acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
+    }
+    const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() }
+
+    await controller.registrar(mockRequest, mockReply)
+
+    expect(fakeService.registrar).toHaveBeenCalledWith(mockRequest.body)
+    expect(mockReply.code).toHaveBeenCalledWith(201)
+    expect(mockReply.send).toHaveBeenCalledWith({ id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' })
+})
+```
+Diferente dos outros três métodos (que usam `reply.send(...)` puro, status 200 implícito), `registrar` encadeia `reply.code(201).send(log)` — por isso o teste confere tanto `mockReply.code` quanto `mockReply.send`, e o `mockReply.code` precisa ser `vi.fn().mockReturnThis()` (não um número fixo) pra suportar essa chamada encadeada.
+
+---
+
 ## Escopo
 
-O `auditoria.controller.ts` (rotas HTTP) não foi coberto por teste — a decisão foi focar a cobertura na camada de serviço (`AuditoriaService`), onde está a lógica de negócio real. O controller é fino (só repassa pro service e devolve a resposta), sem tratamento de erro específico que justifique um teste separado no momento.
+Cobertos: `AuditoriaService` (4 métodos) e `AuditoriaController` (4 métodos). Não coberto: `auditoria.routes.ts` (apenas registra as rotas no Fastify, sem lógica própria).
