@@ -1,0 +1,109 @@
+# Testes Unitários — Módulo Auditoria (AuditoriaService)
+
+Responsável: **Matheus**
+Arquivo testado: `src/core/auditoria/auditoria.service.ts`
+
+## Como rodar os testes
+
+```bash
+npx vitest run tests/coreTeste/auditoria/auditoria.service.test.ts
+```
+
+Isso executa só os testes desse arquivo. Pra rodar a suíte inteira do backend, use `npm test` na raiz do projeto.
+
+---
+
+## O que está sendo testado
+
+O `AuditoriaService` é a classe responsável por **criar e consultar** o histórico de auditoria do sistema (quem fez o quê, e quando). Ela nunca fala com o banco de dados de verdade durante os testes — o Prisma inteiro é substituído por uma versão falsa (`prismaMock`, definida em `src/lib/__mocks__/prisma.ts`), ativada no topo do arquivo de teste com:
+
+```typescript
+vi.mock('../../../src/lib/prisma')
+import { prismaMock } from '../../../src/lib/__mocks__/prisma'
+```
+
+Isso garante que os testes são rápidos e não dependem de um banco MySQL rodando.
+
+---
+
+## Testes escritos
+
+### `registrar` — cria uma nova entrada de auditoria
+
+Código testado:
+```typescript
+async registrar(data: RegistrarAuditoriaDTO) {
+  return prisma.auditoria.create({
+    data: {
+      acao: data.acao,
+      alvo: data.alvo ?? null,
+      meta: data.meta ?? undefined,
+      feitoPorId: data.feitoPorId ?? null,
+    },
+  });
+}
+```
+
+**Teste 1 — caminho feliz: "deve registrar um log de auditoria"**
+Simula um admin fechando um ticket (`CHAMADO_FECHADO`). Programa o Prisma falso pra devolver o registro criado, chama `registrar(...)` e confirma duas coisas: que o Prisma foi chamado com os dados corretos, e que o método devolveu o registro criado.
+
+**Teste 2 — caminho de erro: "deve propagar o erro quando o Prisma falha ao registrar"**
+Simula uma falha de infraestrutura (ex: banco fora do ar), não um erro nos dados enviados. Usa `mockRejectedValue` pra fazer o Prisma falso "rejeitar" a operação, e confirma que `registrar` **deixa o erro subir** (não tem `try/catch` no código, de propósito) em vez de escondê-lo.
+
+### `listar` — busca todos os logs de auditoria
+
+Código testado:
+```typescript
+async listar() {
+  return prisma.auditoria.findMany({
+    orderBy: { feitoEm: "desc" },
+    include: { feitoPor: true },
+  });
+}
+```
+
+**Teste — "deve listar todos os logs da auditoria"**
+Programa o Prisma falso pra devolver uma lista fake de 2 registros. Confirma que `findMany` foi chamado com a ordenação correta (mais recente primeiro) e trazendo os dados de quem fez cada ação (`include: { feitoPor: true }`), e que `listar()` devolve exatamente essa lista.
+
+### `listarPorUsuario` — busca os logs feitos por um usuário específico
+
+Código testado:
+```typescript
+async listarPorUsuario(usuarioId: string) {
+  return prisma.auditoria.findMany({
+    where: { feitoPorId: usuarioId },
+    orderBy: { feitoEm: "desc" },
+    include: { feitoPor: true },
+  });
+}
+```
+
+**Teste — "Deve Listar todos os logs da auditoria por ID"**
+Mesmo padrão do `listar`, agora passando um `usuarioId` (ex: `'user-admin-88'`). Confirma que o Prisma foi chamado com o filtro `where: { feitoPorId: usuarioId }` correto, junto da ordenação e do `include`, e que o resultado bate com a lista fake programada.
+
+### `listarPorPeriodo` — busca os logs feitos entre duas datas
+
+Código testado:
+```typescript
+async listarPorPeriodo(inicio: Date, fim: Date) {
+  return prisma.auditoria.findMany({
+    where: {
+      feitoEm: {
+        gte: inicio,
+        lte: fim,
+      },
+    },
+    orderBy: { feitoEm: "desc" },
+    include: { feitoPor: true },
+  });
+}
+```
+
+**Teste — "Deve listar todos os logs da auditoria por periodo"**
+Cria duas datas (`new Date('2026-01-01')` e `new Date('2026-01-31')`, formato ISO para não dar ambiguidade de dia/mês) e passa pro método. Confirma que o Prisma foi chamado com o filtro de intervalo (`gte`/`lte`) correto, e que o resultado bate com a lista fake programada.
+
+---
+
+## Escopo
+
+O `auditoria.controller.ts` (rotas HTTP) não foi coberto por teste — a decisão foi focar a cobertura na camada de serviço (`AuditoriaService`), onde está a lógica de negócio real. O controller é fino (só repassa pro service e devolve a resposta), sem tratamento de erro específico que justifique um teste separado no momento.

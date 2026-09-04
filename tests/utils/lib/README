@@ -1,0 +1,64 @@
+# Testes Unitários — registrarAuditoria (lib)
+
+Responsável: **Matheus**
+Arquivo testado: `src/lib/auditoria.ts`
+
+## Como rodar os testes
+
+```bash
+npx vitest run tests/utils/lib/auditoria.test.ts
+```
+
+Isso executa só os testes desse arquivo. Pra rodar a suíte inteira do backend, use `npm test` na raiz do projeto.
+
+---
+
+## O que está sendo testado
+
+`registrarAuditoria` é uma **função solta** (não pertence a nenhuma classe), usada por outros módulos do sistema pra registrar uma ação de forma automática — por exemplo, quando um usuário faz login. É diferente do `AuditoriaService` (pasta `tests/coreTeste/auditoria/`): aquele é usado por quem **consulta/gerencia** os logs de auditoria; este é usado internamente pelo próprio sistema pra **gerar** logs como efeito colateral de outras ações.
+
+Código completo:
+```typescript
+export async function registrarAuditoria({
+  feitoPorId,
+  acao,
+  alvo = null,
+  meta = null,
+}: {
+  feitoPorId?: string | null;
+  acao: string;
+  alvo?: string | null;
+  meta?: any;
+}): Promise<void> {
+  const logger = getLogger();
+  try {
+    await prisma.auditoria.create({
+      data: { feitoPorId: feitoPorId ?? null, acao, alvo, meta },
+    });
+  } catch (error) {
+    logger?.error({ error, acao, alvo }, "Erro ao registrar auditoria (não-fatal)");
+  }
+}
+```
+
+A diferença de comportamento mais importante em relação ao `AuditoriaService.registrar` está no `try/catch`: essa função **nunca lança exceção**, mesmo se o Prisma falhar — o erro é só logado, silenciosamente. Isso é intencional (comentário no próprio código: "falhas de auditoria não devem derrubar o fluxo principal").
+
+Assim como no outro módulo, o Prisma é substituído por uma versão falsa nos testes:
+```typescript
+vi.mock('../../../src/lib/prisma')
+import { prismaMock } from '../../../src/lib/__mocks__/prisma'
+```
+
+---
+
+## Testes escritos
+
+**Teste 1 — caminho feliz: "Verificar se ele manda os dados para o banco"**
+Programa o Prisma falso pra devolver um registro criado, chama `registrarAuditoria({...})` diretamente (sem `new`, já que não é uma classe), e confirma com `toHaveBeenCalledWith` que o Prisma foi chamado com os dados corretos.
+
+**Teste 2 — comportamento de resiliência: "não deve lançar exceção quando o Prisma falha"**
+Simula uma falha de infraestrutura com `mockRejectedValue`. Diferente do teste equivalente no `AuditoriaService` (onde o erro deveria **subir**), aqui o objetivo é provar o oposto: a função **engole o erro** e termina normalmente. Usa a sintaxe assíncrona `resolves` (em vez de `rejects`) porque se espera que a Promise termine com sucesso, mesmo com o Prisma falhando por dentro:
+
+```typescript
+await expect(registrarAuditoria({...})).resolves.not.toThrow()
+```
