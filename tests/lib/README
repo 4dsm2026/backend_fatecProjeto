@@ -6,10 +6,10 @@ Arquivo testado: `src/lib/auditoria.ts`
 ## Como rodar os testes
 
 ```bash
-npx vitest run tests/utils/lib/auditoria.test.ts
+pnpm vitest run tests/lib/auditoria.test.ts
 ```
 
-Isso executa só os testes desse arquivo. Pra rodar a suíte inteira do backend, use `npm test` na raiz do projeto.
+Isso executa só os testes desse arquivo. Pra rodar a suíte inteira do backend, use `pnpm test` na raiz do projeto.
 
 ---
 

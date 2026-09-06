@@ -1,8 +1,7 @@
 import { vi, describe, it, expect } from 'vitest'
-vi.mock('../../../src/lib/prisma')
-import { prismaMock } from '../../../src/lib/__mocks__/prisma'
-import { registrarAuditoria } from '../../../src/lib/auditoria'
-import { error } from 'console'
+vi.mock('../../src/lib/prisma')
+import { prismaMock } from '../../src/lib/__mocks__/prisma'
+import { registrarAuditoria } from '../../src/lib/auditoria'
 
 describe('auditoria-tests', () => {
 
@@ -25,6 +24,7 @@ describe('auditoria-tests', () => {
             }
         })
     })
+
     it('não deve lançar exceção quando o Prisma falha', async () => {
         prismaMock.auditoria.create.mockRejectedValue(new Error('Erro de conexão com o banco'))
 
