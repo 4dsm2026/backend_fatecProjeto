@@ -1,5 +1,6 @@
 // src/config/mail.ts – Serviço de email abstrato (SES ou Resend)
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import { Resend } from "resend";
 
 export interface SendMailOptions {
   to: string;
@@ -54,8 +55,6 @@ class ResendMailDriver implements MailDriver {
 
   constructor(from: string) {
     this.from = from;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Resend } = require("resend");
     this.resend = new Resend(process.env.RESEND_API_KEY!);
   }
 
