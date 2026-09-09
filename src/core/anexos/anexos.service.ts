@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { FastifyRequest } from 'fastify';
+import type { PrismaClient } from '@prisma/client';
+import type { FastifyRequest } from 'fastify';
 import { notifyMany } from '../notifications/notify';
 
 type Ctx = PrismaClient;

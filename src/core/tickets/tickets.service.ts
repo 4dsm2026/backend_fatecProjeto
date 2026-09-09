@@ -1,6 +1,7 @@
-import { PrismaClient, StatusChamado } from '@prisma/client';
 import { randomBytes } from 'crypto';
-import { TicketsListQuery, TicketCreateInput, TicketUpdateInput } from './tickets.types';
+import { StatusChamado } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
+import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
 import { notifyMany } from '../notifications/notify';
 
 type Ctx = PrismaClient;
