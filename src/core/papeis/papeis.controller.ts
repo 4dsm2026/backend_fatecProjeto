@@ -27,7 +27,7 @@ export async function list(_req: FastifyRequest, res: FastifyReply) {
 /* POST /papeis */
 export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return (await res.code(400).send(parsed.error));
   const prisma = req.server.prisma;
   try {
     const papel = await createPapel(prisma, parsed.data!.body!);
@@ -41,11 +41,11 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
 /* GET /papeis/:id */
 export async function getOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return (await res.code(400).send(parsed.error));
   const prisma = req.server.prisma;
   try {
     const papel = await getPapel(prisma, parsed.data!.params!.id);
-    if (!papel) return void (await res.code(404).send({ error: "Papel não encontrado" }));
+    if (!papel) return (await res.code(404).send({ error: "Papel não encontrado" }));
     await res.send(papel);
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao buscar papel");
@@ -56,13 +56,13 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
 /* PATCH /papeis/:id */
 export async function patch(req: FastifyRequest, res: FastifyReply) {
   const parsed = updateValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return (await res.code(400).send(parsed.error));
   const prisma = req.server.prisma;
   try {
     const papel = await updatePapel(prisma, parsed.data!.params!.id, parsed.data!.body!);
     await res.send(papel);
   } catch (e: any) {
-    if (e?.code === "P2025") return void (await res.code(404).send({ error: "Papel não encontrado" }));
+    if (e?.code === "P2025") return (await res.code(404).send({ error: "Papel não encontrado" }));
     req.log.error({ e }, "💥 Erro ao atualizar papel");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -71,14 +71,14 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
 /* DELETE /papeis/:id */
 export async function removeHard(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return (await res.code(400).send(parsed.error));
   const prisma = req.server.prisma;
   try {
     await deletePapel(prisma, parsed.data!.params!.id);
     await res.code(204).send();
   } catch (e: any) {
-    if (e?.statusCode === 409) return void (await res.code(409).send({ error: e.message }));
-    if (e?.code === "P2025")   return void (await res.code(404).send({ error: "Papel não encontrado" }));
+    if (e?.statusCode === 409) return (await res.code(409).send({ error: e.message }));
+    if (e?.code === "P2025")   return (await res.code(404).send({ error: "Papel não encontrado" }));
     req.log.error({ e }, "💥 Erro ao remover papel");
     await res.code(500).send({ error: errMsg(e) });
   }
