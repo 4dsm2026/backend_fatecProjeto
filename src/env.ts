@@ -16,6 +16,7 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES: z.string().default("7d"),
   JWT_ISSUER: z.string().default("helpdesk"),
   JWT_AUDIENCE: z.string().default("helpdesk-app"),
+  DEFAULT_TEMP_PASSWORD: z.string().min(1, "DEFAULT_TEMP_PASSWORD é obrigatório"),
 
   // Cookies
   COOKIE_SECRET: z.string().min(1).optional(),
