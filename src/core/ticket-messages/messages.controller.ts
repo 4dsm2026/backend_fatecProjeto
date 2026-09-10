@@ -24,25 +24,25 @@ const listValidator = buildRouteValidator({
 /* POST /tickets/:id/mensagens */
 export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return await res.code(400).send(parsed.error);
 
   const prisma = req.server.prisma;
   const authUser = req.user as { sub: string; role: string } | undefined;
   const userId = authUser?.sub;
-  if (!userId) return void (await res.code(401).send({ error: "Não autenticado" }));
+  if (!userId) return await res.code(401).send({ error: "Não autenticado" });
 
   try {
     const { id } = parsed.data!.params!;
     const { conteudo } = parsed.data!.body!;
 
     if (await alunoSemAcessoAoChamado(prisma, id, authUser))
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return await res.code(404).send({ error: "Chamado não encontrado" });
 
     const created = await createTicketMessage(prisma, id, userId, conteudo);
     await res.code(201).send(created);
   } catch (e: any) {
     if (e?.code === "P2025")
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return await res.code(404).send({ error: "Chamado não encontrado" });
     req.log.error({ e }, "💥 Erro ao criar mensagem do chamado");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -51,7 +51,7 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
 /* GET /tickets/:id/mensagens */
 export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return await res.code(400).send(parsed.error);
 
   const prisma = req.server.prisma;
   const authUser = req.user as { sub: string; role: string } | undefined;
@@ -61,13 +61,13 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
     const q = parsed.data!.query!;
 
     if (await alunoSemAcessoAoChamado(prisma, id, authUser))
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return await res.code(404).send({ error: "Chamado não encontrado" });
 
     const page = await listTicketMessages(prisma, id, q);
     await res.send(page);
   } catch (e: any) {
     if (e?.code === "P2025")
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return await res.code(404).send({ error: "Chamado não encontrado" });
     req.log.error({ e }, "💥 Erro ao listar mensagens do chamado");
     await res.code(500).send({ error: errMsg(e) });
   }

@@ -36,13 +36,13 @@ const listSetoresValidator = buildRouteValidator({
 /* POST /usuarios/:usuarioId/setores */
 export async function vincular(req: FastifyRequest, res: FastifyReply) {
   const parsed = vincularValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return await res.code(400).send(parsed.error);
   const prisma = req.server.prisma;
   try {
     const r = await vincularUsuarioSetor(prisma, parsed.data!.params!.usuarioId, parsed.data!.body!);
     await res.code(201).send(r);
   } catch (e: any) {
-    if (e?.statusCode === 409) return void (await res.code(409).send({ error: e.message }));
+    if (e?.statusCode === 409) return await res.code(409).send({ error: e.message });
     req.log.error({ e }, "💥 Erro ao vincular usuário ao setor");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -51,13 +51,13 @@ export async function vincular(req: FastifyRequest, res: FastifyReply) {
 /* PATCH /usuarios-setores/:usuarioSetorId */
 export async function alterarPapel(req: FastifyRequest, res: FastifyReply) {
   const parsed = alterarValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return await res.code(400).send(parsed.error);
   const prisma = req.server.prisma;
   try {
     const r = await alterarPapelUsuarioSetor(prisma, parsed.data!.params!.usuarioSetorId, parsed.data!.body!);
     await res.send(r);
   } catch (e: any) {
-    if (e?.code === "P2025") return void (await res.code(404).send({ error: "Vínculo não encontrado" }));
+    if (e?.code === "P2025") return await res.code(404).send({ error: "Vínculo não encontrado" });
     req.log.error({ e }, "💥 Erro ao alterar papel do vínculo");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -67,12 +67,12 @@ export async function alterarPapel(req: FastifyRequest, res: FastifyReply) {
 export async function desvincular(req: FastifyRequest, res: FastifyReply) {
   const prisma = req.server.prisma;
   const usuarioSetorId = (req.params as any)?.usuarioSetorId as string;
-  if (!usuarioSetorId) return void (await res.code(400).send({ error: "usuarioSetorId obrigatório" }));
+  if (!usuarioSetorId) return await res.code(400).send({ error: "usuarioSetorId obrigatório" });
   try {
     await desvincularUsuarioSetor(prisma, usuarioSetorId);
     await res.code(204).send();
   } catch (e: any) {
-    if (e?.code === "P2025") return void (await res.code(404).send({ error: "Vínculo não encontrado" }));
+    if (e?.code === "P2025") return await res.code(404).send({ error: "Vínculo não encontrado" });
     req.log.error({ e }, "💥 Erro ao desvincular usuário do setor");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -81,7 +81,7 @@ export async function desvincular(req: FastifyRequest, res: FastifyReply) {
 /* GET /setores/:setorId/usuarios */
 export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply) {
   const parsed = listUsersValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return await res.code(400).send(parsed.error);
   const prisma = req.server.prisma;
   try {
     const r = await listarUsuariosDoSetor(prisma, parsed.data!.params!.setorId, parsed.data!.query!);
@@ -95,7 +95,7 @@ export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply
 /* GET /usuarios/:usuarioId/setores */
 export async function listSetoresDoUsuario(req: FastifyRequest, res: FastifyReply) {
   const parsed = listSetoresValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return await res.code(400).send(parsed.error);
   const prisma = req.server.prisma;
   try {
     const r = await listarSetoresDoUsuario(prisma, parsed.data!.params!.usuarioId, parsed.data!.query!);
