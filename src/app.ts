@@ -228,15 +228,19 @@ export async function buildApp() {
     }
   };
 
-  app.decorate("notifyUsers", async (userIds: string[], data: any) => {
-    if (!userIds.length) return;
+  async function getInAppOptInUserIds(userIds: string[]): Promise<Set<string>> {
+    if (!userIds.length) return new Set();
 
-    // Respeita a preferência: só entrega a quem optou por notificações in-app.
     const optIn = await app.prisma.usuario.findMany({
       where: { id: { in: userIds }, notificacoesInApp: true },
       select: { id: true },
     });
-    const alvos = new Set(optIn.map((u: { id: string }) => u.id));
+
+    return new Set(optIn.map((u: { id: string }) => u.id));
+  }
+
+  app.decorate("notifyUsers", async (userIds: string[], data: any) => {
+    const alvos = await getInAppOptInUserIds(userIds);
 
     for (const userId of userIds) {
       if (!alvos.has(userId)) continue;

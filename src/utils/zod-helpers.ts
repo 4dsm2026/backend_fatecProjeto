@@ -49,14 +49,20 @@ export const zPagination = z.object({
 export const PAPEL_VALUES = ["USUARIO", "BACKOFFICE", "TECNICO", "ADMINISTRADOR"] as const;
 export type PapelValue = (typeof PAPEL_VALUES)[number];
 
+const normalizePapel = (value: string): string =>
+  value.trim().toUpperCase().replace(/\s+/g, "_");
+
+const isPapelValue = (value: string): value is PapelValue =>
+  (PAPEL_VALUES as readonly string[]).includes(value);
+
 export const zPapelStrict = z.enum(PAPEL_VALUES); // aceita só exatamente os valores
 
 /** Entrada flexível: "usuario", "técnico", "tecnico", etc -> normaliza p/ enum */
 export const zPapel = z
   .string()
   .trim()
-  .transform((v) => v.toUpperCase().replace(/\s+/g, "_"))
-  .refine((v) => (PAPEL_VALUES as readonly string[]).includes(v), "Papel inválido")
+  .transform(normalizePapel)
+  .refine(isPapelValue, "Papel inválido")
   .transform((v) => v as PapelValue);
 
 /** Papel opcional com default USUARIO */
@@ -64,8 +70,8 @@ export const zPapelOptional = z
   .string()
   .trim()
   .optional()
-  .transform((v) => (v ? v.toUpperCase().replace(/\s+/g, "_") : "USUARIO"))
-  .transform((v) => (PAPEL_VALUES as readonly string[]).includes(v) ? (v as PapelValue) : "USUARIO");
+  .transform((v) => (v ? normalizePapel(v) : "USUARIO"))
+  .transform((v) => (isPapelValue(v) ? v : "USUARIO"));
 
 /** Helper pra montar schema de rota (body/query/params) com parse + tipagem */
 export function buildRouteValidator<

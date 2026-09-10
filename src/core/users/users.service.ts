@@ -62,6 +62,46 @@ async function logAuditoria(
 
 type ServiceOpts = { feitoPorId?: string; meta?: any };
 
+async function buildUserPatch(data: UserUpdateDTO, d: any): Promise<Prisma.UsuarioUncheckedUpdateInput> {
+  const patch: Prisma.UsuarioUncheckedUpdateInput = {
+    nome:            data.nome            ?? undefined,
+    emailPessoal:    data.emailPessoal    ?? undefined,
+    emailEducacional: data.emailEducacional ?? undefined,
+    ra:              data.ra              ?? undefined,
+    cursoNome:       d.cursoNome          ?? undefined,
+    cursoSigla:      d.cursoSigla         ?? undefined,
+    papel:           (data.papel as any)  ?? undefined,
+    ativo:           typeof data.ativo === 'boolean'      ? data.ativo      : undefined,
+    anonimizado:     typeof data.anonimizado === 'boolean' ? data.anonimizado : undefined,
+    // Dados acadêmicos
+    unidadeFatec:        d.unidadeFatec        ?? undefined,
+    curso:               d.curso               ?? undefined,
+    eixoTecnologico:     d.eixoTecnologico     ?? undefined,
+    turno:               d.turno               ?? undefined,
+    turma:               d.turma               ?? undefined,
+    semestreAtual:       d.semestreAtual       ?? undefined,
+    matrizCurricular:    d.matrizCurricular    ?? undefined,
+    situacaoAcademica:   d.situacaoAcademica   ?? undefined,
+    anoSemestreIngresso: d.anoSemestreIngresso ?? undefined,
+    coordenadorCurso:    d.coordenadorCurso    ?? undefined,
+    // Contato e acessibilidade
+    telefoneCelular:               d.telefoneCelular               ?? undefined,
+    whatsapp:                      d.whatsapp                      ?? undefined,
+    canalPreferencialContato:      d.canalPreferencialContato      ?? undefined,
+    melhorPeriodoContato:          d.melhorPeriodoContato          ?? undefined,
+    necessitaAtendimentoAcessivel: typeof d.necessitaAtendimentoAcessivel === 'boolean'
+      ? d.necessitaAtendimentoAcessivel : undefined,
+    tipoAcessibilidade:      d.tipoAcessibilidade      ?? undefined,
+    observacoesAtendimento:  d.observacoesAtendimento  ?? undefined,
+    notificacoesInApp:       typeof d.notificacoesInApp === 'boolean' ? d.notificacoesInApp : undefined,
+  };
+
+  if ('organizacaoId' in data) patch.organizacaoId = data.organizacaoId as any;
+  if (d.senha) patch.senhaHash = await hashPassword(d.senha);
+
+  return patch;
+}
+
 export async function createUser(
   prisma: PrismaClient,
   data: UserCreateDTO,
@@ -167,42 +207,7 @@ export async function updateUser(
   opts?: ServiceOpts,
 ): Promise<UserResponse> {
   const d = data as any;
-
-  const patch: Prisma.UsuarioUncheckedUpdateInput = {
-    nome:            data.nome            ?? undefined,
-    emailPessoal:    data.emailPessoal    ?? undefined,
-    emailEducacional: data.emailEducacional ?? undefined,
-    ra:              data.ra              ?? undefined,
-    cursoNome:       d.cursoNome          ?? undefined,
-    cursoSigla:      d.cursoSigla         ?? undefined,
-    papel:           (data.papel as any)  ?? undefined,
-    ativo:           typeof data.ativo === 'boolean'      ? data.ativo      : undefined,
-    anonimizado:     typeof data.anonimizado === 'boolean' ? data.anonimizado : undefined,
-    // Dados acadêmicos
-    unidadeFatec:        d.unidadeFatec        ?? undefined,
-    curso:               d.curso               ?? undefined,
-    eixoTecnologico:     d.eixoTecnologico     ?? undefined,
-    turno:               d.turno               ?? undefined,
-    turma:               d.turma               ?? undefined,
-    semestreAtual:       d.semestreAtual       ?? undefined,
-    matrizCurricular:    d.matrizCurricular    ?? undefined,
-    situacaoAcademica:   d.situacaoAcademica   ?? undefined,
-    anoSemestreIngresso: d.anoSemestreIngresso ?? undefined,
-    coordenadorCurso:    d.coordenadorCurso    ?? undefined,
-    // Contato e acessibilidade
-    telefoneCelular:               d.telefoneCelular               ?? undefined,
-    whatsapp:                      d.whatsapp                      ?? undefined,
-    canalPreferencialContato:      d.canalPreferencialContato      ?? undefined,
-    melhorPeriodoContato:          d.melhorPeriodoContato          ?? undefined,
-    necessitaAtendimentoAcessivel: typeof d.necessitaAtendimentoAcessivel === 'boolean'
-      ? d.necessitaAtendimentoAcessivel : undefined,
-    tipoAcessibilidade:      d.tipoAcessibilidade      ?? undefined,
-    observacoesAtendimento:  d.observacoesAtendimento  ?? undefined,
-    notificacoesInApp:       typeof d.notificacoesInApp === 'boolean' ? d.notificacoesInApp : undefined,
-  };
-
-  if ('organizacaoId' in data) patch.organizacaoId = data.organizacaoId as any;
-  if (d.senha) patch.senhaHash = await hashPassword(d.senha);
+  const patch = await buildUserPatch(data, d);
 
   const before = await prisma.usuario.findUnique({ where: { id }, select: baseSelect });
   const updated = await prisma.usuario.update({ where: { id }, data: patch, select: baseSelect });
