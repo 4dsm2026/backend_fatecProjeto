@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
+import { sendNotFound, sendUnauthorized, sendValidationError } from "../../utils/http";
 import {
   TicketCreateSchema,
   TicketListSchema,
@@ -30,14 +31,14 @@ const updateValidator = buildRouteValidator({
 /* ============ POST /tickets ============ */
 export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
   const feitoPorId = req.user?.sub as string | undefined;
 
   try {
     if (!feitoPorId)
-      return void (await res.code(401).send({ error: "Não autenticado" }));
+      return sendUnauthorized(res);
 
     const ticket = await createTicket(prisma, parsed.data!.body!, { feitoPorId });
     await res.code(201).send(ticket);
@@ -50,7 +51,7 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
 /* ============ GET /tickets/:id ============ */
 export async function getOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
   const authUser = req.user as { sub: string; role: string } | undefined;
@@ -59,14 +60,14 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
 
     // Chamado inexistente ou de outro aluno: mesma resposta 404 (não vaza existência).
     if (await alunoSemAcessoAoChamado(prisma, id, authUser))
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return sendNotFound(res, "Chamado");
 
     const ticket = await getTicketById(prisma, id, [
       "cliente", "contrato", "servico", "setor", "responsavel", "criadoPor", "historico",
     ]);
 
     if (!ticket)
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return sendNotFound(res, "Chamado");
 
     await res.send(ticket);
   } catch (e) {
@@ -78,13 +79,13 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
 /* ============ GET /tickets ============ */
 export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
   const authUser = req.user as { sub: string; role: string } | undefined;
 
   if (!authUser)
-    return void (await res.code(401).send({ error: "Não autenticado" }));
+    return sendUnauthorized(res);
 
   try {
     const q = parsed.data!.query!;
@@ -108,7 +109,7 @@ export async function stats(req: FastifyRequest, res: FastifyReply) {
   const authUser = req.user as { sub: string; role: string } | undefined;
 
   if (!authUser)
-    return void (await res.code(401).send({ error: "Não autenticado" }));
+    return sendUnauthorized(res);
 
   try {
     const organizacaoId = (req.query as any)?.organizacaoId as string | undefined;
@@ -123,7 +124,7 @@ export async function stats(req: FastifyRequest, res: FastifyReply) {
 /* ============ PATCH /tickets/:id ============ */
 export async function patch(req: FastifyRequest, res: FastifyReply) {
   const parsed = updateValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma     = req.server.prisma;
   const authUser   = req.user as { sub: string; role: string } | undefined;
@@ -133,7 +134,7 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
     const id = parsed.data!.params!.id;
 
     if (await alunoSemAcessoAoChamado(prisma, id, authUser))
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return sendNotFound(res, "Chamado");
 
     const ticket = await updateTicket(
       prisma,
@@ -144,7 +145,7 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
     await res.send(ticket);
   } catch (e: any) {
     if (e?.code === "P2025")
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return sendNotFound(res, "Chamado");
     req.log.error({ e }, "💥 Erro ao atualizar ticket");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -153,7 +154,7 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
 /* ============ DELETE /tickets/:id (soft) ============ */
 export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma     = req.server.prisma;
   const authUser   = req.user as { sub: string; role: string } | undefined;
@@ -163,7 +164,7 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
     const id = parsed.data!.params!.id;
 
     if (await alunoSemAcessoAoChamado(prisma, id, authUser))
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return sendNotFound(res, "Chamado");
 
     const ticket = await softDeleteTicket(
       prisma,
@@ -173,7 +174,7 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
     await res.send(ticket);
   } catch (e: any) {
     if (e?.code === "P2025")
-      return void (await res.code(404).send({ error: "Chamado não encontrado" }));
+      return sendNotFound(res, "Chamado");
     req.log.error({ e }, "💥 Erro ao remover (soft) ticket");
     await res.code(500).send({ error: errMsg(e) });
   }
