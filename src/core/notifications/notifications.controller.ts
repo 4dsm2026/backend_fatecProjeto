@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
-import { sendNotFound, sendReply, sendUnauthorized, sendValidationError } from "../../utils/http";
+import { sendNotFound, sendUnauthorized, sendValidationError } from "../../utils/http";
 import { NotificationsListSchema, NotificationIdSchema } from "./notifications.types";
 import {
   listNotifications,

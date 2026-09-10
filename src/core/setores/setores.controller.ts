@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
-import { sendNotFound, sendReply, sendValidationError } from "../../utils/http";
+import { sendNotFound, sendValidationError } from "../../utils/http";
 import {
   SetorCreateSchema, SetorUpdateSchema, SetorListSchema, SetorIdSchema
 } from "../../validators/setores";
