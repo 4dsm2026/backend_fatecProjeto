@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
-import { sendReply } from "../../utils/http";
+import { sendNotFound, sendReply, sendUnauthorized, sendValidationError } from "../../utils/http";
 import { NotificationsListSchema, NotificationIdSchema } from "./notifications.types";
 import {
   listNotifications,
@@ -19,11 +19,11 @@ const idValidator   = buildRouteValidator({ params: NotificationIdSchema.shape.p
 /* GET /notifications */
 export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
   const userId = req.user?.sub as string | undefined;
-  if (!userId) return sendReply(res, 401, { error: "Não autenticado" });
+  if (!userId) return sendUnauthorized(res);
 
   try {
     const page = await listNotifications(prisma, userId, parsed.data!.query!);
@@ -37,18 +37,18 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 /* POST /notifications/:id/read */
 export async function readOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
   const userId = req.user?.sub as string | undefined;
-  if (!userId) return sendReply(res, 401, { error: "Não autenticado" });
+  if (!userId) return sendUnauthorized(res);
 
   try {
     await markAsRead(prisma, parsed.data!.params!.id, userId);
     await res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendReply(res, 404, { error: "Notificação não encontrada" });
+      return sendNotFound(res, "Notificação");
     req.log.error({ e }, "💥 Erro ao marcar notificação como lida");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -57,18 +57,18 @@ export async function readOne(req: FastifyRequest, res: FastifyReply) {
 /* POST /notifications/:id/archive */
 export async function archive(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
   const userId = req.user?.sub as string | undefined;
-  if (!userId) return sendReply(res, 401, { error: "Não autenticado" });
+  if (!userId) return sendUnauthorized(res);
 
   try {
     await archiveNotification(prisma, parsed.data!.params!.id, userId);
     await res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendReply(res, 404, { error: "Notificação não encontrada" });
+      return sendNotFound(res, "Notificação");
     req.log.error({ e }, "💥 Erro ao arquivar notificação");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -77,18 +77,18 @@ export async function archive(req: FastifyRequest, res: FastifyReply) {
 /* POST /notifications/:id/unarchive */
 export async function unarchive(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
   const userId = req.user?.sub as string | undefined;
-  if (!userId) return sendReply(res, 401, { error: "Não autenticado" });
+  if (!userId) return sendUnauthorized(res);
 
   try {
     await unarchiveNotification(prisma, parsed.data!.params!.id, userId);
     await res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendReply(res, 404, { error: "Notificação não encontrada" });
+      return sendNotFound(res, "Notificação");
     req.log.error({ e }, "💥 Erro ao desarquivar notificação");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -98,7 +98,7 @@ export async function unarchive(req: FastifyRequest, res: FastifyReply) {
 export async function readAll(req: FastifyRequest, res: FastifyReply) {
   const prisma = req.server.prisma;
   const userId = req.user?.sub as string | undefined;
-  if (!userId) return sendReply(res, 401, { error: "Não autenticado" });
+  if (!userId) return sendUnauthorized(res);
 
   try {
     const result = await markAllAsRead(prisma, userId);
@@ -113,7 +113,7 @@ export async function readAll(req: FastifyRequest, res: FastifyReply) {
 export async function createTest(req: FastifyRequest, res: FastifyReply) {
   const prisma = req.server.prisma;
   const userId = req.user?.sub as string | undefined;
-  if (!userId) return sendReply(res, 401, { error: "Não autenticado" });
+  if (!userId) return sendUnauthorized(res);
 
   try {
     const created = await createTestNotification(prisma, userId);

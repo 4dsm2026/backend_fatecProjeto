@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
-import { sendReply } from "../../utils/http";
+import { sendNotFound, sendReply, sendValidationError } from "../../utils/http";
 import {
   VincularUsuarioSetorSchema,
   AlterarPapelUsuarioSetorSchema,
@@ -37,7 +37,7 @@ const listSetoresValidator = buildRouteValidator({
 /* POST /usuarios/:usuarioId/setores */
 export async function vincular(req: FastifyRequest, res: FastifyReply) {
   const parsed = vincularValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     const r = await vincularUsuarioSetor(prisma, parsed.data!.params!.usuarioId, parsed.data!.body!);
@@ -52,13 +52,13 @@ export async function vincular(req: FastifyRequest, res: FastifyReply) {
 /* PATCH /usuarios-setores/:usuarioSetorId */
 export async function alterarPapel(req: FastifyRequest, res: FastifyReply) {
   const parsed = alterarValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     const r = await alterarPapelUsuarioSetor(prisma, parsed.data!.params!.usuarioSetorId, parsed.data!.body!);
     await res.send(r);
   } catch (e: any) {
-    if (e?.code === "P2025") return sendReply(res, 404, { error: "Vínculo não encontrado" });
+    if (e?.code === "P2025") return sendNotFound(res, "Vínculo");
     req.log.error({ e }, "💥 Erro ao alterar papel do vínculo");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -73,7 +73,7 @@ export async function desvincular(req: FastifyRequest, res: FastifyReply) {
     await desvincularUsuarioSetor(prisma, usuarioSetorId);
     await res.code(204).send();
   } catch (e: any) {
-    if (e?.code === "P2025") return sendReply(res, 404, { error: "Vínculo não encontrado" });
+    if (e?.code === "P2025") return sendNotFound(res, "Vínculo");
     req.log.error({ e }, "💥 Erro ao desvincular usuário do setor");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -82,7 +82,7 @@ export async function desvincular(req: FastifyRequest, res: FastifyReply) {
 /* GET /setores/:setorId/usuarios */
 export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply) {
   const parsed = listUsersValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     const r = await listarUsuariosDoSetor(prisma, parsed.data!.params!.setorId, parsed.data!.query!);
@@ -96,7 +96,7 @@ export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply
 /* GET /usuarios/:usuarioId/setores */
 export async function listSetoresDoUsuario(req: FastifyRequest, res: FastifyReply) {
   const parsed = listSetoresValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     const r = await listarSetoresDoUsuario(prisma, parsed.data!.params!.usuarioId, parsed.data!.query!);

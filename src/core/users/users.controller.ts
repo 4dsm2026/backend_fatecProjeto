@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import { buildRouteValidator } from '../../utils/zod-helpers'
-import { sendReply } from '../../utils/http'
+import { sendNotFound, sendReply, sendValidationError } from '../../utils/http'
 import {
   UserCreateSchema,
   UserListSchema,
@@ -28,7 +28,7 @@ const updateValidator = buildRouteValidator({
 /* ============ POST /usuarios ============ */
 export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req)
-  if ('error' in parsed) return sendReply(res, 400, parsed.error)
+  if ('error' in parsed) return sendValidationError(res, parsed.error)
 
   const prisma = req.server.prisma
   const feitoPorId = req.user?.sub as string | undefined
@@ -51,12 +51,12 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
 /* ============ GET /usuarios/:id ============ */
 export async function getOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req)
-  if ('error' in parsed) return sendReply(res, 400, parsed.error)
+  if ('error' in parsed) return sendValidationError(res, parsed.error)
 
   const prisma = req.server.prisma
   try {
     const user = await getUserById(prisma, parsed.data!.params!.id)
-    if (!user) return sendReply(res, 404, { error: 'Usuário não encontrado' })
+    if (!user) return sendNotFound(res, 'Usuário')
     await res.send(user)
   } catch (e) {
     req.log.error({ e }, '💥 Erro ao buscar usuário')
@@ -67,7 +67,7 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
 /* ============ GET /usuarios ============ */
 export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req)
-  if ('error' in parsed) return sendReply(res, 400, parsed.error)
+  if ('error' in parsed) return sendValidationError(res, parsed.error)
 
   const prisma = req.server.prisma
   try {
@@ -82,7 +82,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 /* ============ PATCH /usuarios/:id ============ */
 export async function patch(req: FastifyRequest, res: FastifyReply) {
   const parsed = updateValidator.parse(req)
-  if ('error' in parsed) return sendReply(res, 400, parsed.error)
+  if ('error' in parsed) return sendValidationError(res, parsed.error)
 
   const prisma = req.server.prisma
   const authUser = req.user as { sub: string; role: string } | undefined
@@ -111,7 +111,7 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
     })
     await res.send(user)
   } catch (e: any) {
-    if (e?.code === 'P2025') return sendReply(res, 404, { error: 'Usuário não encontrado' })
+    if (e?.code === 'P2025') return sendNotFound(res, 'Usuário')
     if (e?.code === 'P2002') return sendReply(res, 409, { error: 'Duplicidade (email/RA)' })
     req.log.error({ e }, '💥 Erro ao atualizar usuário')
     await res.code(500).send({ error: errMsg(e) })
@@ -121,7 +121,7 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
 /* ============ DELETE /usuarios/:id (soft) ============ */
 export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req)
-  if ('error' in parsed) return sendReply(res, 400, parsed.error)
+  if ('error' in parsed) return sendValidationError(res, parsed.error)
 
   const prisma = req.server.prisma
   const feitoPorId = req.user?.sub as string | undefined
@@ -130,7 +130,7 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
     const user = await softDeleteUser(prisma, parsed.data!.params!.id, { feitoPorId })
     await res.send(user)
   } catch (e: any) {
-    if (e?.code === 'P2025') return sendReply(res, 404, { error: 'Usuário não encontrado' })
+    if (e?.code === 'P2025') return sendNotFound(res, 'Usuário')
     req.log.error({ e }, '💥 Erro ao remover (soft) usuário')
     await res.code(500).send({ error: errMsg(e) })
   }

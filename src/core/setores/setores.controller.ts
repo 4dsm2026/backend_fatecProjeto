@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
-import { sendReply } from "../../utils/http";
+import { sendNotFound, sendReply, sendValidationError } from "../../utils/http";
 import {
   SetorCreateSchema, SetorUpdateSchema, SetorListSchema, SetorIdSchema
 } from "../../validators/setores";
@@ -22,7 +22,7 @@ const updateValidator = buildRouteValidator({
 /* POST /setores */
 export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     const setor = await createSetor(prisma, parsed.data!.body!);
@@ -36,11 +36,11 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
 /* GET /setores/:id */
 export async function getOne(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     const setor = await getSetorById(prisma, parsed.data!.params!.id);
-    if (!setor) return sendReply(res, 404, { error: "Setor não encontrado" });
+    if (!setor) return sendNotFound(res, "Setor");
     await res.send(setor);
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao buscar setor");
@@ -51,7 +51,7 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
 /* GET /setores */
 export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     const page = await listSetores(prisma, parsed.data!.query! as SetoresListQuery);
@@ -65,13 +65,13 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 /* PATCH /setores/:id */
 export async function patch(req: FastifyRequest, res: FastifyReply) {
   const parsed = updateValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     const setor = await updateSetor(prisma, parsed.data!.params!.id, parsed.data!.body!);
     await res.send(setor);
   } catch (e: any) {
-    if (e?.code === "P2025") return sendReply(res, 404, { error: "Setor não encontrado" });
+    if (e?.code === "P2025") return sendNotFound(res, "Setor");
     req.log.error({ e }, "💥 Erro ao atualizar setor");
     await res.code(500).send({ error: errMsg(e) });
   }
@@ -80,13 +80,13 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
 /* DELETE /setores/:id */
 export async function removeHard(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
-  if ("error" in parsed) return sendReply(res, 400, parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
   const prisma = req.server.prisma;
   try {
     await deleteSetor(prisma, parsed.data!.params!.id);
     await res.code(204).send();
   } catch (e: any) {
-    if (e?.code === "P2025") return sendReply(res, 404, { error: "Setor não encontrado" });
+    if (e?.code === "P2025") return sendNotFound(res, "Setor");
     req.log.error({ e }, "💥 Erro ao excluir setor");
     await res.code(500).send({ error: errMsg(e) });
   }
