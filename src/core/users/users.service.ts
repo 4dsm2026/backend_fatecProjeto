@@ -8,6 +8,7 @@ import type {
   Paginated,
 } from '../../types/users';
 import { hashPassword } from '../../security/password';
+import { env } from '../../env';
 
 const baseSelect = {
   id: true,
@@ -74,8 +75,7 @@ export async function createUser(
   if (!data.emailPessoal && !data.emailEducacional)
     throw new Error('É obrigatório informar e-mail pessoal ou educacional.');
 
-  const DEFAULT_TEMP_PASSWORD = process.env.DEFAULT_TEMP_PASSWORD ?? 'Mudar123#';
-  const senhaPlano = d.senha ?? DEFAULT_TEMP_PASSWORD;
+  const senhaPlano = d.senha ?? env.DEFAULT_TEMP_PASSWORD;
   const senhaHash = await hashPassword(senhaPlano);
 
   const created = await prisma.usuario.create({
