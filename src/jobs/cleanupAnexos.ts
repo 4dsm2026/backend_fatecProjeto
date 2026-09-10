@@ -66,8 +66,6 @@ export function scheduleCleanupAnexos(
   prisma: PrismaClient,
   uploadsDir: string,
 ): void {
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
   function msUntilNext3am(): number {
     const now = new Date();
     const next = new Date(now);

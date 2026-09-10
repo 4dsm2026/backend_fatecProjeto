@@ -3,9 +3,9 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { Resend } from "resend";
 
 export interface SendMailOptions {
-  to: string;
-  subject: string;
-  html: string;
+  readonly to: string;
+  readonly subject: string;
+  readonly html: string;
 }
 
 export interface MailDriver {

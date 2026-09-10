@@ -28,18 +28,42 @@ const updateValidator = buildRouteValidator({
   body:   TicketUpdateSchema.shape.body,
 });
 
+function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
+  const authUser = req.user as { sub: string; role: string } | undefined;
+  if (!authUser) {
+    void res.code(401).send({ error: "Não autenticado" });
+    return null;
+  }
+
+  return authUser;
+}
+
+async function denyMissingTicketAccess(
+  prisma: any,
+  id: string,
+  authUser: { sub: string; role: string } | undefined,
+  res: FastifyReply,
+) {
+  if (await alunoSemAcessoAoChamado(prisma, id, authUser)) {
+    void res.code(404).send({ error: "Chamado não encontrado" });
+    return true;
+  }
+
+  return false;
+}
+
 /* ============ POST /tickets ============ */
 export async function create(req: FastifyRequest, res: FastifyReply) {
   const parsed = createValidator.parse(req);
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
-  const feitoPorId = req.user?.sub as string | undefined;
+  const authUser = requireAuthUser(req, res);
+  if (!authUser) return;
+
+  const feitoPorId = authUser.sub;
 
   try {
-    if (!feitoPorId)
-      return sendUnauthorized(res);
-
     const ticket = await createTicket(prisma, parsed.data!.body!, { feitoPorId });
     await res.code(201).send(ticket);
   } catch (e) {
@@ -54,13 +78,13 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
-  const authUser = req.user as { sub: string; role: string } | undefined;
+  const authUser = requireAuthUser(req, res);
+  if (!authUser) return;
   try {
     const id = parsed.data!.params!.id;
 
     // Chamado inexistente ou de outro aluno: mesma resposta 404 (não vaza existência).
-    if (await alunoSemAcessoAoChamado(prisma, id, authUser))
-      return sendNotFound(res, "Chamado");
+    if (await denyMissingTicketAccess(prisma, id, authUser, res)) return;
 
     const ticket = await getTicketById(prisma, id, [
       "cliente", "contrato", "servico", "setor", "responsavel", "criadoPor", "historico",
@@ -82,10 +106,8 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
-  const authUser = req.user as { sub: string; role: string } | undefined;
-
-  if (!authUser)
-    return sendUnauthorized(res);
+  const authUser = requireAuthUser(req, res);
+  if (!authUser) return;
 
   try {
     const q = parsed.data!.query!;
@@ -106,10 +128,8 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 /* ============ GET /tickets/stats ============ */
 export async function stats(req: FastifyRequest, res: FastifyReply) {
   const prisma   = req.server.prisma;
-  const authUser = req.user as { sub: string; role: string } | undefined;
-
-  if (!authUser)
-    return sendUnauthorized(res);
+  const authUser = requireAuthUser(req, res);
+  if (!authUser) return;
 
   try {
     const organizacaoId = (req.query as any)?.organizacaoId as string | undefined;
@@ -127,14 +147,14 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma     = req.server.prisma;
-  const authUser   = req.user as { sub: string; role: string } | undefined;
-  const feitoPorId = authUser?.sub;
+  const authUser   = requireAuthUser(req, res);
+  if (!authUser) return;
+  const feitoPorId = authUser.sub;
 
   try {
     const id = parsed.data!.params!.id;
 
-    if (await alunoSemAcessoAoChamado(prisma, id, authUser))
-      return sendNotFound(res, "Chamado");
+    if (await denyMissingTicketAccess(prisma, id, authUser, res)) return;
 
     const ticket = await updateTicket(
       prisma,
@@ -157,14 +177,14 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma     = req.server.prisma;
-  const authUser   = req.user as { sub: string; role: string } | undefined;
-  const feitoPorId = authUser?.sub;
+  const authUser   = requireAuthUser(req, res);
+  if (!authUser) return;
+  const feitoPorId = authUser.sub;
 
   try {
     const id = parsed.data!.params!.id;
 
-    if (await alunoSemAcessoAoChamado(prisma, id, authUser))
-      return sendNotFound(res, "Chamado");
+    if (await denyMissingTicketAccess(prisma, id, authUser, res)) return;
 
     const ticket = await softDeleteTicket(
       prisma,
