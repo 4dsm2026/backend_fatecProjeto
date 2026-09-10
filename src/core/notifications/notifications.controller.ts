@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
+import { sendNotFound, sendUnauthorized, sendValidationError } from "../../utils/http";
 import { NotificationsListSchema, NotificationIdSchema } from "./notifications.types";
 import {
   listNotifications,
@@ -40,7 +41,7 @@ const validateIdOrBadRequest = async (
 /* GET /notifications */
 export async function list(req: FastifyRequest, res: FastifyReply) {
   const parsed = listValidator.parse(req);
-  if ("error" in parsed) return res.code(400).send(parsed.error);
+  if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
   const userId = requireUserId(req, res);
@@ -69,10 +70,8 @@ export async function readOne(req: FastifyRequest, res: FastifyReply) {
     await markAsRead(prisma, notificationId, userId);
     return res.code(204).send();
   } catch (e: any) {
-    if (e?.code === "P2025") {
-      return res.code(404).send({ error: "Notificação não encontrada" });
-    }
-
+    if (e?.code === "P2025")
+      return sendNotFound(res, "Notificação");
     req.log.error({ e }, "💥 Erro ao marcar notificação como lida");
     return res.code(500).send({ error: errMsg(e) });
   }
@@ -92,10 +91,8 @@ export async function archive(req: FastifyRequest, res: FastifyReply) {
     await archiveNotification(prisma, notificationId, userId);
     return res.code(204).send();
   } catch (e: any) {
-    if (e?.code === "P2025") {
-      return res.code(404).send({ error: "Notificação não encontrada" });
-    }
-
+    if (e?.code === "P2025")
+      return sendNotFound(res, "Notificação");
     req.log.error({ e }, "💥 Erro ao arquivar notificação");
     return res.code(500).send({ error: errMsg(e) });
   }
@@ -115,10 +112,8 @@ export async function unarchive(req: FastifyRequest, res: FastifyReply) {
     await unarchiveNotification(prisma, notificationId, userId);
     return res.code(204).send();
   } catch (e: any) {
-    if (e?.code === "P2025") {
-      return res.code(404).send({ error: "Notificação não encontrada" });
-    }
-
+    if (e?.code === "P2025")
+      return sendNotFound(res, "Notificação");
     req.log.error({ e }, "💥 Erro ao desarquivar notificação");
     return res.code(500).send({ error: errMsg(e) });
   }
