@@ -1,7 +1,7 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
 import fs from 'fs';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { buildRouteValidator } from '../../utils/zod-helpers';
-import { ListAnexosSchema, ParamsWithTicketIdSchema, UploadAnexoSchema, DownloadAnexoSchema } from './anexos.types';
+import { DownloadAnexoSchema, ListAnexosSchema, UploadAnexoSchema } from './anexos.types';
 import { listAnexosByTicketId, createAnexo, getAnexoForDownload } from './anexos.service';
 import { alunoSemAcessoAoChamado } from '../tickets/tickets.service';
 import { generateDownloadToken } from '../../utils/jwt';

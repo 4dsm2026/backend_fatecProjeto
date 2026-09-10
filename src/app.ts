@@ -1,13 +1,12 @@
 // src/app.ts
+import fs from "fs";
+import path from "path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
 import fastifyFormbody from "@fastify/formbody";
 import fastifyCookie from "@fastify/cookie";
-import path from "path";
-import fs from "fs";
-
 import { env } from "./env";
 import prismaPlugin from "./plugins/prisma";
 import authRoutes from "./core/auth/auth.routes";
