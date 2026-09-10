@@ -1,6 +1,6 @@
 // src/security/refresh.ts
-import { prisma } from "../lib/prisma";
 import { randomBytes, createHash } from "crypto";
+import { prisma } from "../lib/prisma";
 
 export const REFRESH_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
 
