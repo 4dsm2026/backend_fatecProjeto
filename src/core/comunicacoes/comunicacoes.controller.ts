@@ -1,4 +1,4 @@
-import { FastifyRequest, FastifyReply } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
 import { ComunicacaoUpsertSchema, ComunicacaoTesteSchema } from "./comunicacoes.types";
 import { listTemplates, upsertTemplate, renderComAmostra } from "./comunicacoes.service";
@@ -27,7 +27,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 /* PUT /admin/comunicacoes/:chave */
 export async function upsert(req: FastifyRequest, res: FastifyReply) {
   const parsed = upsertValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return res.code(400).send(parsed.error);
   const prisma = req.server.prisma;
   try {
     const saved = await upsertTemplate(prisma, parsed.data!.params!.chave, parsed.data!.body!);
@@ -41,7 +41,7 @@ export async function upsert(req: FastifyRequest, res: FastifyReply) {
 /* POST /admin/comunicacoes/teste */
 export async function enviarTeste(req: FastifyRequest, res: FastifyReply) {
   const parsed = testeValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) return res.code(400).send(parsed.error);
   const { to, assunto, corpo } = parsed.data!.body! as { to: string; assunto: string; corpo: string };
   try {
     await getMailDriver().send({
