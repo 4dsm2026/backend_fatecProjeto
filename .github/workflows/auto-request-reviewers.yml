@@ -21,8 +21,16 @@ jobs:
           script: |
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
-            const targetBranch = context.payload.pull_request.base.ref;
-            const org = context.repo.owner;
+
+            // Mapeamento: Slug do GitHub Team -> Líderes responsáveis
+            const TEAM_LEADERS = {
+              'novas-funcs-um': ['MDAS-3510'],
+              'novas-funcs-dois': ['ghzzzz1'],
+              'qa': ['malusouza2212'],
+              'docs-devops': ['maysanazario'],
+              'refatoracao': ['Juliana-Ap'],
+              'ux-ui': ['victoriaheloisaa']
+            };
 
             const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito'];
             let leadsToRequest = [];

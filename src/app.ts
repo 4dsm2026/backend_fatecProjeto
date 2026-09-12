@@ -1,13 +1,12 @@
 // src/app.ts
+import fs from "fs";
+import path from "path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
 import fastifyFormbody from "@fastify/formbody";
 import fastifyCookie from "@fastify/cookie";
-import path from "path";
-import fs from "fs";
-
 import { env } from "./env";
 import prismaPlugin from "./plugins/prisma";
 import authRoutes from "./core/auth/auth.routes";
@@ -26,6 +25,7 @@ import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
 import { comunicacoesRoutes } from "./core/comunicacoes/comunicacoes.routes";
 import { notificationsRoutes } from "./core/notifications/notifications.routes";
 import { anexoRoutes } from "./core/anexos/anexos.routes";
+import { sugestoesRoutes } from "./core/sugestoes/sugestoes.routes";
 import { verifyAccessToken } from "./utils/jwt";
 import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
 
@@ -117,6 +117,7 @@ export async function buildApp() {
   app.register(comunicacoesRoutes, { prefix: "/admin" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(anexoRoutes, { prefix: "/" });
+  app.register(sugestoesRoutes, { prefix: "/sugestoes" });
   app.register(auditoriaRoutes);
 
   // ---------------------------------------------------------
@@ -218,15 +219,19 @@ export async function buildApp() {
     }
   };
 
-  app.decorate("notifyUsers", async (userIds: string[], data: any) => {
-    if (!userIds.length) return;
+  async function getInAppOptInUserIds(userIds: string[]): Promise<Set<string>> {
+    if (!userIds.length) return new Set();
 
-    // Respeita a preferência: só entrega a quem optou por notificações in-app.
     const optIn = await app.prisma.usuario.findMany({
       where: { id: { in: userIds }, notificacoesInApp: true },
       select: { id: true },
     });
-    const alvos = new Set(optIn.map((u: { id: string }) => u.id));
+
+    return new Set(optIn.map((u: { id: string }) => u.id));
+  }
+
+  app.decorate("notifyUsers", async (userIds: string[], data: any) => {
+    const alvos = await getInAppOptInUserIds(userIds);
 
     for (const userId of userIds) {
       if (!alvos.has(userId)) continue;
