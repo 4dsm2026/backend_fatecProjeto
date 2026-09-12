@@ -7,7 +7,6 @@ on:
 permissions:
   pull-requests: write
   contents: read
-  members: read
 
 jobs:
   request-reviewers:
@@ -19,49 +18,53 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const org = context.repo.owner;
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
 
-            // Mapeamento: Slug exato do GitHub Team -> Usuário(s) Líder(es)
-            const TEAM_LEADERS = {
-              'novas-funcs-um': ['MDAS-3510'],
-              'novas-funcs-dois': ['ghzzzz1'],
-              'qa': ['malusouza2212'],
-              'docs-devops': ['maysanazario', 'Rian-Nito'],
-              'refatoracao': ['maysanazario', 'Rian-Nito'],
+            // ==========================================================
+            // MAPEAMENTO DE TIMES E MEMBROS
+            // ==========================================================
+            const TEAMS = {
+              'novas-funcs-um': {
+                lead: 'MDAS-3510',
+                members: ['MDAS-3510'] // Adicione os membros da frente 1 aqui
+              },
+              'novas-funcs-dois': {
+                lead: 'ghzzzz1',
+                members: ['ghzzzz1'] // Adicione os membros da frente 2 aqui
+              },
+              'qa': {
+                lead: 'malusouza2212',
+                members: ['malusouza2212'] // Adicione os membros de QA aqui
+              },
+              'docs-devops': {
+                lead: 'maysanazario',
+                members: ['maysanazario', 'Rian-Nito']
+              },
+              'refatoracao': {
+                lead: 'maysanazario',
+                members: ['maysanazario', 'Rian-Nito']
+              }
             };
 
             const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito', 'MDAS-3510', 'ghzzzz1'];
             let leadsToRequest = [];
 
-            // 1. Identifica os times da organização aos quais o autor pertence
-            for (const [teamSlug, leaders] of Object.entries(TEAM_LEADERS)) {
-              try {
-                const response = await github.rest.teams.getMembershipForUserInOrg({
-                  org: org,
-                  team_slug: teamSlug,
-                  username: author,
-                });
-
-                if (response.data.state === 'active') {
-                  core.info(`Autor ${author} identificado no time: ${teamSlug}`);
-                  leadsToRequest.push(...leaders);
-                }
-              } catch (error) {
-                if (error.status !== 404) {
-                  core.warning(`Erro ao consultar time ${teamSlug}: ${error.message}`);
-                }
+            // 1. Identifica o time do autor
+            for (const [teamName, teamData] of Object.entries(TEAMS)) {
+              if (teamData.members.some(m => m.toLowerCase() === author.toLowerCase())) {
+                core.info(`Autor ${author} identificado no time: ${teamName}`);
+                leadsToRequest.push(teamData.lead);
               }
             }
 
-            // Fallback se o desenvolvedor não estiver em nenhum time mapeado
+            // Fallback se o desenvolvedor não estiver mapeado
             if (leadsToRequest.length === 0) {
-              core.info(`Autor ${author} sem time mapeado. Aplicando líderes padrão.`);
+              core.info(`Autor ${author} sem time específico mapeado. Aplicando líderes padrão.`);
               leadsToRequest = [...DEFAULT_LEADS];
             }
 
-            // 2. Análise de arquivos críticos de Backend (Banco, Migrations e Schemas)
+            // 2. Análise de arquivos críticos de Backend (Banco, Migrations e Configs)
             try {
               const { data: changedFiles } = await github.paginate(
                 github.rest.pulls.listFiles,
@@ -80,16 +83,15 @@ jobs:
               );
 
               if (touchesDbOrConfig) {
-                core.info('PR altera banco/configurações críticas; incluindo líderes de arquitetura/refatoração.');
-                leadsToRequest.push(...TEAM_LEADERS['refatoracao']);
+                core.info('PR altera banco/configurações críticas; incluindo líderes de refatoração.');
+                leadsToRequest.push(TEAMS['refatoracao'].lead);
               }
             } catch (error) {
               core.warning(`Não foi possível analisar arquivos modificados: ${error.message}`);
             }
 
-            // 3. Limpeza: remove placeholders, duplicados e o próprio autor do PR
+            // 3. Limpeza: remove duplicados e o próprio autor do PR
             const reviewers = leadsToRequest
-              .filter((lead) => !lead.startsWith('TO_DO_'))
               .filter((lead, index, list) => list.indexOf(lead) === index)
               .filter((lead) => lead.toLowerCase() !== author.toLowerCase());
 
