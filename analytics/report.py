@@ -13,6 +13,7 @@ import sys
 import math
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+from pathlib import Path
 
 try:
     import httpx
@@ -268,6 +269,16 @@ def gerar_recomendacoes(stats: dict, anomalias: list, backlog: list) -> list[str
     return recomendacoes
 
 
+def validar_caminho_saida(caminho: str) -> Path:
+    """Normaliza o caminho de saída e valida o destino antes do acesso ao disco."""
+    destino = Path(caminho).expanduser().resolve(strict=False)
+    if destino.exists() and destino.is_dir():
+        raise ValueError(f"O caminho de saída aponta para um diretório: {destino}")
+    if not destino.parent.is_dir():
+        raise ValueError(f"O diretório de saída não existe: {destino.parent}")
+    return destino
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -325,9 +336,10 @@ def main():
     saida = json.dumps(relatorio, ensure_ascii=False, indent=2)
 
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
+        caminho_saida = validar_caminho_saida(args.output)
+        with caminho_saida.open("w", encoding="utf-8") as f:
             f.write(saida)
-        print(f"[OK] Relatório salvo em {args.output}", file=sys.stderr)
+        print(f"[OK] Relatório salvo em {caminho_saida}", file=sys.stderr)
     else:
         print(saida)
 
