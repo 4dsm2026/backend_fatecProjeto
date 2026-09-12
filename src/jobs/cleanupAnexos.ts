@@ -1,6 +1,8 @@
-import fs from "fs/promises";
-import path from "path";
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Adds N business days (Mon–Fri) to a date, returning a new Date. */
 function addBusinessDays(date: Date, days: number): Date {
@@ -21,7 +23,7 @@ export async function runCleanupAnexos(
 ): Promise<void> {
   const now = new Date();
   // 7 calendar days is the minimum for 7 business days — safe pre-filter
-  const preFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const preFilter = new Date(now.getTime() - 7 * MS_PER_DAY);
 
   const candidates = await prisma.anexo.findMany({
     where: { enviadoEm: { lt: preFilter } },
