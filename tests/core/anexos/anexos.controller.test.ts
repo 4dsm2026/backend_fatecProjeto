@@ -6,12 +6,14 @@ const {
     mockCreateAnexo,
     mockGetAnexoForDownload,
     mockGenerateDownloadToken,
+    mockCreateReadStream,
 } = vi.hoisted(() => ({
     mockListAnexosByTicketId: vi.fn(),
     mockAlunoSemAcessoAoChamado: vi.fn(),
     mockCreateAnexo: vi.fn(),
     mockGetAnexoForDownload: vi.fn(),
     mockGenerateDownloadToken: vi.fn(),
+    mockCreateReadStream: vi.fn(),
 }))
 
 vi.mock('../../../src/core/anexos/anexos.service', () => ({
@@ -28,7 +30,38 @@ vi.mock('../../../src/utils/jwt', () => ({
     generateDownloadToken: mockGenerateDownloadToken,
 }))
 
+// anexos.controller.ts faz `import fs from 'fs'` e chama
+// `fs.createReadStream(filePath)` de verdade dentro de download(). Sem
+// mockar o módulo 'fs', o teste tenta abrir o arquivo no disco de verdade
+// — e como o filePath vem de um service mockado, o caminho não existe,
+// gerando um ENOENT assíncrono que o try/catch do controller não pega
+// (createReadStream falha via evento 'error' no stream, não por exceção
+// síncrona). Cobrindo os dois formatos de import (default e nomeado) para
+// não depender de qual interop o bundler está usando.
+vi.mock('fs', () => ({
+    default: {
+        createReadStream: mockCreateReadStream,
+    },
+    createReadStream: mockCreateReadStream,
+}))
+
 import * as AnexosController from '../../../src/core/anexos/anexos.controller'
+
+// ---------------------------------------------------------------------------
+// CORREÇÃO: este afterEach estava declarado só dentro do describe
+// "Listagem", então só se aplicava aos 5 testes daquele bloco (afterEach
+// dentro de um describe NÃO alcança describes irmãos). Os blocos Upload,
+// Download e Geração de Token nunca tinham os mocks resetados entre testes,
+// então uma chamada bem-sucedida do 1º teste de cada bloco continuava
+// "presa" no mock quando o 2º/3º teste do MESMO bloco rodava — fazendo
+// `expect(mock).not.toHaveBeenCalled()` falhar mesmo quando o controller
+// se comportou certo. Movendo para o nível do arquivo, todo describe abaixo
+// passa a resetar os mocks depois de cada teste, sem precisar repetir o
+// hook em cada bloco.
+// ---------------------------------------------------------------------------
+afterEach(() => {
+    vi.resetAllMocks()
+})
 
 const mockPrismaClient = {} as any
 
@@ -47,10 +80,6 @@ const mockAnexos = [
 ]
 
 describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
-    afterEach(() => {
-        vi.resetAllMocks()
-    })
-
     it('deve listar os anexos do chamado e retornar 200', async () => {
         mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(false)
         mockListAnexosByTicketId.mockResolvedValueOnce(mockAnexos)
@@ -337,13 +366,16 @@ describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
 describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
 
     it('deve baixar o anexo corretamente', async () => {
-        const mockStream = {}
-        
         mockGetAnexoForDownload.mockResolvedValueOnce({
             filePath: '/uploads/documento.pdf',
             fileName: 'documento.pdf',
             mimeType: 'application/pdf',
         })
+
+        // Sem isso, o controller chamaria fs.createReadStream de verdade
+        // com um caminho que não existe no ambiente de teste (ENOENT).
+        const mockStream = { fake: 'stream' }
+        mockCreateReadStream.mockReturnValueOnce(mockStream as any)
 
         const mockRequest: any = {
             params: {
@@ -376,11 +408,19 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
             'ALUNO'
         )
 
-        expect(mockReply.header).toHaveBeenCalled()
-        expect(mockReply.send).toHaveBeenCalled()
+        expect(mockCreateReadStream).toHaveBeenCalledWith('/uploads/documento.pdf')
 
+        // Valores exatos em vez de só "foi chamado": pega bug de header
+        // trocado ou de formato errado no Content-Disposition.
+        expect(mockReply.header).toHaveBeenNthCalledWith(
+            1,
+            'Content-Disposition',
+            'attachment; filename="documento.pdf"'
+        )
+        expect(mockReply.header).toHaveBeenNthCalledWith(2, 'Content-Type', 'application/pdf')
+        expect(mockReply.send).toHaveBeenCalledWith(mockStream)
     })
-    
+
 
     it('deve retornar 401 se o usuário não estiver autenticado', async () => {
         const mockRequest: any = {
