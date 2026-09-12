@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../../security/password";
 import { getMailDriver } from "../../config/mail";
@@ -20,8 +20,8 @@ export function validarPoliticaSenha(senha: string): boolean {
  * Gera token bruto + hash.
  */
 function gerarToken() {
-  const token = crypto.randomBytes(32).toString("hex");
-  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
   return { token, tokenHash };
 }
 
@@ -130,7 +130,7 @@ export async function consumirTokenSenha(
     throw err;
   }
 
-  const tokenHash = crypto.createHash("sha256").update(tokenRaw).digest("hex");
+  const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
 
   const token = await prisma.tokenResetSenha.findFirst({
     where: {
