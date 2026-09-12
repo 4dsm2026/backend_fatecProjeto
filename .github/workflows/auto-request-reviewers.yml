@@ -16,55 +16,48 @@ jobs:
       - name: Identify Team and Request Leader
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Use o secret gerado com acesso à Org (read:org)
+          github-token: ${{ secrets.ORG_READ_TOKEN }}
           script: |
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
 
-            // ==========================================================
-            // MAPEAMENTO DE TIMES E MEMBROS
-            // ==========================================================
-            const TEAMS = {
-              'novas-funcs-um': {
-                lead: 'MDAS-3510',
-                members: ['MDAS-3510'] // Adicione os membros da frente 1 aqui
-              },
-              'novas-funcs-dois': {
-                lead: 'ghzzzz1',
-                members: ['ghzzzz1'] // Adicione os membros da frente 2 aqui
-              },
-              'qa': {
-                lead: 'malusouza2212',
-                members: ['malusouza2212'] // Adicione os membros de QA aqui
-              },
-              'docs-devops': {
-                lead: 'maysanazario',
-                members: ['maysanazario', 'Rian-Nito']
-              },
-              'refatoracao': {
-                lead: 'maysanazario',
-                members: ['maysanazario', 'Rian-Nito']
-              }
+            // Mapeamento: Slug do GitHub Team -> Líderes responsáveis
+            const TEAM_LEADERS = {
+              'novas-funcs-um': ['MDAS-3510'],
+              'novas-funcs-dois': ['ghzzzz1'],
+              'qa': ['malusouza2212'],
+              'docs-devops': ['maysanazario'],
+              'refatoracao': ['Juliana-Ap'],
+              'ux-ui': ['victoriaheloisaa']
             };
 
-            const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito', 'MDAS-3510', 'ghzzzz1'];
-            let leadsToRequest = [];
+            const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito'];
 
-            // 1. Identifica o time do autor
-            for (const [teamName, teamData] of Object.entries(TEAMS)) {
-              if (teamData.members.some(m => m.toLowerCase() === author.toLowerCase())) {
-                core.info(`Autor ${author} identificado no time: ${teamName}`);
-                leadsToRequest.push(teamData.lead);
+            // 1. Sempre inclui os líderes padrão em todas as revisões
+            let leadsToRequest = [...DEFAULT_LEADS];
+
+            // 2. Identifica dinamicamente o time do autor e adiciona o líder correspondente
+            for (const [teamSlug, leaders] of Object.entries(TEAM_LEADERS)) {
+              try {
+                const response = await github.rest.teams.getMembershipForUserInOrg({
+                  org: org,
+                  team_slug: teamSlug,
+                  username: author,
+                });
+
+                if (response.data && response.data.state === 'active') {
+                  core.info(`Autor ${author} identificado no time: ${teamSlug}`);
+                  leadsToRequest.push(...leaders);
+                }
+              } catch (error) {
+                if (error.status !== 404) {
+                  core.warning(`Erro ao consultar time ${teamSlug}: ${error.message}`);
+                }
               }
             }
 
-            // Fallback se o desenvolvedor não estiver mapeado
-            if (leadsToRequest.length === 0) {
-              core.info(`Autor ${author} sem time específico mapeado. Aplicando líderes padrão.`);
-              leadsToRequest = [...DEFAULT_LEADS];
-            }
-
-            // 2. Análise de arquivos críticos de Backend (Banco, Migrations e Configs)
+            // 3. Análise de arquivos críticos de Backend (Banco, Configurações, Migrations)
             try {
               const { data: changedFiles } = await github.paginate(
                 github.rest.pulls.listFiles,
@@ -76,23 +69,24 @@ jobs:
                 }
               );
 
-              const touchesDbOrConfig = changedFiles.some(({ filename }) =>
-                /^(prisma|src\/db|src\/config)\//.test(filename) ||
+              const touchesCriticalBackendFiles = changedFiles.some(({ filename }) =>
+                /^(prisma|src\/db|src\/config|src\/models|migrations)\//.test(filename) ||
                 /\.(sql|prisma)$/.test(filename) ||
-                filename === 'package.json'
+                filename === 'package.json' ||
+                filename === '.env.example'
               );
 
-              if (touchesDbOrConfig) {
+              if (touchesCriticalBackendFiles) {
                 core.info('PR altera banco/configurações críticas; incluindo líderes de refatoração.');
-                leadsToRequest.push(TEAMS['refatoracao'].lead);
+                leadsToRequest.push(...TEAM_LEADERS['refatoracao']);
               }
             } catch (error) {
               core.warning(`Não foi possível analisar arquivos modificados: ${error.message}`);
             }
 
-            // 3. Limpeza: remove duplicados e o próprio autor do PR
-            const reviewers = leadsToRequest
-              .filter((lead, index, list) => list.indexOf(lead) === index)
+            // 4. Sanitização: remove duplicatas e impede o autor de se auto-atribuir
+            const reviewers = [...new Set(leadsToRequest)]
+              .filter((lead) => !lead.startsWith('TO_DO_'))
               .filter((lead) => lead.toLowerCase() !== author.toLowerCase());
 
             if (reviewers.length === 0) {
@@ -104,12 +98,12 @@ jobs:
 
             try {
               await github.rest.pulls.requestReviewers({
-                owner: context.repo.owner,
+                owner: org,
                 repo: context.repo.repo,
                 pull_number: prNumber,
-                reviewers,
+                reviewers: reviewers,
               });
-              core.info(`Revisores atribuídos com sucesso.`);
+              core.info('Revisores atribuídos com sucesso.');
             } catch (error) {
               core.warning(`Falha ao atribuir revisores: ${error.message}`);
             }
