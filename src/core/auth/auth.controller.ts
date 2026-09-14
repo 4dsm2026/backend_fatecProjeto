@@ -1,6 +1,6 @@
 // src/core/auth/auth.controller.ts
-import crypto from "node:crypto";
-import { FastifyRequest, FastifyReply } from "fastify";
+import { createHash, randomBytes } from "node:crypto";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
 import {
   LoginSchema,
@@ -271,8 +271,8 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     if (user.precisaTrocarSenha) {
       await registrarAuditoria({ feitoPorId: user.id, acao: "login_primeiro_acesso", alvo: user.emailPessoal, meta: {} });
       await resetLoginAttempts(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
-      const rawToken = crypto.randomBytes(32).toString("hex");
-      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const rawToken = randomBytes(32).toString("hex");
+      const tokenHash = createHash("sha256").update(rawToken).digest("hex");
       await prisma.tokenResetSenha.create({
         data: { usuarioId: user.id, tokenHash, expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24) },
       });
@@ -326,7 +326,7 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
       return;
     }
 
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
     const tokenRow = await prisma.tokenResetSenha.findFirst({
       where: { tokenHash, usadoEm: null, expiraEm: { gt: new Date() } },
       include: { usuario: true },
