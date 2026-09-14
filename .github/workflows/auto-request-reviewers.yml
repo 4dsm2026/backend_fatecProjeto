@@ -13,85 +13,62 @@ jobs:
     name: Request responsible lead
     runs-on: ubuntu-latest
     steps:
-      - name: Identify Team and Request Leader
+      - name: Request reviewer based on author team
         uses: actions/github-script@v7
         with:
-          # Use o secret gerado com acesso à Org (read:org)
           github-token: ${{ secrets.ORG_READ_TOKEN }}
           script: |
-            const org = context.repo.owner;
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
-
-            // Mapeamento: Slug do GitHub Team -> Líderes responsáveis
-            const TEAM_LEADERS = {
-              'novas-funcs-um': ['MDAS-3510'],
-              'novas-funcs-dois': ['ghzzzz1'],
-              'qa': ['malusouza2212'],
-              'docs-devops': ['maysanazario'],
-              'refatoracao': ['Juliana-Ap'],
-              'ux-ui': ['victoriaheloisaa']
-            };
+            const targetBranch = context.payload.pull_request.base.ref;
+            const org = context.repo.owner;
 
             const DEFAULT_LEADS = ['maysanazario', 'Rian-Nito'];
+            let leadsToRequest = [];
 
-            // 1. Sempre inclui os líderes padrão em todas as revisões
-            let leadsToRequest = [...DEFAULT_LEADS];
+            if (targetBranch === 'main') {
+              core.info(`PR direcionado para a main. Solicitando apenas os líderes padrão.`);
+              leadsToRequest = [...DEFAULT_LEADS];
+            } else {
+              const TEAM_LEADS = {
+                'novas-funcs-um': 'MDAS-3510',
+                'novas-funcs-dois': 'ghzzzz1',
+                'qa': 'malusouza2212',
+                'docs-devops': 'maysanazario',
+                'refatoracao': 'Julianaap02-prog',
+                'ux-ui': 'victoriaheloisaa'
+              };
 
-            // 2. Identifica dinamicamente o time do autor e adiciona o líder correspondente
-            for (const [teamSlug, leaders] of Object.entries(TEAM_LEADERS)) {
-              try {
-                const response = await github.rest.teams.getMembershipForUserInOrg({
-                  org: org,
-                  team_slug: teamSlug,
-                  username: author,
-                });
+              // Sempre inclui os líderes padrão em todos os PRs
+              leadsToRequest = [...DEFAULT_LEADS];
 
-                if (response.data && response.data.state === 'active') {
-                  core.info(`Autor ${author} identificado no time: ${teamSlug}`);
-                  leadsToRequest.push(...leaders);
-                }
-              } catch (error) {
-                if (error.status !== 404) {
-                  core.warning(`Erro ao consultar time ${teamSlug}: ${error.message}`);
+              // Identifica dinamicamente se o autor pertence a algum time e adiciona o líder daquele time
+              for (const [teamSlug, lead] of Object.entries(TEAM_LEADS)) {
+                try {
+                  const { data: membership } = await github.rest.teams.getMembershipForUserInOrg({
+                    org: org,
+                    team_slug: teamSlug,
+                    username: author
+                  });
+
+                  if (membership && membership.state === 'active') {
+                    core.info(`Autor ${author} confirmado no time: ${teamSlug}`);
+                    leadsToRequest.push(lead);
+                  }
+                } catch (error) {
+                  if (error.status !== 404) {
+                    core.warning(`Erro ao checar time ${teamSlug}: ${error.message}`);
+                  }
                 }
               }
             }
 
-            // 3. Análise de arquivos críticos de Backend (Banco, Configurações, Migrations)
-            try {
-              const { data: changedFiles } = await github.paginate(
-                github.rest.pulls.listFiles,
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: prNumber,
-                  per_page: 100,
-                }
-              );
-
-              const touchesCriticalBackendFiles = changedFiles.some(({ filename }) =>
-                /^(prisma|src\/db|src\/config|src\/models|migrations)\//.test(filename) ||
-                /\.(sql|prisma)$/.test(filename) ||
-                filename === 'package.json' ||
-                filename === '.env.example'
-              );
-
-              if (touchesCriticalBackendFiles) {
-                core.info('PR altera banco/configurações críticas; incluindo líderes de refatoração.');
-                leadsToRequest.push(...TEAM_LEADERS['refatoracao']);
-              }
-            } catch (error) {
-              core.warning(`Não foi possível analisar arquivos modificados: ${error.message}`);
-            }
-
-            // 4. Sanitização: remove duplicatas e impede o autor de se auto-atribuir
+            // Remove duplicados e o próprio autor da lista de revisores
             const reviewers = [...new Set(leadsToRequest)]
-              .filter((lead) => !lead.startsWith('TO_DO_'))
-              .filter((lead) => lead.toLowerCase() !== author.toLowerCase());
+              .filter(lead => lead.toLowerCase() !== author.toLowerCase());
 
             if (reviewers.length === 0) {
-              core.info(`PR #${prNumber}: Nenhum revisor elegível para atribuição.`);
+              core.info(`PR #${prNumber}: Nenhum revisor elegível.`);
               return;
             }
 
@@ -102,9 +79,9 @@ jobs:
                 owner: org,
                 repo: context.repo.repo,
                 pull_number: prNumber,
-                reviewers: reviewers,
+                reviewers: reviewers
               });
-              core.info('Revisores atribuídos com sucesso.');
+              core.info(`Revisores atribuídos com sucesso.`);
             } catch (error) {
               core.warning(`Falha ao atribuir revisores: ${error.message}`);
             }

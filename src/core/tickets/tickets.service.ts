@@ -1,6 +1,7 @@
-import { PrismaClient, StatusChamado } from '@prisma/client';
 import { randomBytes } from 'crypto';
-import { TicketsListQuery, TicketCreateInput, TicketUpdateInput } from './tickets.types';
+import { StatusChamado } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
+import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
 import { notifyMany } from '../notifications/notify';
 
 type Ctx = PrismaClient;
@@ -61,6 +62,35 @@ async function getUsuariosDoSetor(prisma: Ctx, setorId: string): Promise<string[
   return vinculos.map(v => v.usuarioId);
 }
 
+async function getTicketNotificationTargets(
+  prisma: Ctx,
+  ticket: { criadoPorId?: string | null; responsavelId?: string | null; setorId?: string | null },
+): Promise<Set<string>> {
+  const alvos = new Set<string>();
+
+  if (ticket.criadoPorId) alvos.add(ticket.criadoPorId);
+  if (ticket.responsavelId) alvos.add(ticket.responsavelId);
+  if (ticket.setorId) {
+    for (const usuarioId of await getUsuariosDoSetor(prisma, ticket.setorId)) {
+      alvos.add(usuarioId);
+    }
+  }
+
+  return alvos;
+}
+
+async function getStatusNotificationTargets(
+  prisma: Ctx,
+  status: StatusChamado,
+  ticket: { criadoPorId?: string | null; responsavelId?: string | null; setorId?: string | null },
+): Promise<Set<string>> {
+  if (status === StatusChamado.EM_ATENDIMENTO) {
+    return getTicketNotificationTargets(prisma, ticket);
+  }
+
+  return new Set([ticket.criadoPorId, ticket.responsavelId].filter(Boolean) as string[]);
+}
+
 async function gerarProtocolo(prisma: Ctx, maxRetries = 5): Promise<string> {
   for (let i = 0; i < maxRetries; i++) {
     const protocolo = `TCK-${randomBytes(3).toString('hex').toUpperCase()}`;
@@ -74,6 +104,52 @@ function isCatalogSlug(id?: string | null): boolean {
   return typeof id === 'string' && id.includes('-');
 }
 
+async function resolveSetorIdByKeyword(
+  prisma: Ctx,
+  setorProvavel?: string | null,
+): Promise<string | null> {
+  if (!setorProvavel) return null;
+
+  const keyword = setorProvavel.split('/')[0].trim();
+  if (!keyword) return null;
+
+  const matched = await prisma.setor.findFirst({
+    where: { nome: { contains: keyword } },
+    select: { id: true },
+  });
+
+  if (matched) return matched.id;
+
+  const kw = keyword.toLowerCase();
+  const setores = await prisma.setor.findMany({ select: { id: true, nome: true } });
+  const found = setores.find((s) => {
+    const nome = s.nome.toLowerCase();
+    return kw.includes(nome) || nome.includes(kw);
+  });
+
+  return found?.id ?? null;
+}
+
+async function resolveTicketRelations(prisma: Ctx, data: TicketCreateInput) {
+  const servicoIdIsSlug = isCatalogSlug(data.servicoId);
+  const dbServicoId = servicoIdIsSlug ? null : (data.servicoId ?? null);
+  const resolvedCatalogoServId = data.catalogoServicoId ?? (servicoIdIsSlug ? data.servicoId : null);
+  const catId = data.catalogoCategoriaId ?? data.categoriaId;
+  const resolvedCatalogoCatId = catId && isCatalogSlug(catId) ? catId : (data.catalogoCategoriaId ?? null);
+  const resolvedCatNome = data.catalogoCategoriaNome ?? data.categoriaNome ?? null;
+
+  let dbSetorId = data.setorId && !isCatalogSlug(data.setorId) ? data.setorId : null;
+  dbSetorId ??= await resolveSetorIdByKeyword(prisma, data.setorProvavel);
+
+  return {
+    dbServicoId,
+    resolvedCatalogoServId,
+    resolvedCatalogoCatId,
+    resolvedCatNome,
+    dbSetorId,
+  };
+}
+
 /* ========================= services ========================= */
 
 export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: { feitoPorId?: string }) {
@@ -81,34 +157,13 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
   if (!feitoPorId) throw Object.assign(new Error('Não autenticado'), { code: 'UNAUTH' });
 
   const protocolo = await gerarProtocolo(prisma);
-
-  const servicoIdIsSlug = isCatalogSlug(data.servicoId);
-  const dbServicoid = servicoIdIsSlug ? null : (data.servicoId ?? null);
-
-  const resolvedCatalogoServId = data.catalogoServicoId ?? (servicoIdIsSlug ? data.servicoId : null);
-  const catId = data.catalogoCategoriaId ?? data.categoriaId;
-  const resolvedCatalogoCatId = catId && isCatalogSlug(catId) ? catId : (data.catalogoCategoriaId ?? null);
-  const resolvedCatNome = data.catalogoCategoriaNome ?? data.categoriaNome ?? null;
-
-  let dbSetorId: string | null = data.setorId && !isCatalogSlug(data.setorId) ? data.setorId : null;
-  if (!dbSetorId && data.setorProvavel) {
-    const keyword = data.setorProvavel.split('/')[0].trim();
-    // 1) Setor cujo nome CONTÉM o keyword (ex.: keyword "Secretaria" → "Secretaria Acadêmica").
-    let matched = await prisma.setor.findFirst({ where: { nome: { contains: keyword } }, select: { id: true } });
-    // 2) Fallback bidirecional: keyword mais específico que o nome do setor
-    //    (ex.: keyword "Secretaria Acadêmica" → setor "Secretaria"). Sem isso,
-    //    a maioria dos chamados do catálogo nascia órfã (setorId nulo).
-    if (!matched && keyword) {
-      const kw = keyword.toLowerCase();
-      const setores = await prisma.setor.findMany({ select: { id: true, nome: true } });
-      const found = setores.find((s) => {
-        const nome = s.nome.toLowerCase();
-        return kw.includes(nome) || nome.includes(kw);
-      });
-      if (found) matched = { id: found.id };
-    }
-    if (matched) dbSetorId = matched.id;
-  }
+  const {
+    dbServicoId: dbServicoid,
+    resolvedCatalogoServId,
+    resolvedCatalogoCatId,
+    resolvedCatNome,
+    dbSetorId,
+  } = await resolveTicketRelations(prisma, data);
 
   const ticket = await prisma.chamado.create({
     data: {
@@ -146,11 +201,11 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
     },
   });
 
-  const alvos = new Set<string>([feitoPorId]);
-  if (ticket.responsavelId) alvos.add(ticket.responsavelId);
-  if (ticket.setorId) {
-    for (const u of await getUsuariosDoSetor(prisma, ticket.setorId)) alvos.add(u);
-  }
+  const alvos = await getTicketNotificationTargets(prisma, {
+    criadoPorId: feitoPorId,
+    responsavelId: ticket.responsavelId,
+    setorId: ticket.setorId,
+  });
 
   notifyMany(prisma, Array.from(alvos), {
     titulo: 'Chamado criado',
@@ -280,12 +335,12 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
       }),
     ]);
 
-    const alvos = new Set<string>();
-    if (alvoInfo?.criadoPorId)   alvos.add(alvoInfo.criadoPorId);
-    if (alvoInfo?.responsavelId) alvos.add(alvoInfo.responsavelId);
-    if (alvoInfo?.setorId && data.status === StatusChamado.EM_ATENDIMENTO) {
-      for (const u of await getUsuariosDoSetor(prisma, alvoInfo.setorId)) alvos.add(u);
-    }
+    const alvos = await getStatusNotificationTargets(prisma, data.status as StatusChamado, {
+      criadoPorId: alvoInfo?.criadoPorId ?? null,
+      responsavelId: alvoInfo?.responsavelId ?? null,
+      setorId: alvoInfo?.setorId ?? null,
+    });
+
     notifyMany(prisma, Array.from(alvos), {
       titulo: 'Status atualizado',
       mensagem: `Chamado ${alvoInfo?.protocolo ?? id} mudou para ${data.status}.`,

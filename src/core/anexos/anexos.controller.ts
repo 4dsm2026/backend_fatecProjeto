@@ -1,7 +1,7 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
 import fs from 'fs';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { buildRouteValidator } from '../../utils/zod-helpers';
-import { ListAnexosSchema, ParamsWithTicketIdSchema, UploadAnexoSchema, DownloadAnexoSchema } from './anexos.types';
+import { DownloadAnexoSchema, ListAnexosSchema, UploadAnexoSchema } from './anexos.types';
 import { listAnexosByTicketId, createAnexo, getAnexoForDownload } from './anexos.service';
 import { alunoSemAcessoAoChamado } from '../tickets/tickets.service';
 import { generateDownloadToken } from '../../utils/jwt';
@@ -18,6 +18,30 @@ const downloadValidator = buildRouteValidator({
     params: DownloadAnexoSchema.shape.params
 });
 
+function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
+    const authUser = req.user as { sub: string; role: string } | undefined;
+    if (!authUser) {
+        void res.code(401).send({ error: "Não autenticado" });
+        return null;
+    }
+
+    return authUser;
+}
+
+async function denyMissingTicketAccess(
+    prisma: any,
+    chamadoId: string,
+    authUser: { sub: string; role: string } | undefined,
+    res: FastifyReply,
+) {
+    if (await alunoSemAcessoAoChamado(prisma, chamadoId, authUser)) {
+        void res.code(404).send({ error: "Chamado não encontrado" });
+        return true;
+    }
+
+    return false;
+}
+
 
 /* GET /tickets/:id/anexos */
 export async function list(req: FastifyRequest, res: FastifyReply) {
@@ -25,12 +49,12 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
     if ('error' in parsed) return res.code(400).send(parsed.error);
 
     const prisma = req.server.prisma;
-    const authUser = req.user as { sub: string; role: string } | undefined;
+    const authUser = requireAuthUser(req, res);
+    if (!authUser) return;
     const { id: chamadoId } = parsed.data!.params!;
 
     try {
-        if (await alunoSemAcessoAoChamado(prisma, chamadoId, authUser))
-            return res.code(404).send({ error: "Chamado não encontrado" });
+        if (await denyMissingTicketAccess(prisma, chamadoId, authUser, res)) return;
 
         const anexos = await listAnexosByTicketId(prisma, chamadoId);
         return res.send(anexos);
@@ -48,15 +72,14 @@ export async function upload(req: FastifyRequest, res: FastifyReply) {
      if ('error' in parsed) return res.code(400).send(parsed.error);
 
     const prisma = req.server.prisma;
-    const authUser = req.user as { sub: string; role: string } | undefined;
-    const userId = authUser?.sub;
-    if (!userId) return res.code(401).send({ error: "Não autenticado" });
+    const authUser = requireAuthUser(req, res);
+    if (!authUser) return;
+    const userId = authUser.sub;
 
     const { id: chamadoId } = parsed.data!.params!;
 
     try {
-        if (await alunoSemAcessoAoChamado(prisma, chamadoId, authUser))
-            return res.code(404).send({ error: "Chamado não encontrado" });
+        if (await denyMissingTicketAccess(prisma, chamadoId, authUser, res)) return;
 
         const anexo = await createAnexo(prisma, req, chamadoId, userId);
         return res.code(201).send(anexo);
@@ -73,8 +96,9 @@ export async function download(req: FastifyRequest, res: FastifyReply) {
     if ('error' in parsed) return res.code(400).send(parsed.error);
 
     const prisma = req.server.prisma;
-     const userId = req.user?.sub as string | undefined;
-     if (!userId) return res.code(401).send({ error: "Não autenticado" });
+    const authUser = requireAuthUser(req, res);
+    if (!authUser) return;
+    const userId = authUser.sub;
 
     const { anexoId } = parsed.data!.params!;
 
@@ -98,8 +122,9 @@ export async function download(req: FastifyRequest, res: FastifyReply) {
 
 /* POST /anexos/:anexoId/download-token */
 export async function generateDownloadTokenRoute(req: FastifyRequest, res: FastifyReply): Promise<any> {
-    const userId = req.user?.sub as string | undefined;
-    if (!userId) return res.code(401).send({ error: "Não autenticado" });
+    const authUser = requireAuthUser(req, res);
+    if (!authUser) return;
+    const userId = authUser.sub;
 
     const anexoId = (req.params as any)?.anexoId as string | undefined;
     if (!anexoId) return res.code(400).send({ error: 'Parâmetro anexoId ausente' });
