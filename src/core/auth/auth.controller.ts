@@ -1,6 +1,6 @@
 // src/core/auth/auth.controller.ts
-import crypto from "crypto";
-import { FastifyRequest, FastifyReply } from "fastify";
+import { createHash, randomBytes } from "node:crypto";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
 import {
   LoginSchema,
@@ -271,8 +271,8 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     if (user.precisaTrocarSenha) {
       await registrarAuditoria({ feitoPorId: user.id, acao: "login_primeiro_acesso", alvo: user.emailPessoal, meta: {} });
       await resetLoginAttempts(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
-      const rawToken = crypto.randomBytes(32).toString("hex");
-      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const rawToken = randomBytes(32).toString("hex");
+      const tokenHash = createHash("sha256").update(rawToken).digest("hex");
       await prisma.tokenResetSenha.create({
         data: { usuarioId: user.id, tokenHash, expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24) },
       });
@@ -307,7 +307,10 @@ const firstAccessValidator = buildRouteValidator({ body: FirstAccessSchema });
 
 export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
   const parsed = firstAccessValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) {
+    await res.code(400).send(parsed.error);
+    return;
+  }
 
   const { token, newPassword, personalEmail } = parsed.data!.body! as unknown as {
     token: string;
@@ -319,26 +322,32 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
 
   try {
     if (!validarPoliticaSenha(newPassword)) {
-      return void (await res.code(400).send({ error: "Senha não atende aos critérios mínimos." }));
+      await res.code(400).send({ error: "Senha não atende aos critérios mínimos." });
+      return;
     }
 
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
     const tokenRow = await prisma.tokenResetSenha.findFirst({
       where: { tokenHash, usadoEm: null, expiraEm: { gt: new Date() } },
       include: { usuario: true },
     });
 
     if (!tokenRow || !tokenRow.usuario) {
-      return void (await res.code(400).send({ error: "Token inválido ou expirado." }));
+      await res.code(400).send({ error: "Token inválido ou expirado." });
+      return;
     }
 
     const user = tokenRow.usuario;
-    if (!user.ativo) return void (await res.code(403).send({ error: "Usuário inativo" }));
+    if (!user.ativo) {
+      await res.code(403).send({ error: "Usuário inativo" });
+      return;
+    }
 
     if (personalEmail) {
       const dupe = await prisma.usuario.findUnique({ where: { emailPessoal: personalEmail }, select: { id: true } });
       if (dupe && dupe.id !== user.id) {
-        return void (await res.code(409).send({ error: "Este e-mail pessoal já está em uso" }));
+        await res.code(409).send({ error: "Este e-mail pessoal já está em uso" });
+        return;
       }
     }
 
@@ -371,7 +380,10 @@ const forgotPasswordValidator = buildRouteValidator({ body: EsqueciSenhaSchema }
 
 export const forgotPassword = async (req: FastifyRequest, res: FastifyReply) => {
   const parsed = forgotPasswordValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) {
+    await res.code(400).send(parsed.error);
+    return;
+  }
   const { email } = parsed.data!.body! as { email: string };
   const prisma = req.server.prisma;
   try {
@@ -388,20 +400,30 @@ const resetPasswordValidator = buildRouteValidator({ body: ResetSenhaSchema });
 
 export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
   const parsed = resetPasswordValidator.parse(req);
-  if ("error" in parsed) return void (await res.code(400).send(parsed.error));
+  if ("error" in parsed) {
+    await res.code(400).send(parsed.error);
+    return;
+  }
   const { token, newPassword } = parsed.data!.body! as { token: string; newPassword: string };
   const prisma = req.server.prisma;
   try {
     if (!validarPoliticaSenha(newPassword)) {
-      return void (await res.code(400).send({ error: "Senha não atende aos critérios mínimos." }));
+      await res.code(400).send({ error: "Senha não atende aos critérios mínimos." });
+      return;
     }
     const basicUser = await consumirTokenSenha(prisma, token, newPassword);
-    if (!basicUser) return void (await res.code(400).send({ error: "Token inválido ou expirado." }));
+    if (!basicUser) {
+      await res.code(400).send({ error: "Token inválido ou expirado." });
+      return;
+    }
     const userDb = await prisma.usuario.findUnique({
       where: { id: basicUser.id },
       select: { id: true, nome: true, ra: true, papel: true, emailPessoal: true },
     });
-    if (!userDb) return void (await res.code(404).send({ error: "Usuário não encontrado" }));
+    if (!userDb) {
+      await res.code(404).send({ error: "Usuário não encontrado" });
+      return;
+    }
     const accessToken = generateAccessToken({ sub: userDb.id, email: userDb.emailPessoal ?? "", role: userDb.papel });
     const { token: refreshToken } = genRT();
     await createSession({ usuarioId: userDb.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
