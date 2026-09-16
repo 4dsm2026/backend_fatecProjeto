@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { createHash, randomBytes } from "crypto";
 import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../../security/password";
 import { getMailDriver } from "../../config/mail";
