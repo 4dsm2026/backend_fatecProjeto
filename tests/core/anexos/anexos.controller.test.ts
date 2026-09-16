@@ -32,12 +32,11 @@ vi.mock('../../../src/utils/jwt', () => ({
 
 // anexos.controller.ts faz `import fs from 'fs'` e chama
 // `fs.createReadStream(filePath)` de verdade dentro de download(). Sem
-// mockar o módulo 'fs', o teste tenta abrir o arquivo no disco de verdade
-// — e como o filePath vem de um service mockado, o caminho não existe,
-// gerando um ENOENT assíncrono que o try/catch do controller não pega
-// (createReadStream falha via evento 'error' no stream, não por exceção
-// síncrona). Cobrindo os dois formatos de import (default e nomeado) para
-// não depender de qual interop o bundler está usando.
+// mockar 'fs', o teste tentaria abrir um arquivo real no disco — e como o
+// filePath vem de um service mockado, o caminho não existe (ENOENT
+// assíncrono, que o try/catch do controller não pega). Cobrindo os dois
+// formatos de import (default e nomeado) para não depender de qual interop
+// o bundler está usando.
 vi.mock('fs', () => ({
     default: {
         createReadStream: mockCreateReadStream,
@@ -47,18 +46,12 @@ vi.mock('fs', () => ({
 
 import * as AnexosController from '../../../src/core/anexos/anexos.controller'
 
-// ---------------------------------------------------------------------------
-// CORREÇÃO: este afterEach estava declarado só dentro do describe
-// "Listagem", então só se aplicava aos 5 testes daquele bloco (afterEach
-// dentro de um describe NÃO alcança describes irmãos). Os blocos Upload,
-// Download e Geração de Token nunca tinham os mocks resetados entre testes,
-// então uma chamada bem-sucedida do 1º teste de cada bloco continuava
-// "presa" no mock quando o 2º/3º teste do MESMO bloco rodava — fazendo
-// `expect(mock).not.toHaveBeenCalled()` falhar mesmo quando o controller
-// se comportou certo. Movendo para o nível do arquivo, todo describe abaixo
-// passa a resetar os mocks depois de cada teste, sem precisar repetir o
-// hook em cada bloco.
-// ---------------------------------------------------------------------------
+// afterEach no nível do ARQUIVO (não dentro de um describe específico): os
+// 4 blocos de teste abaixo compartilham os mesmos mocks hoisted, e um
+// afterEach preso a um describe não alcança describes irmãos. Sem isso, uma
+// chamada bem-sucedida do 1º teste de um bloco "vaza" pro 2º teste do MESMO
+// bloco, fazendo `expect(mock).not.toHaveBeenCalled()` falhar mesmo quando
+// o controller se comportou certo.
 afterEach(() => {
     vi.resetAllMocks()
 })
@@ -78,6 +71,12 @@ const mockAnexos = [
         },
     },
 ]
+
+// anexoId usado em todos os testes de download/token: precisa ser um CUID
+// de verdade, porque ParamsWithAnexoIdSchema (anexos.types.ts real) exige
+// z.string().cuid() e a validação roda de verdade nestes testes (não é
+// mockada). Confirmado empiricamente com o Zod real antes de escrever isto.
+const VALID_ANEXO_ID = 'cmj1234567890123456789012'
 
 describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
     it('deve listar os anexos do chamado e retornar 200', async () => {
@@ -248,6 +247,7 @@ describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
         expect(mockRequest.log.error).toHaveBeenCalled()
     })
 })
+
 //Bloco Upload (POST /tickets/:id/anexos)
 
 describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
@@ -325,7 +325,141 @@ describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
         expect(mockCreateAnexo).not.toHaveBeenCalled()
     })
 
-    it('deve retornar 500 se o Service lançar uma exceção não tratada', async () => {
+    // NOVO: uploadValidator usa ParamsWithTicketIdSchema (id: string().min(1)),
+    // igual ao list() — mas até agora só list() tinha o teste equivalente.
+    it('deve retornar 400 se os parâmetros forem inválidos (id do chamado vazio)', async () => {
+        const mockRequest: any = {
+            params: {
+                id: '',
+            },
+            server: {
+                prisma: mockPrismaClient,
+            },
+            user: {
+                sub: 'user-001',
+                role: 'ALUNO',
+            },
+            log: {
+                error: vi.fn(),
+            },
+        }
+
+        const mockReply: any = {
+            code: vi.fn().mockReturnThis(),
+            send: vi.fn(),
+        }
+
+        await AnexosController.upload(mockRequest, mockReply)
+
+        expect(mockReply.code).toHaveBeenCalledWith(400)
+        expect(mockAlunoSemAcessoAoChamado).not.toHaveBeenCalled()
+        expect(mockCreateAnexo).not.toHaveBeenCalled()
+    })
+
+    // NOVO: upload() tem exatamente o mesmo check de acesso que list() já
+    // testava, mas não tinha o teste equivalente.
+    it('deve retornar 404 se o usuário não tiver acesso ao chamado', async () => {
+        mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(true)
+
+        const mockRequest: any = {
+            params: {
+                id: 'ticket-001',
+            },
+            server: {
+                prisma: mockPrismaClient,
+            },
+            user: {
+                sub: 'user-001',
+                role: 'ALUNO',
+            },
+            log: {
+                error: vi.fn(),
+            },
+        }
+
+        const mockReply: any = {
+            code: vi.fn().mockReturnThis(),
+            send: vi.fn(),
+        }
+
+        await AnexosController.upload(mockRequest, mockReply)
+
+        expect(mockReply.code).toHaveBeenCalledWith(404)
+        expect(mockReply.send).toHaveBeenCalledWith({
+            error: 'Chamado não encontrado',
+        })
+        expect(mockCreateAnexo).not.toHaveBeenCalled()
+    })
+
+    // NOVO: createAnexo() (anexos.service.ts real) lança 4 erros distintos,
+    // cada um com .statusCode próprio (400/415/404/413). O catch do
+    // controller já faz `e?.statusCode || 500` — mas isso nunca tinha sido
+    // exercitado com um erro que REALMENTE carrega statusCode. O único teste
+    // de erro existente usa um Error puro, sem statusCode, então só prova o
+    // fallback (lado direito do ||), nunca o repasse de verdade (lado
+    // esquerdo). Uma regressão que trocasse `e?.statusCode` por, digamos,
+    // `e?.code`, passaria despercebida sem estes testes.
+    const uploadServiceErrorCases = [
+        {
+            description:
+                '400 quando o service lança "nenhum arquivo enviado" (statusCode 400)',
+            statusCode: 400,
+            message: 'Nenhum arquivo enviado.',
+        },
+        {
+            description:
+                '415 quando o service lança "tipo de arquivo não permitido" (statusCode 415)',
+            statusCode: 415,
+            message: 'Tipo de arquivo não permitido: image/svg+xml',
+        },
+        {
+            description:
+                '404 quando o service lança "chamado não encontrado" na checagem interna (statusCode 404)',
+            statusCode: 404,
+            message: 'Chamado não encontrado',
+        },
+        {
+            description:
+                '413 quando o service lança "arquivo excede o limite" (statusCode 413)',
+            statusCode: 413,
+            message: 'Arquivo excede o limite de 10MB.',
+        },
+    ]
+
+    it.each(uploadServiceErrorCases)('$description', async ({ statusCode, message }) => {
+        mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(false)
+        const serviceError = Object.assign(new Error(message), { statusCode })
+        mockCreateAnexo.mockRejectedValueOnce(serviceError)
+
+        const mockRequest: any = {
+            params: {
+                id: 'ticket-001',
+            },
+            server: {
+                prisma: mockPrismaClient,
+            },
+            user: {
+                sub: 'user-001',
+                role: 'ALUNO',
+            },
+            log: {
+                error: vi.fn(),
+            },
+        }
+
+        const mockReply: any = {
+            code: vi.fn().mockReturnThis(),
+            send: vi.fn(),
+        }
+
+        await AnexosController.upload(mockRequest, mockReply)
+
+        expect(mockReply.code).toHaveBeenCalledWith(statusCode)
+        expect(mockReply.send).toHaveBeenCalledWith({ error: message })
+        expect(mockRequest.log.error).toHaveBeenCalled()
+    })
+
+    it('deve retornar 500 se o Service lançar uma exceção sem statusCode (fallback)', async () => {
         const mockError = new Error('Erro ao salvar o anexo')
 
         mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(false)
@@ -379,7 +513,7 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
 
         const mockRequest: any = {
             params: {
-                anexoId: 'cmj1234567890123456789012',
+                anexoId: VALID_ANEXO_ID,
             },
             server: {
                 prisma: mockPrismaClient,
@@ -403,7 +537,7 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
 
         expect(mockGetAnexoForDownload).toHaveBeenCalledWith(
             mockPrismaClient,
-            'cmj1234567890123456789012',
+            VALID_ANEXO_ID,
             'user-001',
             'ALUNO'
         )
@@ -425,7 +559,7 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
     it('deve retornar 401 se o usuário não estiver autenticado', async () => {
         const mockRequest: any = {
             params: {
-                anexoId: 'cmj1234567890123456789012',
+                anexoId: VALID_ANEXO_ID,
             },
             server: {
                 prisma: mockPrismaClient,
@@ -451,14 +585,48 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
         expect(mockGetAnexoForDownload).not.toHaveBeenCalled()
     })
 
-    it('deve retornar 500 se o Service lançar uma exceção não tratada', async () => {
+    // NOVO: ParamsWithAnexoIdSchema exige z.string().cuid() de verdade
+    // (anexos.types.ts real, validação NÃO mockada neste arquivo). Nenhum
+    // teste existente exercitava esse formato de erro 400 especificamente
+    // para download() — confirmei empiricamente com Zod real que
+    // 'not-a-valid-cuid' é rejeitado antes de escrever este teste.
+    it('deve retornar 400 se o anexoId não tiver formato de cuid válido', async () => {
+        const mockRequest: any = {
+            params: {
+                anexoId: 'not-a-valid-cuid',
+            },
+            server: {
+                prisma: mockPrismaClient,
+            },
+            user: {
+                sub: 'user-001',
+                role: 'ALUNO',
+            },
+            log: {
+                error: vi.fn(),
+            },
+        }
+
+        const mockReply: any = {
+            header: vi.fn().mockReturnThis(),
+            code: vi.fn().mockReturnThis(),
+            send: vi.fn(),
+        }
+
+        await AnexosController.download(mockRequest, mockReply)
+
+        expect(mockReply.code).toHaveBeenCalledWith(400)
+        expect(mockGetAnexoForDownload).not.toHaveBeenCalled()
+    })
+
+    it('deve retornar 500 se o Service lançar uma exceção sem statusCode (fallback)', async () => {
         const mockError = new Error('Erro ao baixar o anexo')
 
         mockGetAnexoForDownload.mockRejectedValueOnce(mockError)
 
         const mockRequest: any = {
             params: {
-                anexoId: 'cmj1234567890123456789012',
+                anexoId: VALID_ANEXO_ID,
             },
             server: {
                 prisma: mockPrismaClient,
@@ -486,6 +654,42 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
         })
         expect(mockRequest.log.error).toHaveBeenCalled()
     })
+
+    // NOVO: errMsg (helper compartilhado por list/upload/download) faz
+    // `e instanceof Error ? e.message : String(e)`. Todo teste de erro até
+    // aqui lançava um Error de verdade — o lado String(e) nunca rodou.
+    it('converte um valor não-Error lançado pelo service para string (errMsg)', async () => {
+        mockGetAnexoForDownload.mockRejectedValueOnce('falha inesperada, não é um Error')
+
+        const mockRequest: any = {
+            params: {
+                anexoId: VALID_ANEXO_ID,
+            },
+            server: {
+                prisma: mockPrismaClient,
+            },
+            user: {
+                sub: 'user-001',
+                role: 'ALUNO',
+            },
+            log: {
+                error: vi.fn(),
+            },
+        }
+
+        const mockReply: any = {
+            header: vi.fn().mockReturnThis(),
+            code: vi.fn().mockReturnThis(),
+            send: vi.fn(),
+        }
+
+        await AnexosController.download(mockRequest, mockReply)
+
+        expect(mockReply.code).toHaveBeenCalledWith(500)
+        expect(mockReply.send).toHaveBeenCalledWith({
+            error: 'falha inesperada, não é um Error',
+        })
+    })
 })
 
 //Bloco Generate Download Token (GET /anexos/:anexoId/download-token)
@@ -503,7 +707,7 @@ describe('AnexosController - Geração de Token (POST /anexos/:anexoId/download-
 
         const mockRequest: any = {
             params: {
-                anexoId: 'cmj1234567890123456789012',
+                anexoId: VALID_ANEXO_ID,
             },
             server: {
                 prisma: mockPrismaClient,
@@ -530,7 +734,7 @@ describe('AnexosController - Geração de Token (POST /anexos/:anexoId/download-
         expect(mockGenerateDownloadToken).toHaveBeenCalledWith(
             {
                 sub: 'user-001',
-                anexoId: 'cmj1234567890123456789012',
+                anexoId: VALID_ANEXO_ID,
             },
             {
                 expiresIn: '5m',
@@ -546,7 +750,7 @@ describe('AnexosController - Geração de Token (POST /anexos/:anexoId/download-
     it('deve retornar 401 se o usuário não estiver autenticado', async () => {
         const mockRequest: any = {
             params: {
-                anexoId: 'cmj1234567890123456789012',
+                anexoId: VALID_ANEXO_ID,
             },
             server: {
                 prisma: mockPrismaClient,
@@ -610,4 +814,114 @@ describe('AnexosController - Geração de Token (POST /anexos/:anexoId/download-
         expect(mockGenerateDownloadToken).not.toHaveBeenCalled()
     })
 
+    // NOVO: o bloco compartilhado logo abaixo (anexoAccessHandlers) só
+    // exercita erros COM statusCode e message. Esta função usa
+    // `e?.statusCode || 500` e `e?.message ?? String(e)` — nenhum teste
+    // ainda cobria o lado do fallback (statusCode/message ausentes) para
+    // ESTA função especificamente. Um valor lançado sem nenhuma das duas
+    // propriedades fecha as duas branches de uma vez.
+    it('deve retornar 500 e converter para string quando getAnexoForDownload falha sem statusCode nem message', async () => {
+        mockGetAnexoForDownload.mockRejectedValueOnce('falha genérica sem statusCode')
+
+        const mockRequest: any = {
+            params: {
+                anexoId: VALID_ANEXO_ID,
+            },
+            server: {
+                prisma: mockPrismaClient,
+            },
+            user: {
+                sub: 'user-001',
+                role: 'ALUNO',
+            },
+            log: {
+                error: vi.fn(),
+            },
+        }
+
+        const mockReply: any = {
+            code: vi.fn().mockReturnThis(),
+            send: vi.fn(),
+        }
+
+        await AnexosController.generateDownloadTokenRoute(mockRequest, mockReply)
+
+        expect(mockReply.code).toHaveBeenCalledWith(500)
+        expect(mockReply.send).toHaveBeenCalledWith({
+            error: 'falha genérica sem statusCode',
+        })
+        expect(mockRequest.log.error).toHaveBeenCalled()
+    })
+
+})
+
+// ---------------------------------------------------------------------------
+// NOVO BLOCO: download() e generateDownloadTokenRoute() chamam a MESMA
+// getAnexoForDownload() e têm o MESMO padrão de catch
+// (`const code = e?.statusCode || 500`). getAnexoForDownload (anexos.service.ts
+// real) pode lançar 3 erros distintos: 404 (anexo não existe no banco), 403
+// (usuário sem acesso) e 404 (arquivo físico sumiu do disco — uma segunda
+// causa DIFERENTE para o mesmo código HTTP, com mensagem diferente). Nenhum
+// desses 3 cenários tinha teste em NENHUMA das duas funções antes.
+//
+// Uma tabela × dois handlers via describe.each aninhado evita repetir 3
+// blocos de teste quase idênticos 2 vezes (6 combinações a partir de 2
+// tabelas pequenas, sem duplicação).
+// ---------------------------------------------------------------------------
+const downloadServiceErrorCases = [
+    {
+        description: '404 quando o anexo não existe no banco',
+        statusCode: 404,
+        message: 'Anexo não encontrado',
+    },
+    {
+        description: '403 quando o usuário não tem acesso a este anexo',
+        statusCode: 403,
+        message: 'Acesso negado a este anexo',
+    },
+    {
+        description: '404 quando o arquivo físico não existe mais no servidor',
+        statusCode: 404,
+        message: 'Arquivo físico não encontrado no servidor',
+    },
+]
+
+const anexoAccessHandlers = [
+    { name: 'download', handler: AnexosController.download },
+    { name: 'generateDownloadTokenRoute', handler: AnexosController.generateDownloadTokenRoute },
+]
+
+describe.each(anexoAccessHandlers)('$name — repassa o statusCode de getAnexoForDownload', ({ handler }) => {
+    it.each(downloadServiceErrorCases)('$description', async ({ statusCode, message }) => {
+        const serviceError = Object.assign(new Error(message), { statusCode })
+        mockGetAnexoForDownload.mockRejectedValueOnce(serviceError)
+
+        const mockRequest: any = {
+            params: {
+                anexoId: VALID_ANEXO_ID,
+            },
+            server: {
+                prisma: mockPrismaClient,
+            },
+            user: {
+                sub: 'user-001',
+                role: 'ALUNO',
+            },
+            log: {
+                error: vi.fn(),
+            },
+        }
+
+        const mockReply: any = {
+            header: vi.fn().mockReturnThis(),
+            code: vi.fn().mockReturnThis(),
+            send: vi.fn(),
+        }
+
+        await handler(mockRequest, mockReply)
+
+        expect(mockReply.code).toHaveBeenCalledWith(statusCode)
+        expect(mockReply.send).toHaveBeenCalledWith({ error: message })
+        expect(mockRequest.log.error).toHaveBeenCalled()
+    })
 })
