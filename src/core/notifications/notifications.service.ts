@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import type { NotificationsListQuery } from "./notifications.types";
 
 type Ctx = PrismaClient;
