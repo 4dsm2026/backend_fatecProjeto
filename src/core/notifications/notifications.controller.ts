@@ -19,7 +19,7 @@ const idValidator = buildRouteValidator({ params: NotificationIdSchema.shape.par
 const requireUserId = (req: FastifyRequest, res: FastifyReply): string | null => {
   const userId = req.user?.sub as string | undefined;
   if (!userId) {
-    void res.code(401).send({ error: "Não autenticado" });
+    await res.code(401).send({ error: "Não autenticado" });
     return null;
   }
 

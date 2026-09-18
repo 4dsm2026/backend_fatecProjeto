@@ -21,7 +21,7 @@ const downloadValidator = buildRouteValidator({
 function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
     const authUser = req.user as { sub: string; role: string } | undefined;
     if (!authUser) {
-        void res.code(401).send({ error: "Não autenticado" });
+        await res.code(401).send({ error: "Não autenticado" });
         return null;
     }
 
@@ -35,7 +35,7 @@ async function denyMissingTicketAccess(
     res: FastifyReply,
 ) {
     if (await alunoSemAcessoAoChamado(prisma, chamadoId, authUser)) {
-        void res.code(404).send({ error: "Chamado não encontrado" });
+        await res.code(404).send({ error: "Chamado não encontrado" });
         return true;
     }
 
