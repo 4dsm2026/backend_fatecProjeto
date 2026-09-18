@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'node:fs';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { buildRouteValidator } from '../../utils/zod-helpers';
 import { DownloadAnexoSchema, ListAnexosSchema, UploadAnexoSchema } from './anexos.types';
@@ -18,7 +18,7 @@ const downloadValidator = buildRouteValidator({
     params: DownloadAnexoSchema.shape.params
 });
 
-function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
+async function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
     const authUser = req.user as { sub: string; role: string } | undefined;
     if (!authUser) {
         await res.code(401).send({ error: "Não autenticado" });
@@ -49,7 +49,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
     if ('error' in parsed) return res.code(400).send(parsed.error);
 
     const prisma = req.server.prisma;
-    const authUser = requireAuthUser(req, res);
+    const authUser = await requireAuthUser(req, res);
     if (!authUser) return;
     const { id: chamadoId } = parsed.data!.params!;
 
@@ -72,7 +72,7 @@ export async function upload(req: FastifyRequest, res: FastifyReply) {
      if ('error' in parsed) return res.code(400).send(parsed.error);
 
     const prisma = req.server.prisma;
-    const authUser = requireAuthUser(req, res);
+    const authUser = await requireAuthUser(req, res);
     if (!authUser) return;
     const userId = authUser.sub;
 
@@ -96,7 +96,7 @@ export async function download(req: FastifyRequest, res: FastifyReply) {
     if ('error' in parsed) return res.code(400).send(parsed.error);
 
     const prisma = req.server.prisma;
-    const authUser = requireAuthUser(req, res);
+    const authUser = await requireAuthUser(req, res);
     if (!authUser) return;
     const userId = authUser.sub;
 
@@ -122,7 +122,7 @@ export async function download(req: FastifyRequest, res: FastifyReply) {
 
 /* POST /anexos/:anexoId/download-token */
 export async function generateDownloadTokenRoute(req: FastifyRequest, res: FastifyReply): Promise<any> {
-    const authUser = requireAuthUser(req, res);
+    const authUser = await requireAuthUser(req, res);
     if (!authUser) return;
     const userId = authUser.sub;
 

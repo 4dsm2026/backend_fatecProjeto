@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { StatusChamado } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
