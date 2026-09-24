@@ -1,9 +1,9 @@
 // src/middlewares/errorHandler.ts
-import { FastifyInstance } from "fastify";
+import { FastifyError, FastifyInstance } from "fastify";
 import { env } from "../env";
 
 export function registerErrorHandler(app: FastifyInstance) {
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: FastifyError, request, reply) => {
     request.log.error({ err: error }, "Erro não tratado");
 
     // Erros de validação do Fastify/Zod
