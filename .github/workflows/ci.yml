@@ -67,7 +67,7 @@ jobs:
           echo "MySQL não respondeu a tempo"; exit 1
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Generate Prisma client
         run: pnpm prisma:generate
