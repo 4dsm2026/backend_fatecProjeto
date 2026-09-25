@@ -28,10 +28,10 @@ const updateValidator = buildRouteValidator({
   body:   TicketUpdateSchema.shape.body,
 });
 
-function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
+async function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
   const authUser = req.user as { sub: string; role: string } | undefined;
   if (!authUser) {
-    void res.code(401).send({ error: "Não autenticado" });
+    await res.code(401).send({ error: "Não autenticado" });
     return null;
   }
 
@@ -45,7 +45,7 @@ async function denyMissingTicketAccess(
   res: FastifyReply,
 ) {
   if (await alunoSemAcessoAoChamado(prisma, id, authUser)) {
-    void res.code(404).send({ error: "Chamado não encontrado" });
+    await res.code(404).send({ error: "Chamado não encontrado" });
     return true;
   }
 
@@ -58,7 +58,7 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
-  const authUser = requireAuthUser(req, res);
+  const authUser = await requireAuthUser(req, res);
   if (!authUser) return;
 
   const feitoPorId = authUser.sub;
@@ -78,7 +78,7 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
-  const authUser = requireAuthUser(req, res);
+  const authUser = await requireAuthUser(req, res);
   if (!authUser) return;
   try {
     const id = parsed.data!.params!.id;
@@ -106,7 +106,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
-  const authUser = requireAuthUser(req, res);
+  const authUser = await requireAuthUser(req, res);
   if (!authUser) return;
 
   try {
@@ -128,7 +128,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 /* ============ GET /tickets/stats ============ */
 export async function stats(req: FastifyRequest, res: FastifyReply) {
   const prisma   = req.server.prisma;
-  const authUser = requireAuthUser(req, res);
+  const authUser = await requireAuthUser(req, res);
   if (!authUser) return;
 
   try {
@@ -147,7 +147,7 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma     = req.server.prisma;
-  const authUser   = requireAuthUser(req, res);
+  const authUser   = await requireAuthUser(req, res);
   if (!authUser) return;
   const feitoPorId = authUser.sub;
 
@@ -177,7 +177,7 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma     = req.server.prisma;
-  const authUser   = requireAuthUser(req, res);
+  const authUser   = await requireAuthUser(req, res);
   if (!authUser) return;
   const feitoPorId = authUser.sub;
 
