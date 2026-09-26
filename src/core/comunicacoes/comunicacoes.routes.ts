@@ -1,7 +1,9 @@
 import { FastifyInstance } from "fastify";
 import * as ctl from "./comunicacoes.controller";
+import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 
 export async function comunicacoesRoutes(app: FastifyInstance) {
+  useDocsOnlySchemas(app);
   const handlers = {
     preHandler: [app.authenticate, app.authorize(['ADMINISTRADOR'])],
   };

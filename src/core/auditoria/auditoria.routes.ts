@@ -2,6 +2,8 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { AuditoriaController } from "./auditoria.controller";
 import { buildRouteValidator, zStringTrim } from "../../utils/zod-helpers";
 import { z } from "zod";
+import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
+
 
 const controller = new AuditoriaController();
 
@@ -43,6 +45,7 @@ const preQuery =
 // ----- Rotas -----
 
 export default async function auditoriaRoutes(app: FastifyInstance) {
+  useDocsOnlySchemas(app);
   // Apenas usuários autenticados podem ver auditoria
   // Depois podemos aplicar o "apenas gestor"
 

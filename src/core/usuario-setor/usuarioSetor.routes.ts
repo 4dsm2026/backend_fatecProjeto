@@ -1,7 +1,9 @@
 import { FastifyInstance } from "fastify";
 import * as ctl from "./usuarioSetor.controller";
+import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 
 export async function usuarioSetorRoutes(app: FastifyInstance) {
+  useDocsOnlySchemas(app);
   const handlers = {
     preHandler: [
       app.authenticate,
