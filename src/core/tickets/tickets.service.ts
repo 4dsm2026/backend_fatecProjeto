@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { StatusChamado } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
@@ -10,6 +10,9 @@ const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
 
 /* ========================= helpers ========================= */
+
+const pick = <T extends Record<string, unknown>>(obj: T): Partial<T> =>
+  Object.fromEntries(Object.entries(obj).filter(([, v]) => v != null)) as Partial<T>;
 
 const ticketInclude = (include?: TicketsListQuery['include']) => {
   const base = {
@@ -294,21 +297,23 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
   const updated = await prisma.chamado.update({
     where: { id },
     data: {
-      titulo:    data.titulo    ?? undefined,
-      descricao: data.descricao ?? undefined,
-      prioridade: data.prioridade ?? undefined,
-      nivel:      data.nivel      ?? undefined,
-      status:     data.status     ?? undefined,
-      servicoId:     data.servicoId     === undefined ? undefined : data.servicoId,
-      setorId:       data.setorId       === undefined ? undefined : data.setorId,
-      clienteId:     data.clienteId     === undefined ? undefined : data.clienteId,
-      contratoId:    data.contratoId    === undefined ? undefined : data.contratoId,
-      responsavelId: data.responsavelId === undefined ? undefined : data.responsavelId,
-      organizacaoId: data.organizacaoId === undefined ? undefined : data.organizacaoId,
-      precisaAcaoDoAluno: data.precisaAcaoDoAluno ?? undefined,
-      observacaoInterna:  (data as any).observacaoInterna  ?? undefined,
-      slaHoras:    (data as any).slaHoras    ?? undefined,
-      slaDias:     (data as any).slaDias     ?? undefined,
+      ...pick({
+        titulo:    data.titulo,
+        descricao: data.descricao,
+        prioridade: data.prioridade,
+        nivel:      data.nivel,
+        status:     data.status,
+        servicoId:     data.servicoId,
+        setorId:       data.setorId,
+        clienteId:     data.clienteId,
+        contratoId:    data.contratoId,
+        responsavelId: data.responsavelId,
+        organizacaoId: data.organizacaoId,
+        precisaAcaoDoAluno: data.precisaAcaoDoAluno,
+        observacaoInterna:  (data as any).observacaoInterna,
+        slaHoras:    (data as any).slaHoras,
+        slaDias:     (data as any).slaDias,
+      }),
       vencimentoSla: (data as any).vencimentoSla ? new Date((data as any).vencimentoSla) : undefined,
       encerradoEm:
         data.status &&
@@ -391,23 +396,14 @@ export async function statsTickets(
     ...(opts.organizacaoId ? { organizacaoId: opts.organizacaoId } : {}),
   };
 
-  // Contagens por status em paralelo
-  const [
-    nAberto,
-    nEmAtendimento,
-    nAguardando,
-    nResolvido,
-    nEncerrado,
-  ] = await Promise.all([
-    prisma.chamado.count({ where: { ...base, status: 'ABERTO' } }),
-    prisma.chamado.count({ where: { ...base, status: 'EM_ATENDIMENTO' } }),
-    prisma.chamado.count({ where: { ...base, status: 'AGUARDANDO_USUARIO' } }),
-    prisma.chamado.count({ where: { ...base, status: 'RESOLVIDO' } }),
-    prisma.chamado.count({ where: { ...base, status: 'ENCERRADO' } }),
-  ]);
+  const statuses = ['ABERTO', 'EM_ATENDIMENTO', 'AGUARDANDO_USUARIO', 'RESOLVIDO', 'ENCERRADO'] as const;
+  const counts = await Promise.all(
+    statuses.map(s => prisma.chamado.count({ where: { ...base, status: s } })),
+  );
+  const porStatus = Object.fromEntries(statuses.map((s, i) => [s, counts[i]])) as Record<string, number>;
 
-  const total = nAberto + nEmAtendimento + nAguardando + nResolvido + nEncerrado;
-  const totalResolvidos = nResolvido + nEncerrado;
+  const total = counts.reduce((a, b) => a + b, 0);
+  const totalResolvidos = porStatus.RESOLVIDO + porStatus.ENCERRADO;
   const pctResolvidos = total > 0 ? Math.round((totalResolvidos / total) * 100) : 0;
 
   // Chamados encerrados com tempo de resolução
@@ -503,13 +499,7 @@ export async function statsTickets(
 
   return {
     total,
-    porStatus: {
-      ABERTO:             nAberto,
-      EM_ATENDIMENTO:     nEmAtendimento,
-      AGUARDANDO_USUARIO: nAguardando,
-      RESOLVIDO:          nResolvido,
-      ENCERRADO:          nEncerrado,
-    },
+    porStatus,
     porNivel,
     porPrioridade,
     porSetor,

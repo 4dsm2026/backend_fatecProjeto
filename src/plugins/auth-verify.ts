@@ -2,6 +2,14 @@
 import fp from "fastify-plugin";
 import { verifyAccessToken } from "../utils/jwt";
 
+// Observação: `FastifyInstance.authenticate`/`authorize` e `FastifyRequest.user`
+// já são declarados globalmente em src/plugins/prisma.ts (bloco
+// `declare module "fastify"`, ao final do arquivo). Não repetir a
+// declaração aqui — o TypeScript funde (merge) interfaces com o mesmo nome
+// em arquivos diferentes, e uma segunda declaração com uma assinatura
+// textualmente diferente (ex.: `papeis: string[]` vs o `papeis: PapelValue[]`
+// já usado lá) gera erro de conflito de tipos (TS2717).
+
 export default fp(async (app) => {
   app.decorate("authenticate", async (req: any, res: any) => {
     if (req.method === "OPTIONS") return;

@@ -104,10 +104,6 @@ function buildMock() {
       findMany: vi.fn(),
       upsert: vi.fn(),
     },
-    comunicacaoTemplate: {
-      findMany: vi.fn(),
-      upsert: vi.fn(),
-    },
     sugestao: {
       create: vi.fn(),
     },

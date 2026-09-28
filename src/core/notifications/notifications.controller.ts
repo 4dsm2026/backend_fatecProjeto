@@ -16,10 +16,10 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const listValidator = buildRouteValidator({ query: NotificationsListSchema.shape.query });
 const idValidator = buildRouteValidator({ params: NotificationIdSchema.shape.params });
 
-const requireUserId = (req: FastifyRequest, res: FastifyReply): string | null => {
+const requireUserId = async (req: FastifyRequest, res: FastifyReply): Promise<string | null> => {
   const userId = req.user?.sub as string | undefined;
   if (!userId) {
-    void res.code(401).send({ error: "Não autenticado" });
+    await res.code(401).send({ error: "Não autenticado" });
     return null;
   }
 
@@ -44,7 +44,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   if ("error" in parsed) return sendValidationError(res, parsed.error);
 
   const prisma = req.server.prisma;
-  const userId = requireUserId(req, res);
+  const userId = await requireUserId(req, res);
   if (!userId) return;
 
   try {
@@ -63,7 +63,7 @@ export async function readOne(req: FastifyRequest, res: FastifyReply) {
   if (!notificationId) return;
 
   const prisma = req.server.prisma;
-  const userId = requireUserId(req, res);
+  const userId = await requireUserId(req, res);
   if (!userId) return;
 
   try {
@@ -71,7 +71,7 @@ export async function readOne(req: FastifyRequest, res: FastifyReply) {
     return res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação");
+      return sendNotFound(res, "Notificação", "f");
     req.log.error({ e }, "💥 Erro ao marcar notificação como lida");
     return res.code(500).send({ error: errMsg(e) });
   }
@@ -84,7 +84,7 @@ export async function archive(req: FastifyRequest, res: FastifyReply) {
   if (!notificationId) return;
 
   const prisma = req.server.prisma;
-  const userId = requireUserId(req, res);
+  const userId = await requireUserId(req, res);
   if (!userId) return;
 
   try {
@@ -92,7 +92,7 @@ export async function archive(req: FastifyRequest, res: FastifyReply) {
     return res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação");
+      return sendNotFound(res, "Notificação", "f");
     req.log.error({ e }, "💥 Erro ao arquivar notificação");
     return res.code(500).send({ error: errMsg(e) });
   }
@@ -105,7 +105,7 @@ export async function unarchive(req: FastifyRequest, res: FastifyReply) {
   if (!notificationId) return;
 
   const prisma = req.server.prisma;
-  const userId = requireUserId(req, res);
+  const userId = await requireUserId(req, res);
   if (!userId) return;
 
   try {
@@ -113,7 +113,7 @@ export async function unarchive(req: FastifyRequest, res: FastifyReply) {
     return res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação");
+      return sendNotFound(res, "Notificação", "f");
     req.log.error({ e }, "💥 Erro ao desarquivar notificação");
     return res.code(500).send({ error: errMsg(e) });
   }
@@ -122,7 +122,7 @@ export async function unarchive(req: FastifyRequest, res: FastifyReply) {
 /* POST /notifications/read-all */
 export async function readAll(req: FastifyRequest, res: FastifyReply) {
   const prisma = req.server.prisma;
-  const userId = requireUserId(req, res);
+  const userId = await requireUserId(req, res);
   if (!userId) return;
 
   try {
@@ -137,7 +137,7 @@ export async function readAll(req: FastifyRequest, res: FastifyReply) {
 /* POST /notifications/test */
 export async function createTest(req: FastifyRequest, res: FastifyReply) {
   const prisma = req.server.prisma;
-  const userId = requireUserId(req, res);
+  const userId = await requireUserId(req, res);
   if (!userId) return;
 
   try {

@@ -1,0 +1,109 @@
+# Testes Unitários — Módulo Ticket Messages
+
+Responsável: compartilhado (pasta marcada "Todos" — qualquer um do grupo podia começar; Matheus concluiu)
+
+## Como rodar os testes
+
+```bash
+pnpm vitest run tests/core/ticket-messages/messages.service.test.ts
+pnpm vitest run tests/core/ticket-messages/messages.controller.test.ts
+```
+
+(ajuste os caminhos conforme onde os arquivos foram salvos no seu projeto)
+
+---
+
+## `messages.service.ts`
+
+Diferente de `auditoria.service.ts`, aqui o Prisma **não é importado fixo** — ele é recebido como parâmetro (`prisma: Ctx`) em cada função. Isso é injeção de dependência: não precisa de `vi.mock('.../prisma')`, basta passar `prismaMock` direto na chamada.
+
+### `createTicketMessage` — cria uma mensagem e notifica os envolvidos
+
+Código testado (resumo):
+```typescript
+export async function createTicketMessage(prisma: Ctx, chamadoId: string, autorId: string, conteudo: string) {
+  const msg = await prisma.mensagem.create({ data: { chamadoId, autorId, conteudo }, include: { autor: {...} } });
+  const chamado = await prisma.chamado.findUnique({ where: { id: chamadoId }, select: {...} });
+
+  const userIds = new Set<string>();
+  if (chamado?.criadoPorId && chamado.criadoPorId !== autorId) userIds.add(chamado.criadoPorId);
+  if (chamado?.responsavelId && chamado.responsavelId !== autorId) userIds.add(chamado.responsavelId);
+  if (chamado?.setorId) { /* busca usuários do setor e adiciona também */ }
+
+  const app: any = (global as any).fastifyAppInstance;
+  if ((globalThis as any).broadcastWS) { /* dispara WebSocket */ }
+  if (app?.notifyUsers && userIds.size > 0) { await app.notifyUsers(Array.from(userIds), {...}, prisma); }
+
+  return msg;
+}
+```
+
+**Teste 1 — "Cria uma nova mensagem vinculada a um chamado"**: caminho simples, `criadoPorId` igual ao autor (ninguém a notificar). Confirma que `mensagem.create` foi chamado com os dados e `include` corretos, e que o retorno bate com a mensagem criada.
+
+**Teste 2 — "deve notificar os usuários envolvidos quando a mensagem é criada"**: `criadoPorId` diferente do autor. Simula `global.fastifyAppInstance` e `globalThis.broadcastWS` com `vi.fn()` (atribuição direta no objeto global, sem `vi.mock`). Confirma que `app.notifyUsers` **foi chamado**.
+
+**Teste 3 — "Não deve notificar os usuários envolvidos quando a mensagem é criada"**: o oposto do teste 2 — `criadoPorId` igual ao autor. Confirma que `app.notifyUsers` **não foi chamado** (`.not.toHaveBeenCalled()`), provando as duas pontas do `if`.
+
+### `listTicketMessages` — lista mensagens paginadas
+
+Código testado (resumo):
+```typescript
+export async function listTicketMessages(prisma: Ctx, chamadoId: string, query: { page?; pageSize?; orderDir? }) {
+  const { page = 1, pageSize = 100, orderDir = "asc" } = query;
+  const [total, mensagens] = await Promise.all([
+    prisma.mensagem.count({ where: { chamadoId } }),
+    prisma.mensagem.findMany({ where: { chamadoId }, orderBy: { criadoEm: orderDir }, skip: (page-1)*pageSize, take: pageSize, include: {...} }),
+  ]);
+  return { total, page, pageSize, mensagens };
+}
+```
+
+**Teste 1 — "quando query vem vazio, a função usa os valores padrão de paginação"**: `query: {}`. Confirma `skip: 0`, `take: 100`, `orderBy: { criadoEm: 'asc' }`, e o resultado com `page: 1, pageSize: 100`.
+
+**Teste 2 — "quando query vem com page e pageSize customizados"**: `query: { page: 2, pageSize: 10 }`. Confirma `skip: 10` (`(2-1)*10`), `take: 10`, e o resultado refletindo os valores customizados.
+
+---
+
+## `messages.controller.ts` — camada HTTP
+
+Aqui `alunoSemAcessoAoChamado` (de `tickets.service.ts`) e `createTicketMessage`/`listTicketMessages` (de `messages.service.ts`) são importadas fixas no controller — usa-se `vi.spyOn` em cada módulo (como em `users.controller.test.ts`), não injeção por parâmetro:
+
+```typescript
+import * as MessagesService from '.../messages.service'
+import * as TicketsService from '.../tickets.service'
+
+vi.spyOn(TicketsService, 'alunoSemAcessoAoChamado').mockResolvedValue(false) // false = TEM acesso
+vi.spyOn(MessagesService, 'createTicketMessage').mockResolvedValue({...})
+```
+
+A validação de entrada (Zod) **roda de verdade** nos testes — não é mockada — então o `mockRequest` precisa ter `params`/`body`/`query` no formato exato exigido pelo schema (`messages.types.ts`), ou a validação real falha e devolve 400 antes de qualquer mock entrar em ação.
+
+`req.server.prisma` (não um parâmetro nem import fixo) e `req.user` (dados do usuário autenticado) também precisam estar presentes no `mockRequest`.
+
+### `create` — POST /tickets/:id/mensagens
+
+5 cenários cobertos, espelhando cada branch do código real:
+
+| Teste | Cenário simulado | Resultado esperado |
+|---|---|---|
+| deve criar uma mensagem com sucesso | body válido, autenticado, com acesso ao chamado | `code(201)` + `send(mensagem criada)` |
+| deve retornar 400 quando o body é inválido | `body.conteudo: ''` (falha a validação Zod real) | `code(400)` |
+| deve retornar 401 quando não há usuário autenticado | `user: undefined` | `code(401)` |
+| deve retornar 404 quando o usuário não tem acesso ao chamado | `alunoSemAcessoAoChamado` retorna `true` | `code(404)` |
+| deve retornar 500 quando o service lança um erro inesperado | `createTicketMessage` com `mockRejectedValue` | `code(500)` |
+
+### `list` — GET /tickets/:id/mensagens
+
+Mesmo padrão do `create`, mas sem o teste de "sem autenticação" (o código real não faz essa checagem em `list`):
+
+| Teste | Cenário simulado | Resultado esperado |
+|---|---|---|
+| deve listar as mensagens com sucesso | acesso liberado, `query: {}` (usa defaults do Zod) | `send(lista paginada)` — sem `code(201)`, usa 200 padrão |
+| deve retornar 404 quando o usuário não tem acesso ao chamado (list) | `alunoSemAcessoAoChamado` retorna `true` | `code(404)` |
+| deve retornar 500 quando o service lança um erro inesperado (list) | `listTicketMessages` com `mockRejectedValue` | `code(500)` |
+
+---
+
+## Escopo
+
+Cobertos: `messages.service.ts` (2 funções, 5 testes) e `messages.controller.ts` (2 funções, 8 testes). Não coberto: `messages.routes.ts` e `messages.types.ts` (mesmo raciocínio do módulo de Auditoria — schemas/tipos não têm comportamento em runtime pra testar isoladamente; registro de rotas é melhor coberto por teste de integração).

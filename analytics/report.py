@@ -13,6 +13,7 @@ import sys
 import math
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+from urllib.parse import urlparse
 
 try:
     import httpx
@@ -25,6 +26,14 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+
+def validar_api_url(api_url: str) -> str:
+    """Garante que a URL da API é http(s) e possui host."""
+    parsed = urlparse(api_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(f"URL da API inválida: {api_url!r}")
+    return api_url.rstrip("/")
+
 
 def obter_token(api_url: str, email: str, senha: str) -> str:
     resp = httpx.post(
@@ -283,21 +292,26 @@ def main():
                         help="Limite (horas) para anomalia de TTR alto (padrão: 120)")
     args = parser.parse_args()
 
+    try:
+        api_url = validar_api_url(args.api_url)
+    except ValueError as e:
+        parser.error(str(e))
+
     # --- autenticação ---
     if args.token:
         token = args.token
     elif args.email and args.senha:
-        print(f"[INFO] Autenticando em {args.api_url}...", file=sys.stderr)
-        token = obter_token(args.api_url, args.email, args.senha)
+        print(f"[INFO] Autenticando em {api_url}...", file=sys.stderr)
+        token = obter_token(api_url, args.email, args.senha)
     else:
         parser.error("Informe --token ou (--email + --senha)")
 
     # --- coleta ---
     print("[INFO] Buscando stats...", file=sys.stderr)
-    stats = buscar_stats(args.api_url, token)
+    stats = buscar_stats(api_url, token)
 
     print("[INFO] Buscando todos os tickets (pode demorar)...", file=sys.stderr)
-    tickets = buscar_todos_tickets(args.api_url, token)
+    tickets = buscar_todos_tickets(api_url, token)
     print(f"[INFO] {len(tickets)} ticket(s) carregado(s).", file=sys.stderr)
 
     # --- análises ---
@@ -311,7 +325,7 @@ def main():
     # --- montagem do relatório ---
     relatorio = {
         "geradoEm":   datetime.now(timezone.utc).isoformat(),
-        "fonte":      args.api_url,
+        "fonte":      api_url,
         "resumo":     stats,
         "ttr":        ttr_analise,
         "sla":        sla_analise,
