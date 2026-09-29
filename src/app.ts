@@ -98,7 +98,18 @@ export async function buildApp() {
   );
 
   // ✅ Health check público
-  app.get("/health", async (_req, reply) => {
+  app.get("/health", {
+    schema: {
+      tags: ["Sistema"],
+      summary: "Verificar saúde da API",
+      description:
+        "Verifica a conectividade com o banco de dados. Endpoint público. " +
+        "Retorna HTTP 200 com `{ status: \"ok\", db: \"connected\" }` quando " +
+        "a conexão está disponível, ou HTTP 503 com `{ status: \"degraded\", " +
+        "db: \"disconnected\" }` quando o banco não responde.",
+      security: [],
+    },
+  }, async (_req, reply) => {
     try {
       await app.prisma.$queryRaw`SELECT 1`;
       return { status: "ok", db: "connected" };

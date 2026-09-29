@@ -33,8 +33,17 @@ const EXAMPLE_RAW_DB_ERROR = "Connection lost: The server closed the connection.
 const ACCESS_TOKEN_DESCRIPTION =
   "JWT de acesso (HS256). Expira conforme JWT_ACCESS_EXPIRES (padrão 15 minutos).";
 const REFRESH_TOKEN_DESCRIPTION =
-  "Token opaco de sessão (NÃO é um JWT). Validade fixa de 7 dias.";
+  "Token opaco de sessão (NÃO é um JWT). Criado com expiração nominal de 7 " +
+  "dias (`expiraEm`), mas essa expiração NÃO é verificada em nenhum lugar do " +
+  "código — na prática, o token só deixa de funcionar se for revogado " +
+  "(logout, troca de senha) ou substituído por rotação. Ver detalhes " +
+  "completos em `POST /auth/refresh`.";
 const EXAMPLE_USER_NOT_FOUND = "Usuário não encontrado";
+// Replica em uma única regra as 4 exigências do Zod para senha forte
+// (primeiro-acesso, trocar-senha, e a checagem manual de reset-senha):
+// min. 8 caracteres, 1 minúscula, 1 maiúscula, 1 dígito e 1 símbolo.
+const STRONG_PASSWORD_PATTERN = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$";
+const EXAMPLE_STRONG_PASSWORD = "NovaSenha1#";
 
 /* ===================== Fragmentos reutilizáveis do erro 400 ===================== */
 // Corpo devolvido por formatZodError (src/utils/zod-helpers.ts) quando o
@@ -515,7 +524,125 @@ export default async function authRoutes(app: FastifyInstance) {
     },
     login,
   );
-  app.post("/refresh", { preHandler: [preBody(RefreshSchema)] }, refresh);
+  app.post(
+    "/refresh",
+    {
+      preHandler: [preBody(RefreshSchema)],
+      schema: {
+        tags: ["Auth"],
+        summary: "Renovar o access token usando o refresh token",
+        description:
+          "Endpoint público (não exige `Authorization`) — usa o `refreshToken` " +
+          "do corpo como credencial, igual a `POST /auth/logout`.\n\n" +
+          "**Rotação (single-use):** a cada chamada bem-sucedida, um NOVO " +
+          "`refreshToken` é gerado e a sessão existente é atualizada " +
+          "**no mesmo registro** (`rotateSession`: só troca `refreshHash` e " +
+          "`ultimoUsoEm`, mantendo o mesmo `id` de sessão, `criadoEm`, `ip` e " +
+          "`userAgent` originais). O `refreshToken` antigo deixa de funcionar " +
+          "imediatamente (o hash antigo não existe mais no banco).\n\n" +
+          "**⚠️ Achado de segurança — a expiração de 7 dias da sessão NUNCA é " +
+          "verificada.** O campo `expiraEm` é gravado na criação da sessão " +
+          "(login/register/primeiro-acesso, 7 dias à frente — " +
+          "`REFRESH_TOKEN_TTL_MS`) e a tabela `sessoes` até tem um índice " +
+          "dedicado para ele (`@@index([expiraEm])`) — mas `verifyAndGetSession` " +
+          "(a única função que valida um `refreshToken` recebido, usada tanto " +
+          "aqui quanto em `POST /auth/logout`) filtra **somente** por " +
+          "`{ refreshHash, revogadaEm: null }`, sem NENHUMA comparação com " +
+          "`expiraEm`. Não existe também nenhum job agendado de limpeza de " +
+          "sessões no projeto. **Na prática, um `refreshToken` nunca expira " +
+          "sozinho** — continua funcionando indefinidamente (rotacionando a " +
+          "cada uso) até ser revogado explicitamente (`POST /auth/logout`, " +
+          "`POST /auth/trocar-senha`, ou consumo de um token de " +
+          "`/auth/reset-senha`). O índice `@@index([expiraEm])` e o prazo de " +
+          "7 dias sugerem que a checagem foi planejada mas nunca implementada.\n\n" +
+          "**Achado de arquitetura relacionado:** o modelo `Sessao` no Prisma " +
+          "tem campos (`substituidaPorId`, relação `SessaoSubstituta`) que " +
+          "sugerem um design pensado para encadear cada rotação a uma sessão " +
+          "\"substituta\" — uma técnica comum para detectar reuso de um " +
+          "`refreshToken` já rotacionado (indício de token roubado). " +
+          "`rotateSession()` não usa nenhum desses campos — é só uma " +
+          "atualização in-place do hash na mesma linha, sem encadeamento e " +
+          "sem detecção de reuso.\n\n" +
+          "**Inconsistência com `GET /auth/me` e `POST /auth/trocar-senha`:** " +
+          "se o usuário dono da sessão foi excluído do banco (mas a sessão " +
+          "continua válida/não revogada), a busca do usuário usa " +
+          "`findUniqueOrThrow`, que lança uma exceção não tratada " +
+          "especificamente — cai no catch genérico e vira **500** (com a " +
+          "mensagem crua do Prisma, tipo \"An operation failed because it " +
+          "depends on one or more records that were required but not " +
+          "found.\"), em vez do **404** que `GET /auth/me` e " +
+          "`POST /auth/trocar-senha` devolvem para esse mesmo tipo de " +
+          "cenário (token/sessão válidos, usuário ausente).\n\n" +
+          "**Sem cobertura de testes automatizados** — não há nenhum teste " +
+          "para este endpoint em todo o projeto.",
+        security: [],
+        body: {
+          type: "object",
+          required: ["refreshToken"],
+          properties: {
+            refreshToken: {
+              type: "string",
+              minLength: 20,
+              description:
+                "Refresh token opaco atual (devolvido por login/primeiro " +
+                "acesso/register/refresh anterior). Só o comprimento mínimo " +
+                "(20) é validado.",
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              "Renovação bem-sucedida. Cookies `accessToken`/`refreshToken` " +
+              "(não HttpOnly) atualizados na resposta. O `refreshToken` " +
+              "devolvido aqui é NOVO — o antigo, enviado no corpo desta " +
+              "chamada, já não funciona mais.",
+            type: "object",
+            additionalProperties: true,
+            properties: {
+              accessToken: {
+                type: "string",
+                description: ACCESS_TOKEN_DESCRIPTION,
+              },
+              refreshToken: {
+                type: "string",
+                description: REFRESH_TOKEN_DESCRIPTION,
+              },
+            },
+          },
+          400: {
+            description:
+              "Corpo inválido: `refreshToken` ausente ou com menos de 20 caracteres.",
+            ...ValidationErrorSchema,
+          },
+          401: {
+            description:
+              "`refreshToken` não corresponde a nenhuma sessão não revogada " +
+              "(nunca existiu, hash não bate, ou já foi revogado/rotacionado " +
+              "— note que, pelo achado acima, NÃO é por estar 'expirado': " +
+              "essa checagem simplesmente não existe).",
+            type: "object",
+            properties: {
+              error: { type: "string", example: "Refresh inválido" },
+            },
+          },
+          429: RateLimit429Response,
+          500: {
+            description:
+              "Erro inesperado ao renovar a sessão — inclui o cenário " +
+              "descrito acima (usuário da sessão foi excluído). Mesma " +
+              "observação de `GET /auth/usuarios`: `error` é a mensagem crua " +
+              "da exceção (via `errMsg()`), não sanitizada.",
+            type: "object",
+            properties: {
+              error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
+            },
+          },
+        },
+      },
+    },
+    refresh,
+  );
   app.post(
     "/logout",
     {
@@ -800,11 +927,11 @@ export default async function authRoutes(app: FastifyInstance) {
               minLength: 8,
               // Replica em uma única regra as 4 exigências do Zod: min. 8
               // caracteres, 1 minúscula, 1 maiúscula, 1 dígito e 1 símbolo.
-              pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$",
+              pattern: STRONG_PASSWORD_PATTERN,
               description:
                 "Nova senha. Mínimo de 8 caracteres, com ao menos 1 letra " +
                 "maiúscula, 1 minúscula, 1 número e 1 símbolo.",
-              example: "NovaSenha1#",
+              example: EXAMPLE_STRONG_PASSWORD,
             },
             personalEmail: {
               type: "string",
@@ -853,8 +980,11 @@ export default async function authRoutes(app: FastifyInstance) {
                 type: "string",
                 description:
                   "Token opaco de sessão (NÃO é um JWT) — string aleatória, " +
-                  "armazenada com hash SHA-256 no banco. Validade fixa de 7 dias. " +
-                  "Usado em POST /auth/refresh e POST /auth/logout.",
+                  "armazenada com hash SHA-256 no banco. Criado com expiração " +
+                  "nominal de 7 dias (`expiraEm`), mas essa expiração NÃO é " +
+                  "verificada em nenhum lugar do código (ver detalhes em " +
+                  "`POST /auth/refresh`). Usado em POST /auth/refresh e " +
+                  "POST /auth/logout.",
               },
             },
           },
@@ -1011,7 +1141,178 @@ export default async function authRoutes(app: FastifyInstance) {
     },
     forgotPassword,
   );
-  app.post("/reset-senha", { preHandler: [preBody(ResetSenhaSchema)] }, resetPassword);
+  app.post(
+    "/reset-senha",
+    {
+      preHandler: [preBody(ResetSenhaSchema)],
+      schema: {
+        tags: ["Auth"],
+        summary: "Redefinir a senha usando um token (esqueci minha senha)",
+        description:
+          "Endpoint público (não exige `Authorization`). Consome um token da " +
+          "mesma tabela/mecanismo usado por `POST /auth/primeiro-acesso` e " +
+          "gerado por `POST /auth/esqueci-senha` (ver a nota de arquitetura " +
+          "de intercambialidade de tokens documentada nos dois) e define a " +
+          "nova senha, já autenticando o usuário (cria sessão, devolve tokens).\n\n" +
+          "**A política de senha aqui é aplicada em uma camada diferente das " +
+          "outras, mas é igualmente rígida.** O *schema Zod* deste corpo " +
+          "(`ResetSenhaSchema.newPassword`) só valida `.min(8)` — sozinho, " +
+          "pareceria mais fraco que `/primeiro-acesso`/`/trocar-senha`. Só que " +
+          "o *controller* (`resetPassword`) chama `validarPoliticaSenha()` " +
+          "manualmente **antes** de consumir o token, exigindo a mesma regra " +
+          "de maiúscula+minúscula+número+símbolo. Na prática, o comportamento " +
+          "final é tão rígido quanto os outros dois — só a camada que aplica " +
+          "é diferente (código do controller, não o Zod).\n\n" +
+          "**Essa mesma checagem de senha existe em TRIPLICADA no código, " +
+          "sendo as 2 últimas inatingíveis:** (1) o controller checa antes de " +
+          "chamar `consumirTokenSenha`; (2) `consumirTokenSenha()` " +
+          "(`reset-senha.service.ts`) checa a MESMA coisa de novo internamente " +
+          "e lança uma exceção com `statusCode=400` se falhar — inatingível, " +
+          "já que o controller (1) sempre filtra antes; (3) o Zod só valida " +
+          "comprimento, não participa dessa regra. Confirmei que " +
+          "`consumirTokenSenha` só é chamada neste único lugar do projeto " +
+          "inteiro, então (2) é morto com certeza, não só \"provavelmente\".\n\n" +
+          "**Mecanismo de erro incomum:** ao contrário de todos os outros " +
+          "endpoints já documentados, aqui o `catch` genérico usa " +
+          "`e?.statusCode ?? 500` e `e?.message ?? \"Erro ao redefinir senha\"` " +
+          "— ou seja, o status HTTP e a mensagem do 400 de \"token inválido\" " +
+          "não vêm de um `if` explícito no controller, e sim de uma exceção " +
+          "lançada dentro de `consumirTokenSenha` (com `err.statusCode = 400` " +
+          "setado manualmente) que sobe e é 'recapturada' aqui. Do ponto de " +
+          "vista de quem consome a API o resultado é indistinguível de um " +
+          "retorno direto — mas é a única rota, entre as 10 do módulo Auth, " +
+          "onde o status HTTP de um erro de negócio é decidido por uma " +
+          "propriedade dinâmica de uma exceção, não por um `res.code(...)` " +
+          "explícito no controller.\n\n" +
+          "**Diferença de `/primeiro-acesso`:** este endpoint revoga todas as " +
+          "sessões de refresh ativas do usuário ao consumir o token (mesma " +
+          "prática de `POST /auth/trocar-senha`) — `POST /auth/primeiro-acesso` " +
+          "NÃO faz essa revogação ao consumir o seu (ele só cria uma sessão " +
+          "nova, sem tocar em sessões pré-existentes). Como os tokens dos dois " +
+          "fluxos são intercambiáveis (mesma tabela, sem campo de propósito), " +
+          "isso significa que consumir o MESMO token por um endpoint ou pelo " +
+          "outro produz efeitos colaterais diferentes sobre sessões existentes.\n\n" +
+          "**Sem teste de nível HTTP** — existe só um teste unitário isolado " +
+          "de `consumirTokenSenha` (verifica que a revogação de sessões entra " +
+          "na transação), sem nenhum teste da rota em si (200/400/404 não " +
+          "testados via requisição real).",
+        security: [],
+        body: {
+          type: "object",
+          required: ["token", "newPassword"],
+          properties: {
+            token: {
+              type: "string",
+              description:
+                "Token bruto recebido por e-mail via `POST /auth/esqueci-senha` " +
+                "(validade de 1h) — ou, por intercambialidade, um token de " +
+                "`POST /auth/primeiro-acesso` (validade de 24h) ainda não usado.",
+              example: "3f1c9e2a7b8d4f0a91c6e5b2d8a7f4c1e0b9a8d7c6f5e4b3a2c1d0e9f8b7a6c5",
+            },
+            newPassword: {
+              type: "string",
+              minLength: 8,
+              pattern: STRONG_PASSWORD_PATTERN,
+              description:
+                "Nova senha. O Zod deste corpo só valida o comprimento mínimo " +
+                "(8) — a regra de complexidade (maiúscula, minúscula, número " +
+                "e símbolo, refletida neste `pattern`) é aplicada por fora, no " +
+                "controller, antes do token ser consumido. Ver descrição do " +
+                "endpoint acima.",
+              example: EXAMPLE_STRONG_PASSWORD,
+            },
+          },
+        },
+        response: {
+          200: {
+            description:
+              "Senha redefinida. Sessão criada, cookies " +
+              "`accessToken`/`refreshToken` definidos, e TODAS as sessões de " +
+              "refresh anteriores do usuário são revogadas.",
+            type: "object",
+            additionalProperties: true,
+            properties: {
+              user: {
+                type: "object",
+                additionalProperties: true,
+                description:
+                  "Mais um (6º) subconjunto de campos diferente dos demais " +
+                  "endpoints já documentados neste arquivo.",
+                properties: {
+                  id: { type: "string", example: "cmj1234567890123456789012" },
+                  nome: { type: "string", example: EXAMPLE_NOME },
+                  ra: { type: "string", nullable: true, example: "20231234" },
+                  papel: {
+                    type: "string",
+                    enum: ["USUARIO", "BACKOFFICE", "TECNICO", "ADMINISTRADOR"],
+                    example: "USUARIO",
+                  },
+                  emailPessoal: { type: "string", format: "email" },
+                },
+              },
+              accessToken: { type: "string", description: ACCESS_TOKEN_DESCRIPTION },
+              refreshToken: { type: "string", description: REFRESH_TOKEN_DESCRIPTION },
+            },
+          },
+          400: {
+            description:
+              "Três causas possíveis: (1) corpo fora do schema Zod — formato " +
+              "`{ message, issues[] }`; (2) `newPassword` não atende à " +
+              "política de complexidade (checagem manual do controller, " +
+              "explicada acima); (3) `token` inválido, já usado ou expirado " +
+              "(lançado dentro de `consumirTokenSenha`, recapturado pelo " +
+              "catch dinâmico). As causas (2) e (3) têm o mesmo formato " +
+              "`{ error }`.",
+            oneOf: [
+              ValidationErrorSchema,
+              {
+                type: "object",
+                title: "ErroDeRegraDeNegocio",
+                required: ["error"],
+                properties: {
+                  error: {
+                    type: "string",
+                    enum: [
+                      "Senha não atende aos critérios mínimos.",
+                      "Token inválido ou expirado.",
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+          404: {
+            description:
+              "O usuário associado ao token foi encontrado e a senha FOI " +
+              "efetivamente trocada (a transação já ocorreu), mas uma " +
+              "segunda consulta feita logo em seguida pelo controller (só " +
+              "para buscar `emailPessoal`, que `consumirTokenSenha` não " +
+              "seleciona) não encontrou mais o usuário — janela de corrida " +
+              "extremamente estreita (conta excluída nos milissegundos entre " +
+              "as duas consultas). Praticamente inatingível em uso normal.",
+            type: "object",
+            properties: {
+              error: { type: "string", example: EXAMPLE_USER_NOT_FOUND },
+            },
+          },
+          429: RateLimit429Response,
+          500: {
+            description:
+              "Erro inesperado (ex.: falha de conexão com o banco) — a " +
+              "única exceção sem `statusCode` próprio definido, então o " +
+              "catch usa o padrão 500. `error` traz a mensagem crua da " +
+              "exceção, ou o texto fixo \"Erro ao redefinir senha\" se a " +
+              "exceção não tiver `message`.",
+            type: "object",
+            properties: {
+              error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
+            },
+          },
+        },
+      },
+    },
+    resetPassword,
+  );
   app.get(
     "/me",
     {
@@ -1111,14 +1412,14 @@ export default async function authRoutes(app: FastifyInstance) {
             novaSenha: {
               type: "string",
               minLength: 8,
-              pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$",
+              pattern: STRONG_PASSWORD_PATTERN,
               description:
                 "Nova senha. Mínimo de 8 caracteres, com ao menos 1 letra " +
                 "maiúscula, 1 minúscula, 1 número e 1 símbolo — mesma regra " +
                 "de `POST /auth/primeiro-acesso` (mais rígida que a de " +
                 "`POST /auth/register`, `POST /auth/login` e, adiantando, " +
                 "`POST /auth/reset-senha`).",
-              example: "NovaSenha1#",
+              example: EXAMPLE_STRONG_PASSWORD,
             },
           },
         },
