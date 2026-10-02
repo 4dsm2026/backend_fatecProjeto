@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client'
-import { SugestaoCreateInput, SugestaoResponderInput, SugestoesListQuery } from './sugestoes.types'
+import {
+  SugestaoCreateInput,
+  SugestaoResponderInput,
+  SugestoesListQuery,
+} from './sugestoes.types'
 
 type Ctx = PrismaClient
 
@@ -7,6 +11,7 @@ const MAX_PAGE_SIZE = 100
 const DEFAULT_PAGE_SIZE = 20
 
 const STAFF_ROLES = ['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO']
+
 export function isStaffRole(role?: string) {
   return !!role && STAFF_ROLES.includes(role)
 }
@@ -17,13 +22,17 @@ export async function createSugestao(
   opts: { usuarioId?: string },
 ) {
   const { usuarioId } = opts
-  if (!usuarioId) throw Object.assign(new Error('Não autenticado'), { code: 'UNAUTH' })
+
+  if (!usuarioId) {
+    throw Object.assign(new Error('Não autenticado'), { code: 'UNAUTH' })
+  }
 
   return prisma.sugestao.create({
     data: {
       usuarioId,
       emailContato: data.emailContato,
       conteudo: data.conteudo,
+      ...(data.documento !== undefined ? { documento: data.documento } : {}),
     },
   })
 }
@@ -53,9 +62,15 @@ export async function listSugestoes(
       orderBy: { criadoEm: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: staff
-        ? { usuario: { select: { id: true, nome: true, ra: true } } }
-        : undefined,
+           select: {
+        id: true,
+        conteudo: true,
+        status: true,
+        criadoEm: true,
+        usuario: staff
+          ? { select: { id: true, nome: true, ra: true } }
+          : false,
+      },
     }),
   ])
 
@@ -76,7 +91,10 @@ export async function getSugestaoById(
   })
 
   if (!sugestao) return null
-  if (!isStaffRole(opts.role) && sugestao.usuarioId !== opts.usuarioId) return null
+
+  if (!isStaffRole(opts.role) && sugestao.usuarioId !== opts.usuarioId) {
+    return null
+  }
 
   return sugestao
 }
@@ -91,7 +109,12 @@ export async function responderSugestao(
     where: { id },
     select: { status: true, resposta: true },
   })
-  if (!atual) throw Object.assign(new Error('Sugestão não encontrada'), { code: 'NOT_FOUND' })
+
+  if (!atual) {
+    throw Object.assign(new Error('Sugestão não encontrada'), {
+      code: 'NOT_FOUND',
+    })
+  }
 
   if (atual.status === 'RESPONDIDO') {
     throw Object.assign(

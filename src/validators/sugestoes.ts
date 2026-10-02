@@ -1,19 +1,37 @@
 import { z } from 'zod'
+import {
+  SugestaoDocumentoSchema,
+  extrairTextoDocumento,
+} from './sugestao-documento'
 
 export const SUGESTAO_CONTEUDO_MAX = 1000
 export const SUGESTAO_RESPOSTA_MAX = 1000
 
-const SugestaoBodySchema = z.object({
-  emailContato: z
-    .string()
-    .trim()
-    .email('Informe um e-mail válido'),
-  conteudo: z
-    .string()
-    .trim()
-    .min(3, 'A sugestão deve ter pelo menos 3 caracteres')
-    .max(SUGESTAO_CONTEUDO_MAX, `A sugestão deve ter no máximo ${SUGESTAO_CONTEUDO_MAX} caracteres`),
-})
+const SugestaoBodySchema = z
+  .object({
+    emailContato: z
+      .string()
+      .trim()
+      .email('Informe um e-mail válido'),
+    conteudo: z
+      .string()
+      .trim()
+      .min(3, 'A sugestão deve ter pelo menos 3 caracteres')
+      .max(
+        SUGESTAO_CONTEUDO_MAX,
+        `A sugestão deve ter no máximo ${SUGESTAO_CONTEUDO_MAX} caracteres`,
+      ),
+    documento: SugestaoDocumentoSchema.optional(),
+  })
+  .refine(
+    (dados) =>
+      !dados.documento ||
+      extrairTextoDocumento(dados.documento).trim().length >= 3,
+    {
+      message: 'A sugestão deve ter pelo menos 3 caracteres',
+      path: ['documento'],
+    },
+  )
 
 export const SugestaoCreateSchema = z.object({
   body: SugestaoBodySchema,
@@ -39,7 +57,10 @@ export const SugestaoResponderSchema = z.object({
         .string()
         .trim()
         .min(1, 'A resposta não pode ficar vazia')
-        .max(SUGESTAO_RESPOSTA_MAX, `A resposta deve ter no máximo ${SUGESTAO_RESPOSTA_MAX} caracteres`)
+        .max(
+          SUGESTAO_RESPOSTA_MAX,
+          `A resposta deve ter no máximo ${SUGESTAO_RESPOSTA_MAX} caracteres`,
+        )
         .optional(),
       status: z.enum(['NAO_RESPONDIDO', 'RESPONDIDO']).optional(),
     })
