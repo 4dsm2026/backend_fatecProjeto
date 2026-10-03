@@ -19,6 +19,8 @@ describe('AnexosRoutes', () => {
             get: vi.fn(),
             post: vi.fn(),
             authenticate: vi.fn(),
+            setValidatorCompiler: vi.fn(),
+            setSerializerCompiler: vi.fn(),
         };
     });
 
@@ -55,6 +57,7 @@ describe('AnexosRoutes', () => {
 
     expect(app.get).toHaveBeenCalledWith(
         '/anexos/:anexoId/download',
+        expect.any(Object),
         expect.any(Function)
     );
 });
@@ -64,6 +67,7 @@ describe('AnexosRoutes', () => {
 
     expect(app.post).toHaveBeenCalledWith(
         '/anexos/:anexoId/download-token',
+        expect.any(Object),
         expect.any(Function)
     );
 });
@@ -73,7 +77,7 @@ describe('AnexosRoutes', () => {
 
     const rotaToken = app.post.mock.calls.find(
         (call: any[]) => call[0] === '/anexos/:anexoId/download-token'
-    )[1];
+    )[2];
 
     const req = { user: { sub: 'user-123' } };
     const res = {};
@@ -99,6 +103,7 @@ describe('AnexosRoutes', () => {
 
     expect(app.get).toHaveBeenCalledWith(
         '/anexos/:anexoId/download',
+        expect.any(Object),
         expect.any(Function)
     );
 
@@ -109,6 +114,7 @@ describe('AnexosRoutes', () => {
 
     expect(app.post).toHaveBeenCalledWith(
         '/anexos/:anexoId/download-token',
+        expect.any(Object),
         expect.any(Function)
     );
 });

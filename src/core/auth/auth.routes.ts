@@ -26,10 +26,17 @@ import {
   ResetSenhaSchema,
 } from "../../validators/auth";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
+import {
+  ValidationErrorSchema,
+  RateLimitHeaders,
+  RateLimit429Response,
+  UnauthorizedErrorSchema,
+  Unauthorized401WithSelfCheck,
+  EXAMPLE_RAW_DB_ERROR,
+} from "../../utils/openapi-fragments";
 
 // Exemplos reutilizados em mais de um schema (evita sonarjs/no-duplicate-string).
 const EXAMPLE_NOME = "João Silva";
-const EXAMPLE_RAW_DB_ERROR = "Connection lost: The server closed the connection.";
 const ACCESS_TOKEN_DESCRIPTION =
   "JWT de acesso (HS256). Expira conforme JWT_ACCESS_EXPIRES (padrão 15 minutos).";
 const REFRESH_TOKEN_DESCRIPTION =
@@ -45,82 +52,6 @@ const EXAMPLE_USER_NOT_FOUND = "Usuário não encontrado";
 const STRONG_PASSWORD_PATTERN = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$";
 const EXAMPLE_STRONG_PASSWORD = "NovaSenha1#";
 
-/* ===================== Fragmentos reutilizáveis do erro 400 ===================== */
-// Corpo devolvido por formatZodError (src/utils/zod-helpers.ts) quando o
-// preHandler rejeita o body por falha de schema.
-const ValidationErrorSchema = {
-  type: "object",
-  title: "ErroDeValidacaoDeSchema",
-  required: ["message", "issues"],
-  properties: {
-    message: { type: "string", example: "Validação falhou" },
-    issues: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          path: { type: "string", example: "newPassword" },
-          message: { type: "string", example: "Mínimo de 8 caracteres" },
-          code: { type: "string", example: "too_small" },
-        },
-      },
-    },
-  },
-} as const;
-
-/* ===================== Fragmentos reutilizáveis do 429 (rate limit) ===================== */
-// O @fastify/rate-limit é registrado globalmente (src/plugins/rateLimit.ts,
-// `global: true`, 100 req/min por IP) e se aplica a TODAS as rotas da API,
-// inclusive esta. Por isso o 429 é documentado em todos os endpoints, não só
-// nos de auth. Corpo exato do errorResponseBuilder configurado no plugin.
-const RateLimitErrorSchema = {
-  type: "object",
-  title: "ErroDeRateLimit",
-  properties: {
-    statusCode: { type: "integer", example: 429 },
-    error: { type: "string", example: "Too Many Requests" },
-    message: {
-      type: "string",
-      example: "Limite de requisições atingido. Tente novamente em 42s.",
-    },
-  },
-} as const;
-
-// Headers que o @fastify/rate-limit adiciona por padrão em toda resposta
-// (addHeadersOnExceeding), enquanto o limite ainda não foi atingido.
-const RateLimitHeaders = {
-  "x-ratelimit-limit": {
-    type: "integer",
-    description: "Quantas requisições o cliente pode fazer na janela atual (100/min por IP).",
-  },
-  "x-ratelimit-remaining": {
-    type: "integer",
-    description: "Quantas requisições ainda restam nessa janela de 1 minuto.",
-  },
-  "x-ratelimit-reset": {
-    type: "integer",
-    description: "Segundos até a janela atual de rate limit reiniciar.",
-  },
-} as const;
-
-// Fragmento COMPLETO da resposta 429 (description + headers + corpo), pronto
-// para ser usado como `429: RateLimit429Response` em qualquer endpoint —
-// evita duplicar a mesma string de descrição em cada rota (sonarjs/no-duplicate-string).
-const RateLimit429Response = {
-  description:
-    "Limite de requisições excedido: 100 requisições por minuto, por IP " +
-    "(aplicado globalmente pelo @fastify/rate-limit — ver src/plugins/rateLimit.ts, " +
-    "não é um limite específico deste endpoint).",
-  headers: {
-    ...RateLimitHeaders,
-    "retry-after": {
-      type: "integer",
-      description: "Segundos que o cliente deve esperar antes de tentar novamente.",
-    },
-  },
-  ...RateLimitErrorSchema,
-} as const;
-
 const GetUserQuerySchema = z.object({
   ra: zStringTrim.optional(),
   email: zEmail.optional(),
@@ -128,46 +59,6 @@ const GetUserQuerySchema = z.object({
   name: zStringTrim.optional(),
   educationalEmail: zEmail.optional(),
 });
-
-/* ===================== Fragmento reutilizável do 401 ===================== */
-// Corpo exato enviado por src/plugins/auth-verify.ts quando o token de acesso
-// está ausente, malformado, inválido ou expirado (auth-verify.ts não
-// distingue a causa: qualquer falha vira este mesmo 401 genérico).
-const UnauthorizedErrorSchema = {
-  type: "object",
-  title: "ErroNaoAutorizado",
-  properties: {
-    error: { type: "string", example: "Não autorizado" },
-  },
-} as const;
-
-// Corpo do 401 alternativo: NÃO vem de auth-verify.ts, é uma checagem própria
-// dentro dos handlers de /me e /trocar-senha (`if (!authUser?.sub)`), que só
-// dispararia se um token passasse na verificação de assinatura/expiração mas
-// não tivesse a claim `sub` no payload — praticamente inatingível em uso
-// normal, já que todo token emitido por este backend sempre inclui `sub`
-// (ver generateAccessToken em src/utils/jwt.ts). Documentado porque o código
-// existe e tem uma mensagem diferente do 401 "oficial".
-const SelfCheckUnauthenticatedSchema = {
-  type: "object",
-  title: "ErroNaoAutenticado",
-  properties: {
-    error: { type: "string", example: "Não autenticado" },
-  },
-} as const;
-
-// Resposta 401 combinada, usada em endpoints que têm as DUAS checagens
-// (auth-verify.ts + checagem própria do handler): /auth/me e /auth/trocar-senha.
-const Unauthorized401WithSelfCheck = {
-  description:
-    "Token ausente, malformado, inválido ou expirado — verificado pelo " +
-    "preHandler `app.authenticate` (`{ error: \"Não autorizado\" }`, o caso " +
-    "comum) — OU token sintaticamente válido mas sem a claim `sub` no " +
-    "payload — checagem redundante feita pelo próprio handler " +
-    "(`{ error: \"Não autenticado\" }`, praticamente inatingível em uso " +
-    "normal, já que todo token emitido por este backend sempre inclui `sub`).",
-  oneOf: [UnauthorizedErrorSchema, SelfCheckUnauthenticatedSchema],
-} as const;
 
 /* ===================== Fragmento reutilizável do usuário público ===================== */
 // Espelha EXATAMENTE `userPublicSelect` em auth.controller.ts (28 campos).

@@ -38,6 +38,7 @@ export default fp(async function swaggerPlugin(app: FastifyInstance) {
         { name: "Auth" },
         { name: "Usuarios" },
         { name: "Tickets" },
+        { name: "Anexos" },
       ],
     },
   });
