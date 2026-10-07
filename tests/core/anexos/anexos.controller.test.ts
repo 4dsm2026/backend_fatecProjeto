@@ -76,6 +76,24 @@ const mockAnexos = [
 // de verdade, porque ParamsWithAnexoIdSchema (anexos.types.ts real) exige
 // z.string().cuid() e a validação roda de verdade nestes testes (não é
 // mockada). Confirmado empiricamente com o Zod real antes de escrever isto.
+function makeRequest(overrides: any = {}): any {
+    return {
+        params: { id: 'ticket-001' },
+        server: { prisma: mockPrismaClient },
+        user: { sub: 'user-001', role: 'ALUNO' },
+        log: { error: vi.fn() },
+        ...overrides,
+    }
+}
+
+function makeReply({ header }: { header?: boolean } = {}): any {
+    return {
+        ...(header ? { header: vi.fn().mockReturnThis() } : {}),
+        code: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+    }
+}
+
 const VALID_ANEXO_ID = 'cmj1234567890123456789012'
 
 describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
@@ -83,26 +101,11 @@ describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
         mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(false)
         mockListAnexosByTicketId.mockResolvedValueOnce(mockAnexos)
 
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.list(mockRequest, mockReply)
 
@@ -114,26 +117,11 @@ describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
     })
 
     it('deve retornar 400 se os parâmetros forem inválidos', async () => {
-        const mockRequest: any = {
-            params: {
-                id: '',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: '', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.list(mockRequest, mockReply)
 
@@ -144,26 +132,11 @@ describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
     it('deve retornar 404 se o usuário não tiver acesso ao chamado', async () => {
         mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(true)
 
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.list(mockRequest, mockReply)
 
@@ -181,26 +154,11 @@ describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
             message: 'Registro não encontrado',
         })
 
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.list(mockRequest, mockReply)
 
@@ -217,26 +175,11 @@ describe('AnexosController - Listagem (GET /tickets/:id/anexos)', () => {
         mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(false)
         mockListAnexosByTicketId.mockRejectedValueOnce(mockError)
 
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.list(mockRequest, mockReply)
 
@@ -264,26 +207,11 @@ describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
 
         mockCreateAnexo.mockResolvedValueOnce(mockAnexo)
 
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.upload(mockRequest, mockReply)
 
@@ -298,23 +226,12 @@ describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
     })
 
     it('deve retornar 401 se o usuário não estiver autenticado', async () => {
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
             user: undefined,
-            log: {
-                error: vi.fn(),
-            },
-        }
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.upload(mockRequest, mockReply)
 
@@ -328,26 +245,11 @@ describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
     // NOVO: uploadValidator usa ParamsWithTicketIdSchema (id: string().min(1)),
     // igual ao list() — mas até agora só list() tinha o teste equivalente.
     it('deve retornar 400 se os parâmetros forem inválidos (id do chamado vazio)', async () => {
-        const mockRequest: any = {
-            params: {
-                id: '',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: '', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.upload(mockRequest, mockReply)
 
@@ -361,26 +263,11 @@ describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
     it('deve retornar 404 se o usuário não tiver acesso ao chamado', async () => {
         mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(true)
 
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.upload(mockRequest, mockReply)
 
@@ -431,26 +318,11 @@ describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
         const serviceError = Object.assign(new Error(message), { statusCode })
         mockCreateAnexo.mockRejectedValueOnce(serviceError)
 
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.upload(mockRequest, mockReply)
 
@@ -465,26 +337,11 @@ describe('AnexosController - Upload (POST /tickets/:id/anexos)', () => {
         mockAlunoSemAcessoAoChamado.mockResolvedValueOnce(false)
         mockCreateAnexo.mockRejectedValueOnce(mockError)
 
-        const mockRequest: any = {
-            params: {
-                id: 'ticket-001',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { id: 'ticket-001', },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.upload(mockRequest, mockReply)
 
@@ -511,27 +368,11 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
         const mockStream = { fake: 'stream' }
         mockCreateReadStream.mockReturnValueOnce(mockStream as any)
 
-        const mockRequest: any = {
-            params: {
-                anexoId: VALID_ANEXO_ID,
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { anexoId: VALID_ANEXO_ID, },
+        })
 
-        const mockReply: any = {
-            header: vi.fn().mockReturnThis(),
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply({ header: true })
 
         await AnexosController.download(mockRequest, mockReply)
 
@@ -557,24 +398,12 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
 
 
     it('deve retornar 401 se o usuário não estiver autenticado', async () => {
-        const mockRequest: any = {
-            params: {
-                anexoId: VALID_ANEXO_ID,
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
+        const mockRequest: any = makeRequest({
+            params: { anexoId: VALID_ANEXO_ID, },
             user: undefined,
-            log: {
-                error: vi.fn(),
-            },
-        }
+        })
 
-        const mockReply: any = {
-            header: vi.fn().mockReturnThis(),
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply({ header: true })
 
         await AnexosController.download(mockRequest, mockReply)
 
@@ -591,27 +420,11 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
     // para download() — confirmei empiricamente com Zod real que
     // 'not-a-valid-cuid' é rejeitado antes de escrever este teste.
     it('deve retornar 400 se o anexoId não tiver formato de cuid válido', async () => {
-        const mockRequest: any = {
-            params: {
-                anexoId: 'not-a-valid-cuid',
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { anexoId: 'not-a-valid-cuid', },
+        })
 
-        const mockReply: any = {
-            header: vi.fn().mockReturnThis(),
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply({ header: true })
 
         await AnexosController.download(mockRequest, mockReply)
 
@@ -624,27 +437,11 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
 
         mockGetAnexoForDownload.mockRejectedValueOnce(mockError)
 
-        const mockRequest: any = {
-            params: {
-                anexoId: VALID_ANEXO_ID,
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { anexoId: VALID_ANEXO_ID, },
+        })
 
-        const mockReply: any = {
-            header: vi.fn().mockReturnThis(),
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply({ header: true })
 
         await AnexosController.download(mockRequest, mockReply)
 
@@ -661,27 +458,11 @@ describe('AnexosController - Download (GET /anexos/:anexoId/download)', () => {
     it('converte um valor não-Error lançado pelo service para string (errMsg)', async () => {
         mockGetAnexoForDownload.mockRejectedValueOnce('falha inesperada, não é um Error')
 
-        const mockRequest: any = {
-            params: {
-                anexoId: VALID_ANEXO_ID,
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { anexoId: VALID_ANEXO_ID, },
+        })
 
-        const mockReply: any = {
-            header: vi.fn().mockReturnThis(),
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply({ header: true })
 
         await AnexosController.download(mockRequest, mockReply)
 
@@ -705,26 +486,11 @@ describe('AnexosController - Geração de Token (POST /anexos/:anexoId/download-
 
         mockGenerateDownloadToken.mockReturnValueOnce('token-teste')
 
-        const mockRequest: any = {
-            params: {
-                anexoId: VALID_ANEXO_ID,
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { anexoId: VALID_ANEXO_ID, },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.generateDownloadTokenRoute(
             mockRequest,
@@ -748,23 +514,12 @@ describe('AnexosController - Geração de Token (POST /anexos/:anexoId/download-
     })
 
     it('deve retornar 401 se o usuário não estiver autenticado', async () => {
-        const mockRequest: any = {
-            params: {
-                anexoId: VALID_ANEXO_ID,
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
+        const mockRequest: any = makeRequest({
+            params: { anexoId: VALID_ANEXO_ID, },
             user: undefined,
-            log: {
-                error: vi.fn(),
-            },
-        }
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.generateDownloadTokenRoute(
             mockRequest,
@@ -781,24 +536,11 @@ describe('AnexosController - Geração de Token (POST /anexos/:anexoId/download-
     })
 
     it('deve retornar 400 se o anexoId não for informado', async () => {
-        const mockRequest: any = {
+        const mockRequest: any = makeRequest({
             params: {},
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.generateDownloadTokenRoute(
             mockRequest,
@@ -823,26 +565,11 @@ describe('AnexosController - Geração de Token (POST /anexos/:anexoId/download-
     it('deve retornar 500 e converter para string quando getAnexoForDownload falha sem statusCode nem message', async () => {
         mockGetAnexoForDownload.mockRejectedValueOnce('falha genérica sem statusCode')
 
-        const mockRequest: any = {
-            params: {
-                anexoId: VALID_ANEXO_ID,
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { anexoId: VALID_ANEXO_ID, },
+        })
 
-        const mockReply: any = {
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply()
 
         await AnexosController.generateDownloadTokenRoute(mockRequest, mockReply)
 
@@ -896,27 +623,11 @@ describe.each(anexoAccessHandlers)('$name — repassa o statusCode de getAnexoFo
         const serviceError = Object.assign(new Error(message), { statusCode })
         mockGetAnexoForDownload.mockRejectedValueOnce(serviceError)
 
-        const mockRequest: any = {
-            params: {
-                anexoId: VALID_ANEXO_ID,
-            },
-            server: {
-                prisma: mockPrismaClient,
-            },
-            user: {
-                sub: 'user-001',
-                role: 'ALUNO',
-            },
-            log: {
-                error: vi.fn(),
-            },
-        }
+        const mockRequest: any = makeRequest({
+            params: { anexoId: VALID_ANEXO_ID, },
+        })
 
-        const mockReply: any = {
-            header: vi.fn().mockReturnThis(),
-            code: vi.fn().mockReturnThis(),
-            send: vi.fn(),
-        }
+        const mockReply: any = makeReply({ header: true })
 
         await handler(mockRequest, mockReply)
 
