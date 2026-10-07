@@ -71,7 +71,7 @@ export async function readOne(req: FastifyRequest, res: FastifyReply) {
     return res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação");
+      return sendNotFound(res, "Notificação", "f");
     req.log.error({ e }, "💥 Erro ao marcar notificação como lida");
     return res.code(500).send({ error: errMsg(e) });
   }
@@ -92,7 +92,7 @@ export async function archive(req: FastifyRequest, res: FastifyReply) {
     return res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação");
+      return sendNotFound(res, "Notificação", "f");
     req.log.error({ e }, "💥 Erro ao arquivar notificação");
     return res.code(500).send({ error: errMsg(e) });
   }
@@ -113,7 +113,7 @@ export async function unarchive(req: FastifyRequest, res: FastifyReply) {
     return res.code(204).send();
   } catch (e: any) {
     if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação");
+      return sendNotFound(res, "Notificação", "f");
     req.log.error({ e }, "💥 Erro ao desarquivar notificação");
     return res.code(500).send({ error: errMsg(e) });
   }

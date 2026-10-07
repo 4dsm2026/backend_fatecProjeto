@@ -25,6 +25,7 @@ export function sendUnauthorized(res: FastifyReply) {
   return sendReply(res, 401, { error: "Não autenticado" });
 }
 
-export function sendNotFound(res: FastifyReply, resource: string) {
-  return sendReply(res, 404, { error: `${resource} não encontrado` });
+export function sendNotFound(res: FastifyReply, resource: string, gender: "m" | "f" = "m") {
+  const notFound = gender === "f" ? "não encontrada" : "não encontrado";
+  return sendReply(res, 404, { error: `${resource} ${notFound}` });
 }

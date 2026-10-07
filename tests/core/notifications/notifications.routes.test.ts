@@ -57,6 +57,14 @@ function createMockApp() {
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
+    // Passaram a ser chamados por useDocsOnlySchemas(app) (ver
+    // src/utils/openapi-docs-only.ts), adicionado no início de
+    // notificationsRoutes junto com os schemas de documentação do
+    // Swagger. Sem esses dois métodos no mock, notificationsRoutes()
+    // lança "app.setValidatorCompiler is not a function" antes mesmo
+    // de chegar no addHook — derrubando os 8 testes deste arquivo.
+    setValidatorCompiler: vi.fn(),
+    setSerializerCompiler: vi.fn(),
   };
   return app as unknown as FastifyInstance & typeof app;
 }
@@ -98,7 +106,18 @@ describe("notificationsRoutes", () => {
 
     await notificationsRoutes(app);
 
-    expect(app[method]).toHaveBeenCalledWith(path, handler);
+    // Não usamos toHaveBeenCalledWith(path, handler) direto: à medida que
+    // cada rota ganha um `schema` de documentação (Swagger), a chamada
+    // real passa a ser app[method](path, { schema... }, handler) — 3
+    // argumentos, não 2. Verificamos só o que este teste realmente
+    // precisa garantir: a rota certa (primeiro argumento) está ligada ao
+    // handler certo (ÚLTIMO argumento), com ou sem objeto de opções no
+    // meio.
+    const call = (app[method] as ReturnType<typeof vi.fn>).mock.calls.find(
+      (args: unknown[]) => args[0] === path,
+    );
+    expect(call, `app.${method} não foi chamado com o path "${path}"`).toBeTruthy();
+    expect(call![call!.length - 1]).toBe(handler);
   });
 
   it("não registra nenhuma rota ou hook além dos esperados (protege contra rota extra silenciosa)", async () => {
