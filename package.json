@@ -41,6 +41,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@testcontainers/mysql": "^12.2.0",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^22.19.1",
@@ -60,6 +61,7 @@
     "prettier": "^3.3.3",
     "prisma": "^6.17.1",
     "supertest": "^7.1.1",
+    "testcontainers": "^12.2.0",
     "ts-jest": "^29.4.5",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",
