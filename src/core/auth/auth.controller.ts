@@ -388,7 +388,7 @@ export const forgotPassword = async (req: FastifyRequest, res: FastifyReply) => 
   // desacoplado da resposta e uma falha (e-mail, banco) só é logada. Assim nem
   // o `500` nem a demora revelam que o e-mail está cadastrado (S16).
   void enviarLinkEsqueciSenha(prisma, email.trim().toLowerCase()).catch((e) => {
-    req.log.error({ e }, "💥 Erro em esqueci-senha (envio desacoplado)");
+    req.log.error({ err: e }, "💥 Erro em esqueci-senha (envio desacoplado)");
   });
   await res.send({ message: "Se existir uma conta com esse e-mail, enviaremos um link para redefinir a senha." });
 };
