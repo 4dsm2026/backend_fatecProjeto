@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zEmail, zStringTrim, zPapelOptional } from "../utils/zod-helpers";
+import { zEmail, zStringTrim, zPapelOptional, zStrongPassword } from "../utils/zod-helpers";
 
 export const zRA = zStringTrim
   .min(3, "RA muito curto")
@@ -32,12 +32,7 @@ export const RegisterSchema = z.object({
 
 export const FirstAccessBodySchema = z.object({
   token: zStringTrim.min(10, "Token inválido"),
-  newPassword: zStringTrim
-    .min(8, "Mínimo de 8 caracteres")
-    .regex(/[A-Z]/, "Inclua ao menos uma letra maiúscula")
-    .regex(/[a-z]/, "Inclua ao menos uma letra minúscula")
-    .regex(/\d/, "Inclua ao menos um número")
-    .regex(/[^A-Za-z0-9]/, "Inclua ao menos um símbolo"),
+  newPassword: zStrongPassword,
   personalEmail: zEmail.optional(),
 });
 
@@ -47,17 +42,12 @@ export const EsqueciSenhaSchema = z.object({
 
 export const ResetSenhaSchema = z.object({
   token: zStringTrim.min(10),
-  newPassword: zStringTrim.min(8),
+  newPassword: zStrongPassword,
 });
 
 export const FirstAccessSchema = FirstAccessBodySchema;
 
 export const TrocarSenhaSchema = z.object({
   senhaAtual: zStringTrim.min(1, "Informe a senha atual"),
-  novaSenha: zStringTrim
-    .min(8, "Mínimo de 8 caracteres")
-    .regex(/[A-Z]/, "Inclua ao menos uma letra maiúscula")
-    .regex(/[a-z]/, "Inclua ao menos uma letra minúscula")
-    .regex(/\d/, "Inclua ao menos um número")
-    .regex(/[^A-Za-z0-9]/, "Inclua ao menos um símbolo"),
+  novaSenha: zStrongPassword,
 });

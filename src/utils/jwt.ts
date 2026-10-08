@@ -5,6 +5,13 @@ export interface AccessClaims {
   sub: string;   // id do usuário
   email: string; // email principal
   role: string;  // ex.: "USUARIO" | "BACKOFFICE" | "TECNICO" | "ADMINISTRADOR"
+  /**
+   * Id da `Sessao` (refresh) que originou este access token; é o que permite
+   * `DELETE /sessions/current` achar a sessão. O id é estável na rotação
+   * (`rotateSession` troca só o hash). Opcional no tipo porque tokens emitidos
+   * antes desta claim existir não a têm; quem emite sessões novas SEMPRE a envia.
+   */
+  sid?: string;
 }
 
 export type AccessTokenPayload = JWTStd & AccessClaims;
@@ -15,11 +22,11 @@ export interface RefreshClaims {
 
 export type RefreshTokenPayload = JWTStd & RefreshClaims;
 
-const ACCESS_DEFAULT_EXPIRES: SignOptions["expiresIn"] =
-  (process.env.JWT_ACCESS_EXPIRES as any) || "15m";
+const ACCESS_DEFAULT_EXPIRES = (process.env.JWT_ACCESS_EXPIRES ||
+  "15m") as SignOptions["expiresIn"];
 
-const REFRESH_DEFAULT_EXPIRES: SignOptions["expiresIn"] =
-  (process.env.JWT_REFRESH_EXPIRES as any) || "7d";
+const REFRESH_DEFAULT_EXPIRES = (process.env.JWT_REFRESH_EXPIRES ||
+  "7d") as SignOptions["expiresIn"];
 
 export function generateAccessToken(
   claims: AccessClaims,
@@ -28,10 +35,10 @@ export function generateAccessToken(
   const secret = process.env.JWT_ACCESS_SECRET;
   if (!secret) throw new Error("JWT_ACCESS_SECRET não definido");
 
-  const { sub, email, role } = claims;
+  const { sub, email, role, sid } = claims;
 
   return jwt.sign(
-    { sub, email, role },
+    { sub, email, role, ...(sid ? { sid } : {}) },
     secret,
     {
       algorithm: "HS256",

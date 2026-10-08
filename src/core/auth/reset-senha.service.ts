@@ -2,19 +2,10 @@ import { createHash, randomBytes } from "crypto";
 import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../../security/password";
 import { getMailDriver } from "../../config/mail";
+import { zStrongPassword } from "../../utils/zod-helpers";
 
 const APP_WEB_URL = process.env.APP_WEB_URL!;
 
-
-export function validarPoliticaSenha(senha: string): boolean {
-  return (
-    senha.length >= 8 &&
-    /[A-Z]/.test(senha) &&
-    /[a-z]/.test(senha) &&
-    /\d/.test(senha) &&
-    /[^A-Za-z0-9]/.test(senha)
-  );
-}
 
 /**
  * Gera token bruto + hash.
@@ -124,7 +115,10 @@ export async function consumirTokenSenha(
   tokenRaw: string,
   novaSenha: string,
 ) {
-  if (!validarPoliticaSenha(novaSenha)) {
+  // Valida e usa o MESMO valor (já aparado) para hashear: o login também apara,
+  // então validar o aparado e hashear o original quebraria o acesso do usuário.
+  const senhaValidada = zStrongPassword.safeParse(novaSenha);
+  if (!senhaValidada.success) {
     const err: any = new Error("Senha não atende aos critérios mínimos.");
     err.statusCode = 400;
     throw err;
@@ -146,7 +140,7 @@ export async function consumirTokenSenha(
     throw err;
   }
 
-  const senhaHash = await hashPassword(novaSenha);
+  const senhaHash = await hashPassword(senhaValidada.data);
 
   await prisma.$transaction([
     prisma.usuario.update({

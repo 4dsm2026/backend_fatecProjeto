@@ -46,9 +46,9 @@ const REFRESH_TOKEN_DESCRIPTION =
   "(logout, troca de senha) ou substituído por rotação. Ver detalhes " +
   "completos em `POST /auth/refresh`.";
 const EXAMPLE_USER_NOT_FOUND = "Usuário não encontrado";
-// Replica em uma única regra as 4 exigências do Zod para senha forte
-// (primeiro-acesso, trocar-senha, e a checagem manual de reset-senha):
-// min. 8 caracteres, 1 minúscula, 1 maiúscula, 1 dígito e 1 símbolo.
+// Espelha, para o Swagger, a política única `zStrongPassword`
+// (src/utils/zod-helpers.ts): min. 8 caracteres, 1 minúscula, 1 maiúscula,
+// 1 dígito e 1 símbolo. Usada em primeiro-acesso, reset-senha e trocar-senha.
 const STRONG_PASSWORD_PATTERN = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$";
 const EXAMPLE_STRONG_PASSWORD = "NovaSenha1#";
 
@@ -881,12 +881,12 @@ export default async function authRoutes(app: FastifyInstance) {
           },
           400: {
             description:
-              "Falha de validação. Três causas possíveis: " +
-              "(1) corpo fora do schema (`token`/`newPassword` ausentes ou mal " +
-              "formatados) — formato `{ message, issues[] }`; " +
-              "(2) `newPassword` não atende à política mínima de senha; " +
-              "(3) `token` inválido, já utilizado ou expirado. As causas (2) e " +
-              "(3) usam o formato `{ error }`.",
+              "Falha de validação. Duas causas possíveis: " +
+              "(1) corpo fora do schema — `token`/`newPassword` ausentes, mal " +
+              "formatados ou `newPassword` fora da política de senha " +
+              "(`zStrongPassword`) — formato `{ message, issues[] }`; " +
+              "(2) `token` inválido, já utilizado ou expirado — formato " +
+              "`{ error }`.",
             oneOf: [
               ValidationErrorSchema,
               {
@@ -897,7 +897,6 @@ export default async function authRoutes(app: FastifyInstance) {
                   error: {
                     type: "string",
                     enum: [
-                      "Senha não atende aos critérios mínimos.",
                       "Token inválido ou expirado.",
                     ],
                   },
@@ -1045,24 +1044,10 @@ export default async function authRoutes(app: FastifyInstance) {
           "gerado por `POST /auth/esqueci-senha` (ver a nota de arquitetura " +
           "de intercambialidade de tokens documentada nos dois) e define a " +
           "nova senha, já autenticando o usuário (cria sessão, devolve tokens).\n\n" +
-          "**A política de senha aqui é aplicada em uma camada diferente das " +
-          "outras, mas é igualmente rígida.** O *schema Zod* deste corpo " +
-          "(`ResetSenhaSchema.newPassword`) só valida `.min(8)` — sozinho, " +
-          "pareceria mais fraco que `/primeiro-acesso`/`/trocar-senha`. Só que " +
-          "o *controller* (`resetPassword`) chama `validarPoliticaSenha()` " +
-          "manualmente **antes** de consumir o token, exigindo a mesma regra " +
-          "de maiúscula+minúscula+número+símbolo. Na prática, o comportamento " +
-          "final é tão rígido quanto os outros dois — só a camada que aplica " +
-          "é diferente (código do controller, não o Zod).\n\n" +
-          "**Essa mesma checagem de senha existe em TRIPLICADA no código, " +
-          "sendo as 2 últimas inatingíveis:** (1) o controller checa antes de " +
-          "chamar `consumirTokenSenha`; (2) `consumirTokenSenha()` " +
-          "(`reset-senha.service.ts`) checa a MESMA coisa de novo internamente " +
-          "e lança uma exceção com `statusCode=400` se falhar — inatingível, " +
-          "já que o controller (1) sempre filtra antes; (3) o Zod só valida " +
-          "comprimento, não participa dessa regra. Confirmei que " +
-          "`consumirTokenSenha` só é chamada neste único lugar do projeto " +
-          "inteiro, então (2) é morto com certeza, não só \"provavelmente\".\n\n" +
+          "**Política de senha:** `ResetSenhaSchema.newPassword` usa " +
+          "`zStrongPassword`, a mesma política única de `/primeiro-acesso` e " +
+          "`/trocar-senha`. `consumirTokenSenha()` valida de novo, por " +
+          "defesa, e hasheia o valor já validado (aparado).\n\n" +
           "**Mecanismo de erro incomum:** ao contrário de todos os outros " +
           "endpoints já documentados, aqui o `catch` genérico usa " +
           "`e?.statusCode ?? 500` e `e?.message ?? \"Erro ao redefinir senha\"` " +
@@ -1147,13 +1132,11 @@ export default async function authRoutes(app: FastifyInstance) {
           },
           400: {
             description:
-              "Três causas possíveis: (1) corpo fora do schema Zod — formato " +
-              "`{ message, issues[] }`; (2) `newPassword` não atende à " +
-              "política de complexidade (checagem manual do controller, " +
-              "explicada acima); (3) `token` inválido, já usado ou expirado " +
-              "(lançado dentro de `consumirTokenSenha`, recapturado pelo " +
-              "catch dinâmico). As causas (2) e (3) têm o mesmo formato " +
-              "`{ error }`.",
+              "Duas causas possíveis: (1) corpo fora do schema Zod (inclui " +
+              "`newPassword` fora da política `zStrongPassword`) — formato " +
+              "`{ message, issues[] }`; (2) `token` inválido, já usado ou " +
+              "expirado (lançado dentro de `consumirTokenSenha`, recapturado " +
+              "pelo catch dinâmico) — formato `{ error }`.",
             oneOf: [
               ValidationErrorSchema,
               {
@@ -1164,7 +1147,6 @@ export default async function authRoutes(app: FastifyInstance) {
                   error: {
                     type: "string",
                     enum: [
-                      "Senha não atende aos critérios mínimos.",
                       "Token inválido ou expirado.",
                     ],
                   },
@@ -1326,13 +1308,10 @@ export default async function authRoutes(app: FastifyInstance) {
           },
           400: {
             description:
-              "Três causas possíveis: (1) corpo fora do schema — formato " +
+              "Duas causas possíveis: (1) corpo fora do schema (inclui `novaSenha` " +
+              "fora da política `zStrongPassword`) — formato " +
               "`{ message, issues[] }`; (2) `senhaAtual` não confere com a " +
-              "senha cadastrada — `{ error: \"Senha atual incorreta\" }`; " +
-              "(3) `novaSenha` não atende à política mínima — " +
-              "`{ error: \"A nova senha não atende aos critérios mínimos.\" }` " +
-              "(na prática inatingível: o Zod já rejeita a mesma condição " +
-              "antes, com o formato (1), mesmo padrão de `/primeiro-acesso`).",
+              "senha cadastrada — `{ error: \"Senha atual incorreta\" }`.",
             oneOf: [
               ValidationErrorSchema,
               {
@@ -1344,7 +1323,6 @@ export default async function authRoutes(app: FastifyInstance) {
                     type: "string",
                     enum: [
                       "Senha atual incorreta",
-                      "A nova senha não atende aos critérios mínimos.",
                     ],
                   },
                 },

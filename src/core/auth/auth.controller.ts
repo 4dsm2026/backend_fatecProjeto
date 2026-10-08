@@ -24,7 +24,6 @@ import {
 } from "../../security/refresh";
 import {
   enviarLinkEsqueciSenha,
-  validarPoliticaSenha,
   consumirTokenSenha,
 } from "../../core/auth/reset-senha.service";
 
@@ -321,11 +320,6 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
   const prisma = req.server.prisma;
 
   try {
-    if (!validarPoliticaSenha(newPassword)) {
-      await res.code(400).send({ error: "Senha não atende aos critérios mínimos." });
-      return;
-    }
-
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const tokenRow = await prisma.tokenResetSenha.findFirst({
       where: { tokenHash, usadoEm: null, expiraEm: { gt: new Date() } },
@@ -407,10 +401,6 @@ export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
   const { token, newPassword } = parsed.data!.body! as { token: string; newPassword: string };
   const prisma = req.server.prisma;
   try {
-    if (!validarPoliticaSenha(newPassword)) {
-      await res.code(400).send({ error: "Senha não atende aos critérios mínimos." });
-      return;
-    }
     const basicUser = await consumirTokenSenha(prisma, token, newPassword);
     if (!basicUser) {
       await res.code(400).send({ error: "Token inválido ou expirado." });
@@ -559,11 +549,6 @@ export const trocarSenha = async (req: FastifyRequest, res: FastifyReply): Promi
     if (!senhaConfere) {
       await registrarAuditoria({ feitoPorId: user.id, acao: "troca_senha_falha", alvo: user.id, meta: { motivo: "senha_atual_incorreta" } });
       await res.code(400).send({ error: "Senha atual incorreta" });
-      return;
-    }
-
-    if (!validarPoliticaSenha(novaSenha)) {
-      await res.code(400).send({ error: "A nova senha não atende aos critérios mínimos." });
       return;
     }
 
