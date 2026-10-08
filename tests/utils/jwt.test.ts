@@ -106,3 +106,22 @@ describe('download token', () => {
     expect(() => verifyAccessToken(download)).toThrow('Token inválido ou expirado')
   })
 })
+
+describe('download token — defesa em profundidade', () => {
+  it('rejeita token com a audience certa mas sem purpose DOWNLOAD', () => {
+    const secret = process.env.JWT_ACCESS_SECRET as string
+    const semPurpose = jwt.sign({ sub: 'user-1', anexoId: 'anexo-1' }, secret, {
+      algorithm: 'HS256',
+      issuer: 'helpdesk',
+      audience: 'helpdesk-app:download',
+      expiresIn: 60,
+    })
+    expect(() => verifyDownloadToken(semPurpose)).toThrow('Token inválido ou expirado')
+  })
+
+  it('a audience do download é derivada de JWT_AUDIENCE, nunca igual a ela', () => {
+    const decoded = jwt.decode(generateDownloadToken({ sub: 'user-1', anexoId: 'anexo-1' })) as { aud: string }
+    expect(decoded.aud).toBe('helpdesk-app:download')
+    expect(decoded.aud).not.toBe(process.env.JWT_AUDIENCE)
+  })
+})

@@ -110,6 +110,16 @@ export interface DownloadTokenPayload {
   exp?: number;
 }
 
+/**
+ * Audience própria do token de download, DERIVADA da audience da aplicação.
+ * Antes era `JWT_AUDIENCE || 'helpdesk-download'`: como `JWT_AUDIENCE` sempre
+ * existe (env.ts tem default), os dois tipos de token ficavam com a mesma
+ * audience e o mesmo segredo, e um era aceito no lugar do outro.
+ */
+function downloadAudience(): string {
+  return `${process.env.JWT_AUDIENCE || 'helpdesk-app'}:download`;
+}
+
 export function generateDownloadToken(
   payload: { sub: string; anexoId: string },
   opts?: { expiresIn?: SignOptions["expiresIn"] }
@@ -124,7 +134,7 @@ export function generateDownloadToken(
       algorithm: 'HS256',
       expiresIn: opts?.expiresIn ?? '5m',
       issuer: process.env.JWT_ISSUER || 'helpdesk',
-      audience: process.env.JWT_AUDIENCE || 'helpdesk-download',
+      audience: downloadAudience(),
     }
   );
 }
@@ -134,12 +144,18 @@ export function verifyDownloadToken(token: string): DownloadTokenPayload {
   if (!secret) throw new Error("JWT_ACCESS_SECRET não definido");
 
   try {
-    return jwt.verify(token, secret, {
+    const payload = jwt.verify(token, secret, {
       algorithms: ['HS256'],
       issuer: process.env.JWT_ISSUER || 'helpdesk',
-      audience: process.env.JWT_AUDIENCE || 'helpdesk-download',
+      audience: downloadAudience(),
       clockTolerance: 5,
     }) as DownloadTokenPayload;
+
+    // Defesa em profundidade além da audience: o conteúdo precisa ser mesmo de download.
+    if (payload.purpose !== 'DOWNLOAD' || typeof payload.anexoId !== 'string') {
+      throw new Error('purpose inválido');
+    }
+    return payload;
   } catch {
     throw new Error('Token inválido ou expirado');
   }
