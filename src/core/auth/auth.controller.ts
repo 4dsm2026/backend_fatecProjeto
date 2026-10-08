@@ -12,6 +12,7 @@ import {
   TrocarSenhaSchema,
 } from "../../validators/auth";
 import { hashPassword, verifyPassword } from "../../security/password";
+import { verifyDummyPassword } from "../../security/dummy-verify";
 import { generateAccessToken } from "../../utils/jwt";
 import { registrarAuditoria } from "../../lib/auditoria";
 import {
@@ -220,6 +221,8 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       : await prisma.usuario.findUnique({ where: { ra: ra! }, select: loginSelect });
 
     if (!user) {
+      // Mesmo custo de uma verificação real: o tempo não revela se a conta existe.
+      await verifyDummyPassword(password);
       await registrarAuditoria({ feitoPorId: null, acao: "login_falha_usuario_inexistente", alvo: identificador, meta: { identificador } });
       await prisma.loginTentativa.create({ data: { email: email ?? "", usuarioId: null, sucesso: false, ip, userAgent, motivo: "usuario_nao_encontrado" } });
       req.log.warn({ identificador }, "❌ Usuário não encontrado");
@@ -247,6 +250,7 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     }
 
     if (!user.senhaHash) {
+      await verifyDummyPassword(password);
       await registrarAuditoria({ feitoPorId: user.id, acao: "login_falha_hash_ausente", alvo: user.emailPessoal, meta: {} });
       await prisma.loginTentativa.create({ data: { email: user.emailPessoal ?? "", usuarioId: user.id, sucesso: false, ip, userAgent, motivo: "hash_senha_ausente" } });
       req.log.warn({ identificador }, "❌ Hash de senha ausente");
@@ -288,9 +292,9 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
     await resetLoginAttempts(prisma, user.id, user.emailPessoal ?? "", ip, userAgent);
     await registrarAuditoria({ feitoPorId: user.id, acao: "login_sucesso", alvo: user.emailPessoal, meta: {} });
 
-    const accessToken = generateAccessToken({ sub: user.id, email: user.emailPessoal ?? "", role: user.papel });
     const { token: refreshToken } = genRT();
-    await createSession({ usuarioId: user.id, refreshToken, ip, userAgent, expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+    const sessao = await createSession({ usuarioId: user.id, refreshToken, ip, userAgent, expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+    const accessToken = generateAccessToken({ sub: user.id, email: user.emailPessoal ?? "", role: user.papel, sid: sessao.id });
     setAuthCookies(res, accessToken, refreshToken);
 
     const { senhaHash, loginAttempts, lockedUntil, lastFailedAttempt, ...safeUser } = user as any;
@@ -358,9 +362,9 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
       return { updated: updatedUser };
     });
 
-    const accessToken = generateAccessToken({ sub: updated.id, email: updated.emailPessoal ?? "", role: updated.papel });
     const { token: refreshToken } = genRT();
-    await createSession({ usuarioId: updated.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+    const sessao = await createSession({ usuarioId: updated.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+    const accessToken = generateAccessToken({ sub: updated.id, email: updated.emailPessoal ?? "", role: updated.papel, sid: sessao.id });
     setAuthCookies(res, accessToken, refreshToken);
     await res.send({ user: updated, accessToken, refreshToken });
   } catch (e) {
@@ -380,13 +384,13 @@ export const forgotPassword = async (req: FastifyRequest, res: FastifyReply) => 
   }
   const { email } = parsed.data!.body! as { email: string };
   const prisma = req.server.prisma;
-  try {
-    await enviarLinkEsqueciSenha(prisma, email.trim().toLowerCase());
-    await res.send({ message: "Se existir uma conta com esse e-mail, enviaremos um link para redefinir a senha." });
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro em esqueci-senha");
-    await res.code(500).send({ error: "Erro ao processar a solicitação de redefinição de senha" });
-  }
+  // Resposta idêntica e no mesmo tempo, exista a conta ou não: o envio roda
+  // desacoplado da resposta e uma falha (e-mail, banco) só é logada. Assim nem
+  // o `500` nem a demora revelam que o e-mail está cadastrado (S16).
+  void enviarLinkEsqueciSenha(prisma, email.trim().toLowerCase()).catch((e) => {
+    req.log.error({ e }, "💥 Erro em esqueci-senha (envio desacoplado)");
+  });
+  await res.send({ message: "Se existir uma conta com esse e-mail, enviaremos um link para redefinir a senha." });
 };
 
 /* ===================== RESET DE SENHA (via token) ===================== */
@@ -414,9 +418,9 @@ export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
       await res.code(404).send({ error: "Usuário não encontrado" });
       return;
     }
-    const accessToken = generateAccessToken({ sub: userDb.id, email: userDb.emailPessoal ?? "", role: userDb.papel });
     const { token: refreshToken } = genRT();
-    await createSession({ usuarioId: userDb.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+    const sessao = await createSession({ usuarioId: userDb.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+    const accessToken = generateAccessToken({ sub: userDb.id, email: userDb.emailPessoal ?? "", role: userDb.papel, sid: sessao.id });
     setAuthCookies(res, accessToken, refreshToken);
     await res.send({ user: userDb, accessToken, refreshToken });
   } catch (e: any) {
@@ -448,9 +452,9 @@ export const register = async (req: FastifyRequest, res: FastifyReply): Promise<
         data: { nome: name, emailPessoal: email, emailEducacional: educationalEmail ?? null, ra: ra ?? null, senhaHash, papel: role, ativo: true, precisaTrocarSenha: !!ra, passwordUpdatedAt: new Date() },
         select: { id: true, nome: true, emailPessoal: true, emailEducacional: true, ra: true, papel: true, ativo: true, precisaTrocarSenha: true, criadoEm: true, atualizadoEm: true },
       });
-      const accessToken = generateAccessToken({ sub: user.id, email: user.emailPessoal ?? "", role: user.papel });
       const { token: refreshToken } = genRT();
-      await createSessionWithClient(tx, { usuarioId: user.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+      const sessao = await createSessionWithClient(tx, { usuarioId: user.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
+      const accessToken = generateAccessToken({ sub: user.id, email: user.emailPessoal ?? "", role: user.papel, sid: sessao.id });
       return { user, accessToken, refreshToken };
     });
     setAuthCookies(res, result.accessToken, result.refreshToken);
@@ -476,11 +480,17 @@ export const refresh = async (req: FastifyRequest, res: FastifyReply): Promise<v
   try {
     const sessao = await verifyAndGetSession(refreshToken);
     if (!sessao) { await res.code(401).send({ error: "Refresh inválido" }); return; }
-    const user = await prisma.usuario.findUniqueOrThrow({
+    const user = await prisma.usuario.findUnique({
       where: { id: sessao.usuarioId },
-      select: { id: true, emailPessoal: true, papel: true },
+      select: { id: true, emailPessoal: true, papel: true, ativo: true, deletadoEm: true },
     });
-    const accessToken = generateAccessToken({ sub: user.id, email: user.emailPessoal ?? "", role: user.papel });
+    // Usuário apagado ou desativado não renova acesso: a sessão é encerrada.
+    if (!user || !user.ativo || user.deletadoEm) {
+      await prisma.sessao.update({ where: { id: sessao.id }, data: { revogadaEm: new Date() } });
+      await res.code(401).send({ error: "Refresh inválido" });
+      return;
+    }
+    const accessToken = generateAccessToken({ sub: user.id, email: user.emailPessoal ?? "", role: user.papel, sid: sessao.id });
     const { token: novoRefresh } = genRT();
     await rotateSession(sessao.id, novoRefresh);
     setAuthCookies(res, accessToken, novoRefresh);
