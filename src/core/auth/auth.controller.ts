@@ -13,6 +13,7 @@ import {
 } from "../../validators/auth";
 import { hashPassword, verifyPassword } from "../../security/password";
 import { verifyDummyPassword } from "../../security/dummy-verify";
+import { enviarAvisoSenhaAlterada, type MotivoSenhaAlterada } from "./senha-alterada.service";
 import { generateAccessToken } from "../../utils/jwt";
 import { registrarAuditoria } from "../../lib/auditoria";
 import {
@@ -373,6 +374,27 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
   }
 };
 
+/**
+ * Avisa o dono da conta por e-mail que a senha mudou (D-R7). Desacoplado da
+ * resposta: a senha JÁ foi gravada, então uma falha de e-mail só é logada.
+ */
+function avisarSenhaAlterada(
+  req: FastifyRequest,
+  usuario: { nome?: string | null; emailPessoal?: string | null; emailEducacional?: string | null },
+  motivo: MotivoSenhaAlterada,
+): void {
+  void enviarAvisoSenhaAlterada({
+    nome: usuario.nome,
+    emailPessoal: usuario.emailPessoal,
+    emailEducacional: usuario.emailEducacional,
+    motivo,
+    ip: req.ip,
+    userAgent: String(req.headers["user-agent"] || ""),
+  }).catch((err) => {
+    req.log.error({ err }, "💥 Falha ao enviar aviso de senha alterada");
+  });
+}
+
 /* ===================== ESQUECI A SENHA ===================== */
 const forgotPasswordValidator = buildRouteValidator({ body: EsqueciSenhaSchema });
 
@@ -412,12 +434,13 @@ export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
     }
     const userDb = await prisma.usuario.findUnique({
       where: { id: basicUser.id },
-      select: { id: true, nome: true, ra: true, papel: true, emailPessoal: true },
+      select: { id: true, nome: true, ra: true, papel: true, emailPessoal: true, emailEducacional: true },
     });
     if (!userDb) {
       await res.code(404).send({ error: "Usuário não encontrado" });
       return;
     }
+    avisarSenhaAlterada(req, userDb, "reset");
     const { token: refreshToken } = genRT();
     const sessao = await createSession({ usuarioId: userDb.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
     const accessToken = generateAccessToken({ sub: userDb.id, email: userDb.emailPessoal ?? "", role: userDb.papel, sid: sessao.id });
@@ -551,7 +574,7 @@ export const trocarSenha = async (req: FastifyRequest, res: FastifyReply): Promi
   try {
     const user = await prisma.usuario.findUnique({
       where: { id: authUser.sub },
-      select: { id: true, senhaHash: true },
+      select: { id: true, senhaHash: true, nome: true, emailPessoal: true, emailEducacional: true },
     });
     if (!user?.senhaHash) { await res.code(404).send({ error: "Usuário não encontrado" }); return; }
 
@@ -575,6 +598,7 @@ export const trocarSenha = async (req: FastifyRequest, res: FastifyReply): Promi
     });
 
     await registrarAuditoria({ feitoPorId: user.id, acao: "troca_senha_sucesso", alvo: user.id, meta: {} });
+    avisarSenhaAlterada(req, user, "troca");
     await res.send({ message: "Senha alterada com sucesso" });
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao trocar senha");

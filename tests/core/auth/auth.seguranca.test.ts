@@ -218,3 +218,59 @@ describe('POST /auth/esqueci-senha — não revela se o e-mail existe (S16)', ()
     expect(res.statusCode).toBe(400)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('POST /auth/reset-senha — aviso por e-mail (D-R7)', () => {
+  const NOVA = 'NovaSenha1#'
+  const dono = {
+    id: IDS.user,
+    nome: 'João',
+    ra: null,
+    papel: 'USUARIO',
+    emailPessoal: 'joao@example.com',
+    emailEducacional: null,
+  }
+  const reset = () =>
+    app.inject({ method: 'POST', url: '/auth/reset-senha', payload: { token: 't'.repeat(30), newPassword: NOVA } })
+
+  function prepararResetValido() {
+    prismaMock.tokenResetSenha.findFirst.mockResolvedValue({ id: 'tok-1', usuarioId: IDS.user, usadoEm: null })
+    prismaMock.$transaction.mockResolvedValue([])
+    prismaMock.usuario.findUnique.mockResolvedValue(dono)
+    prismaMock.sessao.updateMany.mockReturnValue('op-revoga' as any)
+  }
+
+  it('200 — envia o aviso (motivo reset) ao e-mail do dono, sem a senha nova', async () => {
+    prepararResetValido()
+    mockSend.mockResolvedValue(undefined)
+
+    const res = await reset()
+
+    expect(res.statusCode).toBe(200)
+    await vi.waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1))
+    const enviado = mockSend.mock.calls[0][0]
+    expect(enviado.to).toBe('joao@example.com')
+    expect(enviado.html).toContain('redefinição de senha feita por um link')
+    expect(enviado.html).not.toContain(NOVA)
+  })
+
+  it('200 — falha no envio não impede o reset nem a nova sessão', async () => {
+    prepararResetValido()
+    mockSend.mockRejectedValue(new Error('SES indisponível'))
+
+    const res = await reset()
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toHaveProperty('accessToken')
+    await vi.waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1))
+  })
+
+  it('400 — token inválido/expirado: nenhum e-mail', async () => {
+    prismaMock.tokenResetSenha.findFirst.mockResolvedValue(null)
+
+    const res = await reset()
+
+    expect(res.statusCode).toBe(400)
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+})
