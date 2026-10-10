@@ -115,6 +115,12 @@ describe("paginationLinks", () => {
     const l = hrefs(paginationLinks("/tickets", 0, 20, 100, { status: "ABERTO", q: "" }));
     expect(l.next).toBe("/tickets?page=1&size=20&status=ABERTO");
   });
+
+  it("página única: só self, first e last", () => {
+    const l = hrefs(paginationLinks("/tickets", 0, 20, 5));
+    expect(Object.keys(l)).toEqual(["self", "first", "last"]);
+    expect(l.last).toBe("/tickets?page=0&size=20");
+  });
 });
 
 describe("toCollection", () => {
@@ -144,4 +150,8 @@ describe("toCollection", () => {
     expect(c._links).toHaveProperty("create");
     expect(c._links).toHaveProperty("self");
   });
+
+
+  
+
 });
