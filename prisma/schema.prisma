@@ -300,6 +300,7 @@ model Chamado {
   atualizadoEm DateTime  @updatedAt
   encerradoEm  DateTime?
   deletadoEm   DateTime?
+  arquivadoEm  DateTime?
 
   catalogoServicoId     String?
   catalogoCategoriaId   String?
