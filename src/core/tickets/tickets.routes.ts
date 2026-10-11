@@ -433,6 +433,14 @@ export async function ticketsRoutes(app: FastifyInstance) {
               default: "desc",
               description: "Direção da ordenação.",
             },
+            arquivados: {
+              type: "string",
+              enum: ["excluir", "incluir", "somente"],
+              default: "excluir",
+              description:
+                "Controla os chamados arquivados. `excluir` (padrão) esconde os arquivados; " +
+                "`incluir` mostra todos; `somente` mostra apenas os arquivados.",
+            },
             include: {
               type: "string",
               description:

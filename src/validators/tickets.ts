@@ -146,6 +146,7 @@ export const TicketListSchema = z.object({
     responsavelId: z.string().optional(),
     organizacaoId: z.string().optional(),
     criadoPorId:   z.string().optional(),
+    arquivados:    z.enum(['excluir', 'incluir', 'somente']).optional(),
     criadoDe:  IsoDate,
     criadoAte: IsoDate,
     orderBy:  z.enum(['criadoEm','atualizadoEm']).default('criadoEm').optional(),

@@ -25,6 +25,12 @@ const ticketInclude = (include?: TicketsListQuery['include']) => {
   return base;
 };
 
+const archivedFilter = (arquivados: TicketsListQuery['arquivados']) => {
+  if (arquivados === 'incluir') return {};
+  if (arquivados === 'somente') return { arquivadoEm: { not: null } };
+  return { arquivadoEm: null };
+};
+
 const buildWhere = (q: TicketsListQuery) => {
   const {
     search, status, nivel, prioridade,
@@ -34,6 +40,8 @@ const buildWhere = (q: TicketsListQuery) => {
 
   return {
     deletadoEm: null,
+    ...archivedFilter(q.arquivados),
+    ...(criadoPorId   ? { criadoPorId }   : {}),
     ...(criadoPorId   ? { criadoPorId }   : {}),
     ...(organizacaoId ? { organizacaoId } : {}),
     ...(clienteId     ? { clienteId }     : {}),

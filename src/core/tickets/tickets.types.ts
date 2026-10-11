@@ -17,6 +17,7 @@ export type TicketsListQuery = {
   criadoAte?: string
   orderBy?: 'criadoEm' | 'atualizadoEm'
   orderDir?: 'asc' | 'desc'
+  arquivados?: 'excluir' | 'incluir' | 'somente'
   criadoPorId?: string
   include?: ('cliente' | 'contrato' | 'servico' | 'setor' | 'responsavel' | 'criadoPor' | 'historico')[]
 }
