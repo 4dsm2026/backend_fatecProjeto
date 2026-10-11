@@ -2,9 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   REOPEN_WINDOW_DAYS,
   allowedTransitions,
+  canArchiveTicket,
   canInteractWithTicket,
   canReopen,
   canTransition,
+  canUnarchiveTicket,
   canViewTicket,
   statusAfterReply,
 } from "../../../src/core/tickets/ticket-rules";
@@ -21,10 +23,15 @@ const outroAluno = viewer("USUARIO", "aluno-2");
 const tecnico = viewer("TECNICO");
 const admin = viewer("ADMINISTRADOR");
 
-const chamado = (status: TicketStatus, closedAt: Date | null = null): TicketContext => ({
+const chamado = (
+  status: TicketStatus,
+  closedAt: Date | null = null,
+  archivedAt: Date | null = null,
+): TicketContext => ({
   status,
   ownerId: DONO,
   closedAt,
+  archivedAt,
 });
 
 const ORDEM: TicketStatus[] = ["ABERTO", "EM_ATENDIMENTO", "AGUARDANDO_USUARIO", "RESOLVIDO", "ENCERRADO"];
@@ -163,4 +170,39 @@ describe("statusAfterReply", () => {
       expect(statusAfterReply(chamado(status), aluno)).toBeUndefined();
     },
   );
+});
+
+describe("arquivar", () => {
+  it.each<TicketStatus>(ORDEM)("só ADMINISTRADOR arquiva (status %s)", (status) => {
+    expect(canArchiveTicket(chamado(status), admin)).toBe(true);
+    expect(canArchiveTicket(chamado(status), tecnico)).toBe(false);
+    expect(canArchiveTicket(chamado(status), viewer("BACKOFFICE"))).toBe(false);
+    expect(canArchiveTicket(chamado(status), aluno)).toBe(false);
+  });
+
+  it("não arquiva um chamado que já está arquivado", () => {
+    expect(canArchiveTicket(chamado("ENCERRADO", null, diasAtras(1)), admin)).toBe(false);
+  });
+
+  it("só ADMINISTRADOR desarquiva, e só se estiver arquivado", () => {
+    const arquivado = chamado("ENCERRADO", null, diasAtras(1));
+    expect(canUnarchiveTicket(arquivado, admin)).toBe(true);
+    expect(canUnarchiveTicket(arquivado, tecnico)).toBe(false);
+    expect(canUnarchiveTicket(arquivado, aluno)).toBe(false);
+    expect(canUnarchiveTicket(chamado("ENCERRADO"), admin)).toBe(false);
+  });
+
+  it("chamado arquivado é somente leitura: sem transições, sem reabrir, sem responder", () => {
+    const arquivado = chamado("RESOLVIDO", diasAtras(1), diasAtras(1));
+    for (const v of [aluno, tecnico, admin]) {
+      expect(allowedTransitions(arquivado, v, AGORA)).toEqual([]);
+      expect(canReopen(arquivado, v, AGORA)).toBe(false);
+      expect(canInteractWithTicket(arquivado, v)).toBe(false);
+    }
+  });
+
+  it("chamado arquivado continua visível para dono e equipe", () => {
+    expect(canViewTicket(aluno, DONO)).toBe(true);
+    expect(canViewTicket(tecnico, DONO)).toBe(true);
+  });
 });
