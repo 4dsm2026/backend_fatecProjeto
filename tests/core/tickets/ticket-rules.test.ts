@@ -7,6 +7,7 @@ import {
   canReopen,
   canTransition,
   canUnarchiveTicket,
+  canUpdateTicket,
   canViewTicket,
   statusAfterReply,
 } from "../../../src/core/tickets/ticket-rules";
@@ -204,5 +205,24 @@ describe("arquivar", () => {
   it("chamado arquivado continua visível para dono e equipe", () => {
     expect(canViewTicket(aluno, DONO)).toBe(true);
     expect(canViewTicket(tecnico, DONO)).toBe(true);
+  });
+});
+
+describe("canUpdateTicket", () => {
+  it("só a equipe edita", () => {
+    expect(canUpdateTicket(chamado("ABERTO"), tecnico)).toBe(true);
+    expect(canUpdateTicket(chamado("ABERTO"), admin)).toBe(true);
+    expect(canUpdateTicket(chamado("ABERTO"), viewer("BACKOFFICE"))).toBe(true);
+    expect(canUpdateTicket(chamado("ABERTO"), aluno)).toBe(false);
+    expect(canUpdateTicket(chamado("ABERTO"), outroAluno)).toBe(false);
+  });
+
+  it("ninguém edita um chamado ENCERRADO", () => {
+    for (const v of [aluno, tecnico, admin]) expect(canUpdateTicket(chamado("ENCERRADO"), v)).toBe(false);
+  });
+
+  it("ninguém edita um chamado arquivado", () => {
+    const arquivado = chamado("EM_ATENDIMENTO", null, diasAtras(1));
+    for (const v of [aluno, tecnico, admin]) expect(canUpdateTicket(arquivado, v)).toBe(false);
   });
 });

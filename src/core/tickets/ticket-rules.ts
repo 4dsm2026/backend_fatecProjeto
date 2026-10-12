@@ -1,5 +1,5 @@
-import { isStaff } from "../../hateoas";
-import type { Role, Viewer } from "../../hateoas";
+import type { Links, Role, Viewer } from "../../hateoas";
+import { buildLinks, isStaff, link, path } from "../../hateoas";
 
 
 /** Mesmos valores do enum `StatusChamado` do Prisma (aqui sem depender do Prisma). */
@@ -60,7 +60,7 @@ function isOwner(viewer: Viewer, ownerId: string): boolean {
 }
 
 /** Reabrir = sair de RESOLVIDO ou ENCERRADO de volta para EM_ATENDIMENTO. */
-function isReopen(from: TicketStatus, to: TicketStatus): boolean {
+export function isReopen(from: TicketStatus, to: TicketStatus): boolean {
     return (from === "RESOLVIDO" || from === "ENCERRADO") && to === "EM_ATENDIMENTO";
 }
 
@@ -101,6 +101,10 @@ export function canInteractWithTicket(ticket: TicketContext, viewer: Viewer): bo
     return !fechado && !ticket.archivedAt && canViewTicket(viewer, ticket.ownerId);
 }
 
+/** Editar os dados do chamado (PATCH): só a equipe, e não em chamado ENCERRADO nem arquivado. */
+export function canUpdateTicket(ticket: TicketContext, viewer: Viewer): boolean {
+  return isStaff(viewer) && ticket.status !== "ENCERRADO" && !ticket.archivedAt;
+}
 /**
  * Status que o chamado assume depois de uma resposta, ou `undefined` se não muda.
  * Quando o dono responde em AGUARDANDO_USUARIO, volta para EM_ATENDIMENTO.
