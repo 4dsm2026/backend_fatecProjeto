@@ -88,7 +88,7 @@ const setorBody = {
       minLength: 1,
       nullable: true,
       description: "ID da organização opcional. Aceita null; quando string, não pode ser vazia.",
-      example: "cm1234567890abcdef123457",
+      example: null,
     },
   },
 } as const;
