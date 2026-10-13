@@ -1,104 +1,82 @@
 // src/core/users/users.service.ts
 import type { PrismaClient, Prisma } from '@prisma/client';
+import { ApiError, toSkipTake } from '../../hateoas';
 import type {
   UserCreateDTO,
-  UserListQuery,
   UserResponse,
   UserUpdateDTO,
-  Paginated,
 } from '../../types/users';
+import type { UserListResult, UsersListQuery } from './users.types';
+import { userPublicSelect } from './users.types';
 import { hashPassword } from '../../security/password';
-import { env } from '../../env';
-
-const baseSelect = {
-  id: true,
-  organizacaoId: true,
-  nome: true,
-  emailPessoal: true,
-  emailEducacional: true,
-  ra: true,
-  cursoNome: true,
-  cursoSigla: true,
-  papel: true,
-  ativo: true,
-  anonimizado: true,
-  criadoEm: true,
-  atualizadoEm: true,
-  deletadoEm: true,
-  // Dados acadêmicos
-  unidadeFatec: true,
-  curso: true,
-  eixoTecnologico: true,
-  turno: true,
-  turma: true,
-  semestreAtual: true,
-  matrizCurricular: true,
-  situacaoAcademica: true,
-  anoSemestreIngresso: true,
-  coordenadorCurso: true,
-  // Contato e acessibilidade
-  telefoneCelular: true,
-  whatsapp: true,
-  canalPreferencialContato: true,
-  melhorPeriodoContato: true,
-  necessitaAtendimentoAcessivel: true,
-  tipoAcessibilidade: true,
-  observacoesAtendimento: true,
-  notificacoesInApp: true,
-} satisfies Prisma.UsuarioSelect;
 
 async function logAuditoria(
   prisma: PrismaClient,
   acao: string,
   alvo?: string,
-  meta?: any,
+  meta?: unknown,
   feitoPorId?: string,
 ) {
   try {
-    await prisma.auditoria.create({ data: { acao, alvo, meta, feitoPorId } });
+    const serializedMeta = serializeMeta(meta);
+    await prisma.auditoria.create({
+      data: {
+        acao,
+        alvo,
+        feitoPorId,
+        ...(serializedMeta ? { meta: serializedMeta } : {}),
+      },
+    });
   } catch {
-    // Auditoria não deve quebrar o fluxo principal
+    return;
   }
 }
 
-type ServiceOpts = { feitoPorId?: string; meta?: any };
+type ServiceOpts = { feitoPorId?: string; meta?: { origem?: string } };
 
-async function buildUserPatch(data: UserUpdateDTO, d: any): Promise<Prisma.UsuarioUncheckedUpdateInput> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function serializeMeta(meta: unknown): Prisma.InputJsonObject | undefined {
+  if (!isRecord(meta)) return undefined;
+  const parsed: unknown = JSON.parse(JSON.stringify(meta));
+  return isRecord(parsed) ? parsed as Prisma.InputJsonObject : undefined;
+}
+
+async function buildUserPatch(data: UserUpdateDTO): Promise<Prisma.UsuarioUncheckedUpdateInput> {
   const patch: Prisma.UsuarioUncheckedUpdateInput = {
-    nome:            data.nome            ?? undefined,
-    emailPessoal:    data.emailPessoal    ?? undefined,
+    nome: data.nome,
+    emailPessoal: data.emailPessoal,
     emailEducacional: data.emailEducacional ?? undefined,
-    ra:              data.ra              ?? undefined,
-    cursoNome:       d.cursoNome          ?? undefined,
-    cursoSigla:      d.cursoSigla         ?? undefined,
-    papel:           (data.papel as any)  ?? undefined,
-    ativo:           typeof data.ativo === 'boolean'      ? data.ativo      : undefined,
-    anonimizado:     typeof data.anonimizado === 'boolean' ? data.anonimizado : undefined,
-    // Dados acadêmicos
-    unidadeFatec:        d.unidadeFatec        ?? undefined,
-    curso:               d.curso               ?? undefined,
-    eixoTecnologico:     d.eixoTecnologico     ?? undefined,
-    turno:               d.turno               ?? undefined,
-    turma:               d.turma               ?? undefined,
-    semestreAtual:       d.semestreAtual       ?? undefined,
-    matrizCurricular:    d.matrizCurricular    ?? undefined,
-    situacaoAcademica:   d.situacaoAcademica   ?? undefined,
-    anoSemestreIngresso: d.anoSemestreIngresso ?? undefined,
-    coordenadorCurso:    d.coordenadorCurso    ?? undefined,
-    // Contato e acessibilidade
-    telefoneCelular:               d.telefoneCelular               ?? undefined,
-    whatsapp:                      d.whatsapp                      ?? undefined,
-    canalPreferencialContato:      d.canalPreferencialContato      ?? undefined,
-    melhorPeriodoContato:          d.melhorPeriodoContato          ?? undefined,
-    necessitaAtendimentoAcessivel: typeof d.necessitaAtendimentoAcessivel === 'boolean'
-      ? d.necessitaAtendimentoAcessivel : undefined,
-    tipoAcessibilidade:      d.tipoAcessibilidade      ?? undefined,
-    observacoesAtendimento:  d.observacoesAtendimento  ?? undefined,
-    notificacoesInApp:       typeof d.notificacoesInApp === 'boolean' ? d.notificacoesInApp : undefined,
+    ra: data.ra,
+    cursoNome: data.cursoNome,
+    cursoSigla: data.cursoSigla,
+    papel: data.papel,
+    ativo: data.ativo,
+    anonimizado: data.anonimizado,
+    organizacaoId: data.organizacaoId,
+    unidadeFatec: data.unidadeFatec,
+    curso: data.curso,
+    eixoTecnologico: data.eixoTecnologico,
+    turno: data.turno,
+    turma: data.turma,
+    semestreAtual: data.semestreAtual,
+    matrizCurricular: data.matrizCurricular,
+    situacaoAcademica: data.situacaoAcademica,
+    anoSemestreIngresso: data.anoSemestreIngresso,
+    coordenadorCurso: data.coordenadorCurso,
+    telefoneCelular: data.telefoneCelular,
+    whatsapp: data.whatsapp,
+    canalPreferencialContato: data.canalPreferencialContato,
+    melhorPeriodoContato: data.melhorPeriodoContato,
+    necessitaAtendimentoAcessivel: data.necessitaAtendimentoAcessivel,
+    tipoAcessibilidade: data.tipoAcessibilidade,
+    observacoesAtendimento: data.observacoesAtendimento,
+    notificacoesInApp: data.notificacoesInApp,
   };
 
-  if ('organizacaoId' in data) patch.organizacaoId = data.organizacaoId as any;
-  if (d.senha) patch.senhaHash = await hashPassword(d.senha);
+  if (data.senha) patch.senhaHash = await hashPassword(data.senha);
 
   return patch;
 }
@@ -108,14 +86,13 @@ export async function createUser(
   data: UserCreateDTO,
   opts?: ServiceOpts,
 ): Promise<UserResponse> {
-  const d = data as any;
   const isAluno = !!data.ra;
 
-  if (!data.nome) throw new Error('Nome é obrigatório.');
-  if (!data.emailPessoal && !data.emailEducacional)
-    throw new Error('É obrigatório informar e-mail pessoal ou educacional.');
+  if (!data.nome) throw new ApiError('bad-request', 'Nome é obrigatório.');
+  const emailPessoal = data.emailPessoal ?? data.emailEducacional;
+  if (!emailPessoal) throw new ApiError('bad-request', 'É obrigatório informar e-mail pessoal ou educacional.');
 
-  const senhaPlano = d.senha ?? process.env.DEFAULT_TEMP_PASSWORD;
+  const senhaPlano = data.senha ?? process.env.DEFAULT_TEMP_PASSWORD;
   if (!senhaPlano) {
     throw new Error('DEFAULT_TEMP_PASSWORD é obrigatória quando a senha não é informada.');
   }
@@ -124,24 +101,23 @@ export async function createUser(
   const created = await prisma.usuario.create({
     data: {
       nome: data.nome,
-      emailPessoal: (data.emailPessoal ?? data.emailEducacional)!,
+      emailPessoal,
       emailEducacional: data.emailEducacional ?? null,
       ra: data.ra ?? null,
-      cursoNome:  d.cursoNome  ?? null,
-      cursoSigla: d.cursoSigla ?? null,
+      cursoNome: data.cursoNome ?? null,
+      cursoSigla: data.cursoSigla ?? null,
       senhaHash,
-      papel: (data.papel as any) ?? 'USUARIO',
+      papel: data.papel ?? 'USUARIO',
       ativo: data.ativo ?? true,
       precisaTrocarSenha: isAluno,
       organizacaoId: data.organizacaoId ?? null,
-      // Dados acadêmicos opcionais
-      unidadeFatec:        d.unidadeFatec        ?? null,
-      turno:               d.turno               ?? null,
-      turma:               d.turma               ?? null,
-      semestreAtual:       d.semestreAtual       ?? null,
-      anoSemestreIngresso: d.anoSemestreIngresso ?? null,
+      unidadeFatec: data.unidadeFatec ?? null,
+      turno: data.turno ?? null,
+      turma: data.turma ?? null,
+      semestreAtual: data.semestreAtual ?? null,
+      anoSemestreIngresso: data.anoSemestreIngresso ?? null,
     },
-    select: baseSelect,
+    select: userPublicSelect,
   });
 
   await logAuditoria(
@@ -152,25 +128,22 @@ export async function createUser(
     opts?.feitoPorId,
   );
 
-  return created as unknown as UserResponse;
+  return created;
 }
 
 export async function getUserById(
   prisma: PrismaClient,
   id: string,
 ): Promise<(UserResponse & { deletadoEm: Date | null }) | null> {
-  return prisma.usuario.findUnique({ where: { id }, select: baseSelect }) as any;
+  return prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
 }
 
 export async function listUsers(
   prisma: PrismaClient,
-  q: UserListQuery,
-): Promise<Paginated<UserResponse>> {
+  q: UsersListQuery,
+): Promise<UserListResult> {
   const where: Prisma.UsuarioWhereInput = {
     deletadoEm: null,
-    ...(q.papel ? { papel: q.papel as any } : {}),
-    ...(q.organizacaoId ? { organizacaoId: q.organizacaoId } : {}),
-    ...(typeof q.ativo !== 'undefined' ? { ativo: q.ativo === 'true' } : {}),
     ...(q.q
       ? {
           OR: [
@@ -182,25 +155,20 @@ export async function listUsers(
         }
       : {}),
   };
+  const { skip, take } = toSkipTake(q);
 
   const [items, total] = await Promise.all([
     prisma.usuario.findMany({
       where,
-      select: baseSelect,
+      select: userPublicSelect,
       orderBy: { criadoEm: 'desc' },
-      skip: (q.page - 1) * q.perPage,
-      take: q.perPage,
+      skip,
+      take,
     }),
     prisma.usuario.count({ where }),
   ]);
 
-  return {
-    items: items as any,
-    page: q.page,
-    perPage: q.perPage,
-    total,
-    pages: Math.ceil(total / q.perPage),
-  };
+  return { items, total };
 }
 
 export async function updateUser(
@@ -209,11 +177,10 @@ export async function updateUser(
   data: UserUpdateDTO,
   opts?: ServiceOpts,
 ): Promise<UserResponse> {
-  const d = data as any;
-  const patch = await buildUserPatch(data, d);
+  const patch = await buildUserPatch(data);
 
-  const before = await prisma.usuario.findUnique({ where: { id }, select: baseSelect });
-  const updated = await prisma.usuario.update({ where: { id }, data: patch, select: baseSelect });
+  const before = await prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
+  const updated = await prisma.usuario.update({ where: { id }, data: patch, select: userPublicSelect });
 
   await logAuditoria(
     prisma,
@@ -223,7 +190,7 @@ export async function updateUser(
     opts?.feitoPorId,
   );
 
-  return updated as any;
+  return updated;
 }
 
 export async function softDeleteUser(
@@ -231,12 +198,9 @@ export async function softDeleteUser(
   id: string,
   opts?: ServiceOpts,
 ): Promise<UserResponse> {
-  const before = await prisma.usuario.findUnique({ where: { id }, select: baseSelect });
-  if (!before) {
-    const err: any = new Error('Usuário não encontrado');
-    err.code = 'P2025';
-    throw err;
-  }
+  const before = await prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
+  if (!before) throw new ApiError('not-found', 'Usuário não encontrado');
+  if (before.deletadoEm !== null) throw new ApiError('conflict', 'Usuário já removido');
 
   const anonDomain = process.env.ANON_EMAIL_DOMAIN ?? 'anon.local';
   const anonEduDomain = process.env.ANON_EDU_DOMAIN ?? 'anon.edu.local';
@@ -248,14 +212,14 @@ export async function softDeleteUser(
       ativo: false,
       anonimizado: true,
       nome: 'Usuário Anônimo',
-      ra: (before as any).ra ? `anon_${id}` : null,
+      ra: before.ra ? `anon_${id}` : null,
       emailPessoal: `anonp_${id}@${anonDomain}`,
-      emailEducacional: (before as any).emailEducacional ? `anone_${id}@${anonEduDomain}` : null,
+      emailEducacional: before.emailEducacional ? `anone_${id}@${anonEduDomain}` : null,
       telefoneCelular: null,
       whatsapp: null,
       observacoesAtendimento: null,
     },
-    select: baseSelect,
+    select: userPublicSelect,
   });
 
   await logAuditoria(
@@ -266,5 +230,5 @@ export async function softDeleteUser(
     opts?.feitoPorId,
   );
 
-  return deleted as any;
+  return deleted;
 }

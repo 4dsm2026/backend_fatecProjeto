@@ -1,9 +1,9 @@
-import { FastifyRequest, FastifyReply } from 'fastify'
-import { buildRouteValidator } from '../../utils/zod-helpers'
-import { sendNotFound, sendReply, sendValidationError } from '../../utils/http'
+import type { FastifyReply, FastifyRequest } from 'fastify'
+import { ApiError, buildLinks, fieldErrorsFromZod, link, path, toCollection, toResource } from '../../hateoas'
+import type { Viewer } from '../../hateoas'
+import { z } from 'zod'
 import {
   UserCreateSchema,
-  UserListSchema,
   UserUpdateSchema,
   ParamsWithIdSchema,
 } from '../../validators/users'
@@ -14,124 +14,104 @@ import {
   softDeleteUser,
   updateUser,
 } from './users.service'
+import {
+  UsersListQuerySchema,
+  buildUserLinks,
+  isUserAdmin,
+  isUserStaff,
+  USER_AUTHENTICATED_ROLES,
+} from './users.types'
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
+function parseOrThrow<T extends z.ZodType<unknown>>(schema: T, input: unknown): z.output<T> {
+  const result = schema.safeParse(input)
+  if (!result.success) {
+    throw new ApiError('bad-request', 'Dados inválidos', undefined, fieldErrorsFromZod(result.error.issues))
+  }
+  return result.data as z.output<T>
+}
 
-const createValidator = buildRouteValidator({ body: UserCreateSchema.shape.body })
-const listValidator = buildRouteValidator({ query: UserListSchema.shape.query })
-const idValidator = buildRouteValidator({ params: ParamsWithIdSchema.shape.params })
-const updateValidator = buildRouteValidator({
-  params: ParamsWithIdSchema.shape.params,
-  body: UserUpdateSchema.shape.body,
-})
+function requestViewer(req: FastifyRequest): Viewer {
+  const user = req.user
+  if (!user?.sub) throw new ApiError('unauthorized', 'Não autenticado')
+  if (!USER_AUTHENTICATED_ROLES.includes(user.role as typeof USER_AUTHENTICATED_ROLES[number])) {
+    throw new ApiError('forbidden', 'Papel de usuário inválido')
+  }
+  return { id: user.sub, role: user.role as Viewer['role'] }
+}
 
-/* ============ POST /usuarios ============ */
-export async function create(req: FastifyRequest, res: FastifyReply) {
-  const parsed = createValidator.parse(req)
-  if ('error' in parsed) return sendValidationError(res, parsed.error)
-
+export async function create(req: FastifyRequest, reply: FastifyReply) {
+  const parsed = parseOrThrow(UserCreateSchema, { body: req.body })
+  if (!parsed.body.nome) {
+    throw new ApiError('bad-request', 'Dados inválidos', undefined, [
+      { field: 'body.nome', message: 'Nome é obrigatório.' },
+    ])
+  }
+  const viewer = requestViewer(req)
   const prisma = req.server.prisma
-  const feitoPorId = req.user?.sub as string | undefined
+  const user = await createUser(prisma, parsed.body, { feitoPorId: viewer.id })
+  const location = path`/users/${user.id}`
+  return reply.header('Location', location).code(201).send(toResource(user, buildUserLinks(user, viewer)))
+}
 
-  try {
-    const user = await createUser(prisma, parsed.data!.body!, { feitoPorId })
-    await res.code(201).send(user)
-  } catch (e: any) {
-    if (e?.code === 'P2002' || e?.statusCode === 409) {
-      const msg = String(e?.message || '').toLowerCase().includes('ra')
-        ? 'RA já está em uso'
-        : 'Email já está em uso'
-      return sendReply(res, 409, { error: msg })
+export async function getOne(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = parseOrThrow(ParamsWithIdSchema.shape.params, req.params)
+  const viewer = requestViewer(req)
+  if (!isUserStaff(viewer.role) && id !== viewer.id) {
+    throw new ApiError('forbidden', 'Acesso negado')
+  }
+  const prisma = req.server.prisma
+  const user = await getUserById(prisma, id)
+  if (!user) throw new ApiError('not-found', 'Usuário não encontrado')
+  return reply.send(toResource(user, buildUserLinks(user, viewer)))
+}
+
+export async function list(req: FastifyRequest, reply: FastifyReply) {
+  const query = parseOrThrow(UsersListQuerySchema, req.query)
+  const viewer = requestViewer(req)
+  const prisma = req.server.prisma
+  const result = await listUsers(prisma, query)
+  const items = result.items.map((user) => toResource(user, buildUserLinks(user, viewer)))
+  return reply.send(toCollection({
+    rel: 'users',
+    basePath: '/users',
+    items,
+    page: query.page,
+    size: query.size,
+    total: result.total,
+    filters: { q: query.q },
+    links: buildLinks({
+      create: isUserAdmin(viewer.role) && link('/users', 'POST'),
+    }),
+  }))
+}
+
+export async function patch(req: FastifyRequest, reply: FastifyReply) {
+  const params = parseOrThrow(ParamsWithIdSchema.shape.params, req.params)
+  const body = parseOrThrow(UserUpdateSchema.shape.body, req.body)
+  const viewer = requestViewer(req)
+  const targetId = params.id
+  if (!isUserStaff(viewer.role) && targetId !== viewer.id) {
+    throw new ApiError('forbidden', 'Acesso negado')
+  }
+  if (body.papel !== undefined && viewer.role !== 'ADMINISTRADOR') {
+    throw new ApiError('forbidden', 'Somente ADMINISTRADOR pode alterar o papel do usuário')
+  }
+  if (viewer.role === 'USUARIO') {
+    const restrictedFields = ['papel', 'ativo', 'anonimizado', 'organizacaoId', 'senha'] as const
+    const forbiddenField = restrictedFields.find((field) => field in body)
+    if (forbiddenField) {
+      throw new ApiError('forbidden', `Campo não permitido: ${forbiddenField}`)
     }
-    req.log.error({ e }, '💥 Erro ao criar usuário')
-    await res.code(500).send({ error: errMsg(e) })
   }
+  const prisma = req.server.prisma
+  const user = await updateUser(prisma, targetId, body, { feitoPorId: viewer.id })
+  return reply.send(toResource(user, buildUserLinks(user, viewer)))
 }
 
-/* ============ GET /usuarios/:id ============ */
-export async function getOne(req: FastifyRequest, res: FastifyReply) {
-  const parsed = idValidator.parse(req)
-  if ('error' in parsed) return sendValidationError(res, parsed.error)
-
+export async function removeSoft(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = parseOrThrow(ParamsWithIdSchema.shape.params, req.params)
+  const viewer = requestViewer(req)
   const prisma = req.server.prisma
-  try {
-    const user = await getUserById(prisma, parsed.data!.params!.id)
-    if (!user) return sendNotFound(res, 'Usuário')
-    await res.send(user)
-  } catch (e) {
-    req.log.error({ e }, '💥 Erro ao buscar usuário')
-    await res.code(500).send({ error: errMsg(e) })
-  }
-}
-
-/* ============ GET /usuarios ============ */
-export async function list(req: FastifyRequest, res: FastifyReply) {
-  const parsed = listValidator.parse(req)
-  if ('error' in parsed) return sendValidationError(res, parsed.error)
-
-  const prisma = req.server.prisma
-  try {
-    const page = await listUsers(prisma, parsed.data!.query!)
-    await res.send(page)
-  } catch (e) {
-    req.log.error({ e }, '💥 Erro ao listar usuários')
-    await res.code(500).send({ error: errMsg(e) })
-  }
-}
-
-/* ============ PATCH /usuarios/:id ============ */
-export async function patch(req: FastifyRequest, res: FastifyReply) {
-  const parsed = updateValidator.parse(req)
-  if ('error' in parsed) return sendValidationError(res, parsed.error)
-
-  const prisma = req.server.prisma
-  const authUser = req.user as { sub: string; role: string } | undefined
-  const feitoPorId = authUser?.sub
-  const alvoId = parsed.data!.params!.id
-  const body = parsed.data!.body! as Record<string, unknown>
-
-  // Aluno (USUARIO) só pode editar o próprio cadastro e nunca campos
-  // privilegiados — sem isso, um aluno poderia se promover a ADMINISTRADOR
-  // ou reativar/desativar contas via PATCH /usuarios/:id.
-  // 'senha' também é bloqueada: a troca de senha do próprio usuário passa por
-  // POST /auth/trocar-senha, que exige a senha atual (reautenticação). O reset
-  // por administrador via PATCH continua permitido para papéis de equipe.
-  if (authUser?.role === 'USUARIO') {
-    if (alvoId !== authUser.sub)
-      return sendReply(res, 403, { error: 'Acesso negado' })
-    for (const campo of ['papel', 'ativo', 'anonimizado', 'organizacaoId', 'senha']) {
-      if (campo in body)
-        return sendReply(res, 403, { error: `Campo não permitido: ${campo}` })
-    }
-  }
-
-  try {
-    const user = await updateUser(prisma, alvoId, body as any, {
-      feitoPorId,
-    })
-    await res.send(user)
-  } catch (e: any) {
-    if (e?.code === 'P2025') return sendNotFound(res, 'Usuário')
-    if (e?.code === 'P2002') return sendReply(res, 409, { error: 'Duplicidade (email/RA)' })
-    req.log.error({ e }, '💥 Erro ao atualizar usuário')
-    await res.code(500).send({ error: errMsg(e) })
-  }
-}
-
-/* ============ DELETE /usuarios/:id (soft) ============ */
-export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
-  const parsed = idValidator.parse(req)
-  if ('error' in parsed) return sendValidationError(res, parsed.error)
-
-  const prisma = req.server.prisma
-  const feitoPorId = req.user?.sub as string | undefined
-
-  try {
-    const user = await softDeleteUser(prisma, parsed.data!.params!.id, { feitoPorId })
-    await res.send(user)
-  } catch (e: any) {
-    if (e?.code === 'P2025') return sendNotFound(res, 'Usuário')
-    req.log.error({ e }, '💥 Erro ao remover (soft) usuário')
-    await res.code(500).send({ error: errMsg(e) })
-  }
+  await softDeleteUser(prisma, id, { feitoPorId: viewer.id })
+  return reply.code(204).send()
 }
