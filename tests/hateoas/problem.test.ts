@@ -212,3 +212,108 @@ describe("registerProblemHandler (com Fastify de verdade)", () => {
     expect(res.json().instance).toBe("/nao-existe");
   });
 });
+describe("ApiError com type próprio, extensões e headers", () => {
+  it("guarda as opções", () => {
+    const e = new ApiError("too-many-requests", "Conta bloqueada", "Tente em 15 min", undefined, {
+      type: "/errors/account-locked",
+      extensions: { retryAfter: 900 },
+      headers: { "Retry-After": "900" },
+    });
+    expect(e.status).toBe(429);
+    expect(e.type).toBe("/errors/account-locked");
+    expect(e.extensions).toEqual({ retryAfter: 900 });
+    expect(e.headers).toEqual({ "Retry-After": "900" });
+  });
+
+  it("sem opções, o comportamento anterior não muda", () => {
+    const e = new ApiError("not-found", "x");
+    expect(e.type).toBeUndefined();
+    expect(toProblem(e, "/x").type).toBe("/errors/not-found");
+  });
+
+  it("toProblem usa o type próprio e inclui as extensões", () => {
+    const e = new ApiError("forbidden", "Troca de senha obrigatória", undefined, undefined, {
+      type: "/errors/password-change-required",
+      extensions: { _links: { activate: { href: "/account-activations/abc", method: "PUT" } } },
+    });
+    expect(toProblem(e, "/sessions")).toEqual({
+      type: "/errors/password-change-required",
+      title: "Troca de senha obrigatória",
+      status: 403,
+      instance: "/sessions",
+      _links: { activate: { href: "/account-activations/abc", method: "PUT" } },
+    });
+  });
+
+  it("extensões NUNCA substituem os campos padrão", () => {
+    const e = new ApiError("not-found", "Real", "detalhe real", [{ field: "a", message: "b" }], {
+      extensions: {
+        type: "/errors/falso",
+        title: "Falso",
+        status: 200,
+        instance: "/falso",
+        detail: "falso",
+        errors: [],
+        attemptsLeft: 3,
+      },
+    });
+    expect(toProblem(e, "/real")).toEqual({
+      type: "/errors/not-found",
+      title: "Real",
+      status: 404,
+      instance: "/real",
+      detail: "detalhe real",
+      errors: [{ field: "a", message: "b" }],
+      attemptsLeft: 3,
+    });
+  });
+});
+
+describe("headers da resposta de erro (Fastify de verdade)", () => {
+  function criarApp() {
+    const app = Fastify();
+    registerProblemHandler(app);
+    app.get("/bloqueio", async () => {
+      throw new ApiError("too-many-requests", "Conta bloqueada", undefined, undefined, {
+        type: "/errors/account-locked",
+        extensions: { retryAfter: 900 },
+        headers: { "Retry-After": "900" },
+      });
+    });
+    app.get("/sem-login", async () => {
+      throw new ApiError("unauthorized", "Não autenticado");
+    });
+    app.get("/token-ruim", async () => {
+      throw new ApiError("unauthorized", "Token inválido", undefined, undefined, {
+        headers: { "WWW-Authenticate": 'Bearer error="invalid_token"' },
+      });
+    });
+    app.get("/proibido", async () => {
+      throw new ApiError("forbidden", "Acesso negado");
+    });
+    return app;
+  }
+
+  it("envia Retry-After e o type/extensão no corpo", async () => {
+    const res = await criarApp().inject({ method: "GET", url: "/bloqueio" });
+    expect(res.statusCode).toBe(429);
+    expect(res.headers["retry-after"]).toBe("900");
+    expect(res.json()).toMatchObject({ type: "/errors/account-locked", retryAfter: 900 });
+  });
+
+  it("todo 401 leva WWW-Authenticate: Bearer (RFC 9110)", async () => {
+    const res = await criarApp().inject({ method: "GET", url: "/sem-login" });
+    expect(res.statusCode).toBe(401);
+    expect(res.headers["www-authenticate"]).toBe("Bearer");
+  });
+
+  it("o erro pode trocar o WWW-Authenticate (invalid_token) sem duplicar o header", async () => {
+    const res = await criarApp().inject({ method: "GET", url: "/token-ruim" });
+    expect(res.headers["www-authenticate"]).toBe('Bearer error="invalid_token"');
+  });
+
+  it("outros status não ganham WWW-Authenticate", async () => {
+    const res = await criarApp().inject({ method: "GET", url: "/proibido" });
+    expect(res.headers).not.toHaveProperty("www-authenticate");
+  });
+});

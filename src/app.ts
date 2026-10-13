@@ -72,7 +72,7 @@ export async function buildApp() {
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    exposedHeaders: ["Location"],
+    exposedHeaders: ["Location", "Retry-After", "WWW-Authenticate"],
     credentials: true,
   });
 

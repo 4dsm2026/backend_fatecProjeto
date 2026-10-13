@@ -55,6 +55,18 @@ export interface Problem {
   detail?: string;
   instance: string;
   errors?: FieldError[];
+  /** RFC 7807 permite membros de extensão (ex.: retryAfter). */
+  [extension: string]: unknown;
+}
+
+/** Opções para casos especiais: `type` próprio, membros de extensão e headers da resposta. */
+export interface ApiErrorOptions {
+  /** `type` próprio (ex.: "/errors/account-locked"). Sem isso, usa `/errors/<kind>`. */
+  type?: string;
+  /** Membros extras do problema (ex.: `{ retryAfter: 900 }`). Nunca substituem os campos padrão. */
+  extensions?: Record<string, unknown>;
+  /** Headers da resposta (ex.: `Retry-After`, `WWW-Authenticate`). */
+  headers?: Record<string, string>;
 }
 
 /** Erro "esperado" da API. Lance com `throw new ApiError("not-found", "Chamado não encontrado")`. */
@@ -63,14 +75,20 @@ export class ApiError extends Error {
   readonly status: number;
   readonly detail?: string;
   readonly errors?: FieldError[];
+  readonly type?: string;
+  readonly extensions?: Record<string, unknown>;
+  readonly headers?: Record<string, string>;
 
-  constructor(kind: ErrorKind, title: string, detail?: string, errors?: FieldError[]) {
+  constructor(kind: ErrorKind, title: string, detail?: string, errors?: FieldError[], options: ApiErrorOptions = {}) {
     super(title);
     this.name = "ApiError";
     this.kind = kind;
     this.status = STATUS_BY_KIND[kind];
     this.detail = detail;
     this.errors = errors;
+    this.type = options.type;
+    this.extensions = options.extensions;
+    this.headers = options.headers;
   }
 }
 
@@ -129,12 +147,16 @@ export function normalizeError(error: unknown): ApiError {
 }
 
 export function toProblem(error: ApiError, instance: string): Problem {
+  // Extensões primeiro: os campos padrão vêm depois e sempre prevalecem.
   const problem: Problem = {
-    type: `/errors/${error.kind}`,
+    ...error.extensions,
+    type: error.type ?? `/errors/${error.kind}`,
     title: error.message,
     status: error.status,
     instance,
   };
+  delete problem.detail;
+  delete problem.errors;
   if (error.detail) problem.detail = error.detail;
   if (error.errors?.length) problem.errors = error.errors;
   return problem;
@@ -143,6 +165,10 @@ export function toProblem(error: ApiError, instance: string): Problem {
 /** Envia o erro como `application/problem+json`. `instance` é o caminho sem a query string. */
 export function sendProblem(reply: FastifyReply, request: FastifyRequest, error: ApiError): FastifyReply {
   const instance = request.url.split("?")[0];
+  // RFC 9110: toda resposta 401 deve trazer WWW-Authenticate. O erro pode trocar o valor
+  // (ex.: `Bearer error="invalid_token"`); a comparação de nomes de header não diferencia maiúsculas.
+  const headers = { ...(error.status === 401 ? { "WWW-Authenticate": "Bearer" } : {}), ...error.headers };
+  for (const [name, value] of Object.entries(headers)) reply.header(name, value);
   return reply.status(error.status).type("application/problem+json").send(toProblem(error, instance));
 }
 
