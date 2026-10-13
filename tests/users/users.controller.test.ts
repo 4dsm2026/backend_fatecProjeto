@@ -1,12 +1,13 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Link } from "../../src/hateoas/types";
+import type { Link, Role } from "../../src/hateoas/types";
 import { registerProblemHandler } from "../../src/hateoas";
 import { prismaMock } from "../../src/lib/__mocks__/prisma";
 import authVerify from "../../src/plugins/auth-verify";
 import prismaPlugin from "../../src/plugins/prisma";
 import { makeAdminToken, makeUserToken, bearerAuth } from "../helpers/auth";
 import { usersRoutes } from "../../src/core/users/users.routes";
+import { buildUserLinks, canUpdateUserTarget } from "../../src/core/users/users.types";
 import type { UserResponse } from "../../src/types/users";
 
 vi.mock("../../src/lib/prisma");
@@ -53,6 +54,42 @@ const activeUser: UserResponse = {
 function makeUser(changes: Partial<UserResponse> = {}): UserResponse {
   return { ...activeUser, ...changes };
 }
+
+const callerRoles = ["USUARIO", "BACKOFFICE", "TECNICO", "ADMINISTRADOR"] as const;
+const targetCases = ["USUARIO", "self", "staff", "ADMINISTRADOR"] as const;
+const restrictedFieldCases = [
+  { field: "senha", payload: { senha: "AnotherStrong123!" } },
+  { field: "papel", payload: { papel: "TECNICO" } },
+  { field: "organizacaoId", payload: { organizacaoId: "org-1" } },
+  { field: "anonimizado", payload: { anonimizado: true } },
+  { field: "ativo", payload: { ativo: false } },
+] as const;
+
+type TargetCase = (typeof targetCases)[number];
+
+function targetRoleFor(callerRole: Role, targetCase: TargetCase): Role {
+  if (targetCase === "USUARIO") return "USUARIO";
+  if (targetCase === "ADMINISTRADOR") return "ADMINISTRADOR";
+  if (targetCase === "self") return callerRole;
+  return callerRole === "BACKOFFICE" ? "TECNICO" : "BACKOFFICE";
+}
+
+function targetUserFor(callerRole: Role, targetCase: TargetCase, viewerId: string): UserResponse {
+  const id = targetCase === "self" ? viewerId : `target-${callerRole}-${targetCase}`;
+  return makeUser({ id, papel: targetRoleFor(callerRole, targetCase) });
+}
+
+function targetIsUpdatable(callerRole: Role, targetCase: TargetCase): boolean {
+  if (callerRole === "ADMINISTRADOR") return true;
+  if (targetCase === "self") return true;
+  return callerRole !== "USUARIO" && targetCase === "USUARIO";
+}
+
+const patchMatrix = callerRoles.flatMap((callerRole) =>
+  targetCases.flatMap((targetCase) =>
+    restrictedFieldCases.map((fieldCase) => ({ callerRole, targetCase, ...fieldCase })),
+  ),
+);
 
 function tokenFor(role: "USUARIO" | "BACKOFFICE" | "TECNICO" | "ADMINISTRADOR", sub = "user-1") {
   if (role === "ADMINISTRADOR") return makeAdminToken({ sub });
@@ -122,6 +159,21 @@ describe("users HAL routes", () => {
     expect(response.json()).not.toHaveProperty("lockedUntil");
     expect(response.json()).toHaveProperty("necessitaAtendimentoAcessivel");
     expect(response.json()).toHaveProperty("observacoesAtendimento");
+  });
+
+  it("keeps sensitive authentication fields out of item and collection responses", async () => {
+    const headers = bearerAuth(tokenFor("ADMINISTRADOR", "admin-1"));
+    const itemResponse = await app.inject({ method: "GET", url: "/users/user-1", headers });
+    const collectionResponse = await app.inject({ method: "GET", url: "/users", headers });
+    const resources = [itemResponse.json(), collectionResponse.json()._embedded.users[0]];
+
+    expect(itemResponse.statusCode).toBe(200);
+    expect(collectionResponse.statusCode).toBe(200);
+    for (const resource of resources) {
+      expect(resource).not.toHaveProperty("senhaHash");
+      expect(resource).not.toHaveProperty("loginAttempts");
+      expect(resource).not.toHaveProperty("lockedUntil");
+    }
   });
 
   it.each(["USUARIO", "BACKOFFICE", "TECNICO"] as const)("%s cannot create users", async (role) => {
@@ -255,6 +307,101 @@ describe("users HAL routes", () => {
     expect(response.statusCode).toBe(403);
     expect(response.headers["content-type"]).toContain("application/problem+json");
     expect(prismaMock.usuario.update).not.toHaveBeenCalled();
+  });
+
+  it.each(patchMatrix)(
+    "$callerRole PATCH of $field on $targetCase target follows the authorization matrix",
+    async ({ callerRole, targetCase, field, payload }) => {
+      const viewerId = `viewer-${callerRole}`;
+      const target = targetUserFor(callerRole, targetCase, viewerId);
+      const mayUpdate =
+        callerRole === "ADMINISTRADOR" ||
+        (callerRole !== "USUARIO" && targetCase === "USUARIO" && field === "ativo");
+      prismaMock.usuario.findUnique.mockResolvedValue(target);
+
+      const response = await app.inject({
+        method: "PATCH",
+        url: `/users/${target.id}`,
+        headers: bearerAuth(tokenFor(callerRole, viewerId)),
+        payload,
+      });
+
+      expect(response.statusCode).toBe(mayUpdate ? 200 : 403);
+      if (mayUpdate) {
+        expect(prismaMock.usuario.update).toHaveBeenCalledTimes(1);
+      } else {
+        expect(prismaMock.usuario.update).not.toHaveBeenCalled();
+        expect(prismaMock.auditoria.create).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("rejects a mixed allowed and restricted PATCH without partial persistence", async () => {
+    const viewerId = "backoffice-1";
+    const target = makeUser({ id: "student-1", papel: "USUARIO" });
+    prismaMock.usuario.findUnique.mockResolvedValue(target);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/users/${target.id}`,
+      headers: bearerAuth(tokenFor("BACKOFFICE", viewerId)),
+      payload: {
+        nome: "Nome alterado",
+        ativo: false,
+        senha: "AnotherStrong123!",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditoria.create).not.toHaveBeenCalled();
+  });
+
+  it.each(callerRoles.flatMap((callerRole) => targetCases.map((targetCase) => ({ callerRole, targetCase }))))(
+    "$callerRole may update profile fields on $targetCase target only when the target rule allows it",
+    async ({ callerRole, targetCase }) => {
+      const viewerId = `viewer-${callerRole}`;
+      const target = targetUserFor(callerRole, targetCase, viewerId);
+      const mayUpdate = targetIsUpdatable(callerRole, targetCase);
+      prismaMock.usuario.findUnique.mockResolvedValue(target);
+
+      const response = await app.inject({
+        method: "PATCH",
+        url: `/users/${target.id}`,
+        headers: bearerAuth(tokenFor(callerRole, viewerId)),
+        payload: { nome: "Nome atualizado" },
+      });
+
+      expect(response.statusCode).toBe(mayUpdate ? 200 : 403);
+      expect(prismaMock.usuario.update).toHaveBeenCalledTimes(mayUpdate ? 1 : 0);
+    },
+  );
+
+  it("exposes and contracts update links only for target pairs accepted by the PATCH target rule", async () => {
+    for (const callerRole of callerRoles) {
+      const viewer = { id: `viewer-${callerRole}`, role: callerRole };
+      for (const targetCase of targetCases) {
+        const target = targetUserFor(callerRole, targetCase, viewer.id);
+        const links = buildUserLinks(target, viewer);
+        const mayUpdate = targetIsUpdatable(callerRole, targetCase);
+
+        expect(canUpdateUserTarget(target, viewer)).toBe(mayUpdate);
+        expect(Boolean(links.update)).toBe(mayUpdate);
+        expect(Boolean(links["change-role"])).toBe(callerRole === "ADMINISTRADOR");
+
+        if (links.update) {
+          prismaMock.usuario.findUnique.mockResolvedValue(target);
+          const response = await callLink(
+            app,
+            links.update as Link,
+            tokenFor(callerRole, viewer.id),
+            { nome: "Nome atualizado" },
+          );
+          expect(response.statusCode).not.toBe(403);
+          expect(response.statusCode).not.toBe(405);
+        }
+      }
+    }
   });
 
   it("allows an admin role update", async () => {

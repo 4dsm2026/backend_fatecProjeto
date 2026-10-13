@@ -17,6 +17,9 @@ import {
 import {
   UsersListQuerySchema,
   buildUserLinks,
+  canUpdateUserFields,
+  canUpdateUserTarget,
+  hasRestrictedUserUpdateField,
   isUserAdmin,
   isUserStaff,
   USER_AUTHENTICATED_ROLES,
@@ -90,21 +93,27 @@ export async function patch(req: FastifyRequest, reply: FastifyReply) {
   const body = parseOrThrow(UserUpdateSchema.shape.body, req.body)
   const viewer = requestViewer(req)
   const targetId = params.id
-  if (!isUserStaff(viewer.role) && targetId !== viewer.id) {
+  const prisma = req.server.prisma
+  const target = await getUserById(prisma, targetId)
+  if (!target) {
+    if (!isUserAdmin(viewer.role) && targetId !== viewer.id) {
+      throw new ApiError('forbidden', 'Acesso negado')
+    }
+    if (!isUserAdmin(viewer.role) && hasRestrictedUserUpdateField(Object.keys(body))) {
+      throw new ApiError('forbidden', 'Um ou mais campos não são permitidos para este usuário')
+    }
+    throw new ApiError('not-found', 'Usuário não encontrado')
+  }
+  if (!canUpdateUserTarget(target, viewer)) {
     throw new ApiError('forbidden', 'Acesso negado')
   }
-  if (body.papel !== undefined && viewer.role !== 'ADMINISTRADOR') {
-    throw new ApiError('forbidden', 'Somente ADMINISTRADOR pode alterar o papel do usuário')
+  if (target.deletadoEm !== null) {
+    throw new ApiError('conflict', 'Usuário removido não pode ser atualizado')
   }
-  if (viewer.role === 'USUARIO') {
-    const restrictedFields = ['papel', 'ativo', 'anonimizado', 'organizacaoId', 'senha'] as const
-    const forbiddenField = restrictedFields.find((field) => field in body)
-    if (forbiddenField) {
-      throw new ApiError('forbidden', `Campo não permitido: ${forbiddenField}`)
-    }
+  if (!canUpdateUserFields(target, viewer, Object.keys(body))) {
+    throw new ApiError('forbidden', 'Um ou mais campos não são permitidos para este usuário')
   }
-  const prisma = req.server.prisma
-  const user = await updateUser(prisma, targetId, body, { feitoPorId: viewer.id })
+  const user = await updateUser(prisma, targetId, body, { feitoPorId: viewer.id }, target)
   return reply.send(toResource(user, buildUserLinks(user, viewer)))
 }
 

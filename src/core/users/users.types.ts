@@ -70,11 +70,44 @@ export function isUserAdmin(role: Role): boolean {
 	return hasRole(USER_ADMIN_ROLES, role);
 }
 
-export function buildUserLinks(user: Pick<UserPublic, "id" | "deletadoEm">, viewer: Viewer) {
+const RESTRICTED_USER_UPDATE_FIELDS = ["senha", "papel", "organizacaoId", "anonimizado", "ativo"] as const;
+
+export function hasRestrictedUserUpdateField(fields: readonly string[]): boolean {
+	return fields.some((field) => RESTRICTED_USER_UPDATE_FIELDS.some((restrictedField) => restrictedField === field));
+}
+
+export function canUpdateUserTarget(user: Pick<UserPublic, "id" | "papel">, viewer: Viewer): boolean {
+	if (isUserAdmin(viewer.role)) return true;
+	if (user.papel === "ADMINISTRADOR") return false;
+	if (user.id === viewer.id) return true;
+	if (viewer.role === "USUARIO") return false;
+	return user.papel === "USUARIO";
+}
+
+export function canUpdateUserFields(
+	user: Pick<UserPublic, "id" | "papel">,
+	viewer: Viewer,
+	fields: readonly string[],
+): boolean {
+	if (isUserAdmin(viewer.role)) return true;
+
+	for (const field of fields) {
+		if (!RESTRICTED_USER_UPDATE_FIELDS.some((restrictedField) => restrictedField === field)) continue;
+		const mayUpdateActiveUser =
+			field === "ativo" &&
+			viewer.role !== "USUARIO" &&
+			user.papel === "USUARIO" &&
+			user.id !== viewer.id;
+		if (!mayUpdateActiveUser) return false;
+	}
+
+	return true;
+}
+
+export function buildUserLinks(user: Pick<UserPublic, "id" | "papel" | "deletadoEm">, viewer: Viewer) {
 	const notRemoved = user.deletadoEm === null;
 	const staff = isUserStaff(viewer.role);
 	const admin = isUserAdmin(viewer.role);
-	const ownsUser = user.id === viewer.id;
 	const href = path`/users/${user.id}`;
 
 	const changeRoleLink: Link | false = notRemoved && admin
@@ -84,7 +117,7 @@ export function buildUserLinks(user: Pick<UserPublic, "id" | "deletadoEm">, view
 	return buildLinks({
 		self: link(href),
 		collection: staff && link("/users"),
-		update: notRemoved && (staff || ownsUser) && link(href, "PATCH"),
+		update: notRemoved && canUpdateUserTarget(user, viewer) && link(href, "PATCH"),
 		"change-role": changeRoleLink,
 		delete: notRemoved && admin && link(href, "DELETE"),
 	});

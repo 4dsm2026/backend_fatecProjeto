@@ -169,10 +169,11 @@ export async function updateUser(
   id: string,
   data: UserUpdateDTO,
   opts?: ServiceOpts,
+  loadedTarget?: UserResponse,
 ): Promise<UserResponse> {
   const patch = await buildUserPatch(data);
 
-  const before = await prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
+  const before = loadedTarget ?? await prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
   if (!before) throw new ApiError('not-found', 'Usuário não encontrado');
   if (before.deletadoEm !== null) throw new ApiError('conflict', 'Usuário removido não pode ser atualizado');
   const updated = await prisma.usuario.update({ where: { id }, data: patch, select: userPublicSelect });
