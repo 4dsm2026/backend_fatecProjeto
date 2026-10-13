@@ -59,11 +59,14 @@ export async function createSessionWithClient(
   });
 }
 
-/** Lookup O(1) via índice no banco — sem scan nem Argon2. */
+/**
+ * Lookup O(1) via índice no banco — sem scan nem Argon2.
+ * Só devolve sessão não revogada E não expirada: o refresh vence por tempo.
+ */
 export async function verifyAndGetSession(refreshToken: string) {
   const refreshHash = hashToken(refreshToken);
   return prisma.sessao.findFirst({
-    where: { refreshHash, revogadaEm: null },
+    where: { refreshHash, revogadaEm: null, expiraEm: { gt: new Date() } },
   });
 }
 
