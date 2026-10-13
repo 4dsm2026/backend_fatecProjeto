@@ -11,7 +11,10 @@ export default defineConfig({
     reporters: ['verbose'],
     coverage: {
       provider: 'v8',
-      include: ['src/core/**/*.ts', 'src/validators/**/*.ts'],
+      reporter: ['text-summary', 'lcov'],
+      reportsDirectory: './coverage',
+      reportOnFailure: true,
+      include: ['src/**/*.ts'],
       exclude: ['src/**/*.d.ts', 'src/server.ts'],
     },
   },
