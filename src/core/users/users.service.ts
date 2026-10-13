@@ -14,17 +14,16 @@ async function logAuditoria(
   prisma: PrismaClient,
   acao: string,
   alvo?: string,
-  meta?: unknown,
+  meta: object = {},
   feitoPorId?: string,
 ) {
   try {
-    const serializedMeta = serializeMeta(meta);
     await prisma.auditoria.create({
       data: {
         acao,
         alvo,
         feitoPorId,
-        ...(serializedMeta ? { meta: serializedMeta } : {}),
+        meta: serializeMeta(meta),
       },
     });
   } catch {
@@ -34,14 +33,8 @@ async function logAuditoria(
 
 type ServiceOpts = { feitoPorId?: string; meta?: { origem?: string } };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function serializeMeta(meta: unknown): Prisma.InputJsonObject | undefined {
-  if (!isRecord(meta)) return undefined;
-  const parsed: unknown = JSON.parse(JSON.stringify(meta));
-  return isRecord(parsed) ? parsed as Prisma.InputJsonObject : undefined;
+function serializeMeta(meta: object): Prisma.InputJsonObject {
+  return JSON.parse(JSON.stringify(meta)) as Prisma.InputJsonObject;
 }
 
 async function buildUserPatch(data: UserUpdateDTO): Promise<Prisma.UsuarioUncheckedUpdateInput> {
@@ -107,8 +100,8 @@ export async function createUser(
       cursoNome: data.cursoNome ?? null,
       cursoSigla: data.cursoSigla ?? null,
       senhaHash,
-      papel: data.papel ?? 'USUARIO',
-      ativo: data.ativo ?? true,
+      papel: data.papel,
+      ativo: data.ativo,
       precisaTrocarSenha: isAluno,
       organizacaoId: data.organizacaoId ?? null,
       unidadeFatec: data.unidadeFatec ?? null,
@@ -180,6 +173,8 @@ export async function updateUser(
   const patch = await buildUserPatch(data);
 
   const before = await prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
+  if (!before) throw new ApiError('not-found', 'Usuário não encontrado');
+  if (before.deletadoEm !== null) throw new ApiError('conflict', 'Usuário removido não pode ser atualizado');
   const updated = await prisma.usuario.update({ where: { id }, data: patch, select: userPublicSelect });
 
   await logAuditoria(

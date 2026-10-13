@@ -292,6 +292,25 @@ describe("users HAL routes", () => {
     expect(links).not.toHaveProperty("change-role");
   });
 
+  it("rejects PATCH on a removed user without reactivating it", async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(makeUser({
+      ativo: false,
+      anonimizado: true,
+      deletadoEm: fixedDate,
+    }));
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/users/user-1",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR", "admin-1")),
+      payload: { ativo: true },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled();
+  });
+
   it("keeps admin mutation links for an inactive user not yet soft-deleted", async () => {
     prismaMock.usuario.findUnique.mockResolvedValue(makeUser({ ativo: false }));
 
