@@ -5,6 +5,7 @@ import {
   link,
   pageInfo,
   paginationLinks,
+  pickFilters,
   toCollection,
   toSkipTake,
   withQuery,
@@ -62,6 +63,20 @@ describe("withQuery", () => {
   it("mantém false e 0", () => {
     expect(withQuery("/x", { ativo: false, n: 0 })).toBe("/x?ativo=false&n=0");
   });
+
+  it("lista repete a chave, na ordem recebida", () => {
+    expect(withQuery("/tickets", { status: ["ABERTO", "RESOLVIDO"], page: 1 })).toBe(
+      "/tickets?page=1&status=ABERTO&status=RESOLVIDO",
+    );
+  });
+
+  it("lista vazia e itens vazios não geram nada", () => {
+    expect(withQuery("/tickets", { status: [], q: [""] })).toBe("/tickets");
+  });
+
+  it("codifica cada item da lista", () => {
+    expect(withQuery("/x", { q: ["a b", "c&d"] })).toBe("/x?q=a%20b&q=c%26d");
+  });
 });
 
 describe("pageInfo", () => {
@@ -111,6 +126,11 @@ describe("paginationLinks", () => {
     expect(l).not.toHaveProperty("next");
   });
 
+    it("preserva filtros em lista (status repetido)", () => {
+    const l = hrefs(paginationLinks("/tickets", 0, 20, 100, { status: ["ABERTO", "RESOLVIDO"] }));
+    expect(l.next).toBe("/tickets?page=1&size=20&status=ABERTO&status=RESOLVIDO");
+  });
+
   it("preserva os filtros", () => {
     const l = hrefs(paginationLinks("/tickets", 0, 20, 100, { status: "ABERTO", q: "" }));
     expect(l.next).toBe("/tickets?page=1&size=20&status=ABERTO");
@@ -151,7 +171,29 @@ describe("toCollection", () => {
     expect(c._links).toHaveProperty("self");
   });
 
+});
 
-  
+describe("pickFilters", () => {
+  const permitidos = ["status", "search", "arquivados"];
 
+  it("guarda só os filtros permitidos", () => {
+    expect(pickFilters({ status: "ABERTO", search: "sigas", foo: "x", page: "2" }, permitidos)).toEqual({
+      status: "ABERTO",
+      search: "sigas",
+    });
+  });
+
+  it("mantém lista de textos", () => {
+    expect(pickFilters({ status: ["ABERTO", "RESOLVIDO"] }, permitidos)).toEqual({
+      status: ["ABERTO", "RESOLVIDO"],
+    });
+  });
+
+  it("descarta valores que não são texto, número, booleano ou lista deles", () => {
+    expect(pickFilters({ status: { a: 1 }, search: [{ x: 1 }], arquivados: null }, permitidos)).toEqual({});
+  });
+
+  it.each([[undefined], [null], ["texto"], [42]])("devolve vazio para a query %j", (query) => {
+    expect(pickFilters(query, permitidos)).toEqual({});
+  });
 });

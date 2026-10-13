@@ -17,17 +17,51 @@ export function toSkipTake({ page, size }: PaginationQuery): { skip: number; tak
 
 
 
-export type QueryValue = string | number | boolean | undefined;
 
-/** Monta `basePath?a=1&b=2` com chaves em ordem alfabética, ignorando vazios. */
+
+
+
+export type QueryScalar = string | number | boolean;
+export type QueryValue = QueryScalar | readonly QueryScalar[] | undefined;
+
+function isScalar(value: unknown): value is QueryScalar {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+/** Os pares `chave=valor` de um parâmetro: vazio não gera nada, lista repete a chave. */
+function queryPairs(key: string, value: QueryValue): string[] {
+  if (value === undefined) return [];
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .filter((v) => v !== "")
+    .map((v) => `${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`);
+}
+
+/** Monta `basePath?a=1&b=2` com chaves em ordem alfabética, ignorando vazios. Listas repetem a chave. */
 export function withQuery(basePath: string, params: Record<string, QueryValue>): string {
   const query = Object.keys(params)
     .sort((a, b) => a.localeCompare(b))
-    .filter((key) => params[key] !== undefined && params[key] !== "")
-    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(String(params[key]))}`)
+    .flatMap((key) => queryPairs(key, params[key]))
     .join("&");
   return query ? `${basePath}?${query}` : basePath;
 }
+
+/**
+ * Do que veio na URL, guarda só os filtros permitidos, nos formatos que os links aceitam.
+ * Serve para os links de paginação repetirem os mesmos filtros da busca.
+ */
+export function pickFilters(query: unknown, allowed: readonly string[]): Record<string, QueryValue> {
+  if (typeof query !== "object" || query === null) return {};
+  const source = query as Record<string, unknown>;
+  const filters: Record<string, QueryValue> = {};
+  for (const key of allowed) {
+    const value = source[key];
+    if (isScalar(value)) filters[key] = value;
+    else if (Array.isArray(value) && value.every(isScalar)) filters[key] = value;
+  }
+  return filters;
+}
+
 
 /** Monta o bloco `page` da resposta. */
 export function pageInfo(page: number, size: number, total: number): PageInfo {
