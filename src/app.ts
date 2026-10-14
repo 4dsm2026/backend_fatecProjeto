@@ -10,6 +10,7 @@ import fastifyCookie from "@fastify/cookie";
 import { env } from "./env";
 import prismaPlugin from "./plugins/prisma";
 import authRoutes from "./core/auth/auth.routes";
+import sessionsRoutes from "./core/sessions/sessions.routes";
 import authVerify from "./plugins/auth-verify";
 import auditoriaRoutes from "./core/auditoria/auditoria.routes";
 import { usersRoutes } from "./core/users/users.routes";
@@ -128,6 +129,7 @@ export async function buildApp() {
   });
 
   app.register(authRoutes, { prefix: "/auth" });
+  app.register(sessionsRoutes);
   app.register(usersRoutes, { prefix: "/usuarios" });
   app.register(ticketsRoutes, { prefix: "/tickets" });
   app.register(catalogoRoutes, { prefix: "/catalogo" });

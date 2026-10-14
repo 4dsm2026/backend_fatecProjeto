@@ -13,6 +13,7 @@ import {
 } from "../../validators/auth";
 import { hashPassword, verifyPassword } from "../../security/password";
 import { verifyDummyPassword } from "../../security/dummy-verify";
+import { userPublicSelect } from "./user-public";
 import { enviarAvisoSenhaAlterada, type MotivoSenhaAlterada } from "./senha-alterada.service";
 import { generateAccessToken } from "../../utils/jwt";
 import { registrarAuditoria } from "../../lib/auditoria";
@@ -139,42 +140,6 @@ const resetLoginAttempts = async (
   });
 };
 
-/* Campos retornados em /me e /usuarios */
-const userPublicSelect = {
-  id: true,
-  nome: true,
-  emailPessoal: true,
-  emailEducacional: true,
-  ra: true,
-  cursoNome: true,
-  cursoSigla: true,
-  papel: true,
-  ativo: true,
-  precisaTrocarSenha: true,
-  passwordUpdatedAt: true,
-  criadoEm: true,
-  atualizadoEm: true,
-  // Dados acadêmicos
-  unidadeFatec: true,
-  curso: true,
-  eixoTecnologico: true,
-  turno: true,
-  turma: true,
-  semestreAtual: true,
-  matrizCurricular: true,
-  situacaoAcademica: true,
-  anoSemestreIngresso: true,
-  coordenadorCurso: true,
-  // Contato e acessibilidade
-  telefoneCelular: true,
-  whatsapp: true,
-  canalPreferencialContato: true,
-  melhorPeriodoContato: true,
-  necessitaAtendimentoAcessivel: true,
-  tipoAcessibilidade: true,
-  observacoesAtendimento: true,
-  notificacoesInApp: true,
-} as const;
 
 /* ===================== LOGIN ===================== */
 const loginValidator = buildRouteValidator({ body: LoginSchema });
