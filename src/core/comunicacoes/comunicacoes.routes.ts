@@ -11,8 +11,8 @@ const ComunicacaoTemplateSchema = {
   properties: {
     id: { type: "string" },
     chave: { type: "string", minLength: 1, maxLength: 64 },
-    nome: { type: "string", maxLength: 191 },
-    descricao: { type: "string", nullable: true, description: "Máximo de 65.535 bytes em UTF-8." },
+    nome: { type: "string", maxLength: 160 },
+    descricao: { type: "string", nullable: true, maxLength: 500 },
     habilitado: { type: "boolean", default: true },
     assunto: { type: "string", maxLength: 500 },
     corpo: { type: "string", description: "Máximo de 65.535 bytes em UTF-8." },
@@ -160,8 +160,8 @@ export async function comunicacoesRoutes(app: FastifyInstance) {
         type: "object",
         required: ["nome", "assunto", "corpo"],
         properties: {
-          nome: { type: "string", minLength: 1, maxLength: 191 },
-          descricao: { type: "string", nullable: true, description: "Máximo de 65.535 bytes em UTF-8." },
+          nome: { type: "string", minLength: 1, maxLength: 160 },
+          descricao: { type: "string", nullable: true, maxLength: 500 },
           habilitado: { type: "boolean", default: true },
           assunto: { type: "string", minLength: 1, maxLength: 500 },
           corpo: { type: "string", minLength: 1, description: "Máximo de 65.535 bytes em UTF-8." },

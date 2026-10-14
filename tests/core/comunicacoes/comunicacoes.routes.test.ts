@@ -318,17 +318,18 @@ describe("communication templates HAL routes", () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 
-  it("accepts text-column byte boundaries and enforces 191-character names", async () => {
+  it("enforces storage byte limits and restored character limits", async () => {
     const headers = bearerAuth(tokenFor("ADMINISTRADOR"));
     const maximumBytes = "é".repeat(32_767) + "a";
+    const subjectAtLimit = "s".repeat(500);
     const accepted = await app.inject({
       method: "PUT",
       url: "/admin/communication-templates/limites",
       headers,
       payload: {
-        nome: "n".repeat(191),
-        descricao: "d".repeat(65_535),
-        assunto: "Assunto",
+        nome: "n".repeat(160),
+        descricao: "d".repeat(500),
+        assunto: subjectAtLimit,
         corpo: maximumBytes,
       },
     });
@@ -339,13 +340,29 @@ describe("communication templates HAL routes", () => {
       method: "PUT",
       url: "/admin/communication-templates/limites",
       headers,
-      payload: { nome: "Nome", descricao: "é".repeat(32_768), assunto: "Assunto", corpo: "Corpo" },
+      payload: { nome: "Nome", descricao: "d".repeat(501), assunto: "Assunto", corpo: "Corpo" },
     });
     expect(tooLongDescription.statusCode).toBe(400);
     expect(tooLongDescription.headers["content-type"]).toContain("application/problem+json");
-    expect(tooLongDescription.json().errors).toContainEqual(
-      expect.objectContaining({ field: "descricao", message: "Descrição deve ter no máximo 65.535 bytes em UTF-8." }),
-    );
+    expect(tooLongDescription.json().errors).toContainEqual(expect.objectContaining({ field: "descricao" }));
+
+    const tooLongName = await app.inject({
+      method: "PUT",
+      url: "/admin/communication-templates/limites",
+      headers,
+      payload: { nome: "n".repeat(161), assunto: "Assunto", corpo: "Corpo" },
+    });
+    expect(tooLongName.statusCode).toBe(400);
+    expect(tooLongName.json().errors).toContainEqual(expect.objectContaining({ field: "nome" }));
+
+    const tooLongTemplateSubject = await app.inject({
+      method: "PUT",
+      url: "/admin/communication-templates/limites",
+      headers,
+      payload: { nome: "Nome", assunto: "s".repeat(501), corpo: "Corpo" },
+    });
+    expect(tooLongTemplateSubject.statusCode).toBe(400);
+    expect(tooLongTemplateSubject.json().errors).toContainEqual(expect.objectContaining({ field: "assunto" }));
 
     const tooLongTemplateBody = await app.inject({
       method: "PUT",
@@ -362,9 +379,18 @@ describe("communication templates HAL routes", () => {
       method: "POST",
       url: "/admin/communication-tests",
       headers,
-      payload: { to: "teste@example.com", assunto: "Assunto", corpo: maximumBytes },
+      payload: { to: "teste@example.com", assunto: subjectAtLimit, corpo: maximumBytes },
     });
     expect(testBodyAtLimit.statusCode).toBe(200);
+
+    const testSubjectOverLimit = await app.inject({
+      method: "POST",
+      url: "/admin/communication-tests",
+      headers,
+      payload: { to: "teste@example.com", assunto: "s".repeat(501), corpo: "Corpo" },
+    });
+    expect(testSubjectOverLimit.statusCode).toBe(400);
+    expect(testSubjectOverLimit.json().errors).toContainEqual(expect.objectContaining({ field: "assunto" }));
 
     const testBodyOverLimit = await app.inject({
       method: "POST",
@@ -377,14 +403,6 @@ describe("communication templates HAL routes", () => {
       expect.objectContaining({ field: "corpo", message: "Corpo deve ter no máximo 65.535 bytes em UTF-8." }),
     );
 
-    const tooLongName = await app.inject({
-      method: "PUT",
-      url: "/admin/communication-templates/limites",
-      headers,
-      payload: { nome: "n".repeat(192), assunto: "Assunto", corpo: "Corpo" },
-    });
-    expect(tooLongName.statusCode).toBe(400);
-    expect(tooLongName.json().errors).toContainEqual(expect.objectContaining({ field: "nome" }));
   });
 
   it("returns a generic problem when the mail provider rejects the test", async () => {
