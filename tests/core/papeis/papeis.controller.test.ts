@@ -41,7 +41,7 @@ async function callLink(app: FastifyInstance, item: Link, token: string, payload
   });
 }
 
-Object.assign(prismaMock.papelCatalogo, { count: vi.fn() });
+Object.assign(prismaMock.papelCatalogo, { count: vi.fn(), deleteMany: vi.fn() });
 
 function resetPrismaMocks(): void {
   vi.resetAllMocks();
@@ -53,7 +53,7 @@ function resetPrismaMocks(): void {
   prismaMock.papelCatalogo.findUnique.mockResolvedValue(makeRole());
   prismaMock.papelCatalogo.create.mockResolvedValue(makeRole({ id: "role-created" }));
   prismaMock.papelCatalogo.update.mockResolvedValue(makeRole());
-  prismaMock.papelCatalogo.delete.mockResolvedValue(makeRole());
+  prismaMock.papelCatalogo.deleteMany.mockResolvedValue({ count: 1 });
   prismaMock.usuarioSetor.count.mockResolvedValue(0);
 }
 
@@ -205,12 +205,15 @@ describe("admin roles HAL routes", () => {
 
     expect(response.statusCode).toBe(204);
     expect(response.body).toBe("");
-    expect(prismaMock.usuarioSetor.count).toHaveBeenCalledWith({ where: { papelId: "role-1" } });
-    expect(prismaMock.papelCatalogo.delete).toHaveBeenCalledWith({ where: { id: "role-1" } });
+    expect(prismaMock.papelCatalogo.deleteMany).toHaveBeenCalledWith({
+      where: { id: "role-1", usuarioSetores: { none: {} } },
+    });
+    expect(prismaMock.papelCatalogo.findUnique).not.toHaveBeenCalled();
   });
 
   it("returns RFC 7807 conflict without deleting a linked role", async () => {
-    prismaMock.usuarioSetor.count.mockResolvedValue(1);
+    prismaMock.papelCatalogo.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.papelCatalogo.findUnique.mockResolvedValue(makeRole({ _count: { usuarioSetores: 1 } }));
 
     const response = await app.inject({
       method: "DELETE",
@@ -221,7 +224,115 @@ describe("admin roles HAL routes", () => {
     expect(response.statusCode).toBe(409);
     expect(response.headers["content-type"]).toContain("application/problem+json");
     expect(response.json()).toMatchObject({ type: "/errors/conflict", status: 409 });
-    expect(prismaMock.papelCatalogo.delete).not.toHaveBeenCalled();
+    expect(prismaMock.papelCatalogo.deleteMany).toHaveBeenCalledWith({
+      where: { id: "role-1", usuarioSetores: { none: {} } },
+    });
+  });
+
+  it("returns 404 when DELETE targets an unknown role", async () => {
+    prismaMock.papelCatalogo.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.papelCatalogo.findUnique.mockResolvedValue(null);
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/admin/roles/missing",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR")),
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(response.json()).toMatchObject({ type: "/errors/not-found", status: 404 });
+  });
+
+  it("returns a HAL resource when GET targets an existing role", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/roles/role-1",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR")),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: "role-1",
+      _links: { self: { href: "/admin/roles/role-1", method: "GET" } },
+    });
+  });
+
+  it("returns 404 when GET targets an unknown role", async () => {
+    prismaMock.papelCatalogo.findUnique.mockResolvedValue(null);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/roles/missing",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR")),
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(response.json()).toMatchObject({ type: "/errors/not-found", status: 404 });
+  });
+
+  it("returns 404 when PATCH targets an unknown role", async () => {
+    prismaMock.papelCatalogo.update.mockRejectedValue(
+      Object.assign(new Error("Record not found"), { code: "P2025" }),
+    );
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/admin/roles/missing",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR")),
+      payload: { nome: "Atualizado" },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(response.json()).toMatchObject({ type: "/errors/not-found", status: 404 });
+  });
+
+  it("returns 400 Problem errors for invalid POST and PATCH bodies", async () => {
+    const headers = bearerAuth(tokenFor("ADMINISTRADOR"));
+    const invalidCreate = await app.inject({ method: "POST", url: "/admin/roles", headers, payload: {} });
+    const invalidUpdate = await app.inject({
+      method: "PATCH",
+      url: "/admin/roles/role-1",
+      headers,
+      payload: { nome: "x" },
+    });
+
+    for (const response of [invalidCreate, invalidUpdate]) {
+      expect(response.statusCode).toBe(400);
+      expect(response.headers["content-type"]).toContain("application/problem+json");
+      expect(response.json().errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: "nome", message: expect.any(String) }),
+      ]));
+    }
+    expect(prismaMock.papelCatalogo.create).not.toHaveBeenCalled();
+    expect(prismaMock.papelCatalogo.update).not.toHaveBeenCalled();
+  });
+
+  it("returns conflict for duplicate role names on POST and PATCH", async () => {
+    const duplicateName = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    prismaMock.papelCatalogo.create.mockRejectedValueOnce(duplicateName);
+    prismaMock.papelCatalogo.update.mockRejectedValueOnce(duplicateName);
+    const headers = bearerAuth(tokenFor("ADMINISTRADOR"));
+    const duplicateCreate = await app.inject({
+      method: "POST",
+      url: "/admin/roles",
+      headers,
+      payload: { nome: "Coordenador" },
+    });
+    const duplicateUpdate = await app.inject({
+      method: "PATCH",
+      url: "/admin/roles/role-1",
+      headers,
+      payload: { nome: "Coordenador" },
+    });
+
+    for (const response of [duplicateCreate, duplicateUpdate]) {
+      expect(response.statusCode).toBe(409);
+      expect(response.headers["content-type"]).toContain("application/problem+json");
+      expect(response.json()).toMatchObject({ type: "/errors/conflict", status: 409 });
+    }
   });
 
   it.each(forbiddenRequests)("returns 403 for $role on $method $url without database writes", async (route) => {

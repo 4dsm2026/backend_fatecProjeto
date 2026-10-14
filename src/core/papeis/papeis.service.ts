@@ -6,8 +6,12 @@ const papelUsageInclude = {
   _count: { select: { usuarioSetores: true } },
 } satisfies Prisma.PapelCatalogoInclude;
 
-function isForeignKeyConstraintError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "P2003";
+function isPrismaErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+function duplicateRoleNameError(): ApiError {
+  return new ApiError("conflict", "Já existe um papel com esse nome.");
 }
 
 export async function listPapeis(prisma: PrismaClient, query: PapeisListQuery): Promise<PapelListResult> {
@@ -26,7 +30,12 @@ export async function listPapeis(prisma: PrismaClient, query: PapeisListQuery): 
 }
 
 export async function createPapel(prisma: PrismaClient, body: PapelCreateBody): Promise<PapelWithUsage> {
-  return prisma.papelCatalogo.create({ data: body, include: papelUsageInclude });
+  try {
+    return await prisma.papelCatalogo.create({ data: body, include: papelUsageInclude });
+  } catch (error) {
+    if (isPrismaErrorCode(error, "P2002")) throw duplicateRoleNameError();
+    throw error;
+  }
 }
 
 export async function getPapel(prisma: PrismaClient, id: string): Promise<PapelWithUsage | null> {
@@ -38,18 +47,21 @@ export async function updatePapel(
   id: string,
   body: PapelUpdateBody,
 ): Promise<PapelWithUsage> {
-  return prisma.papelCatalogo.update({ where: { id }, data: body, include: papelUsageInclude });
+  try {
+    return await prisma.papelCatalogo.update({ where: { id }, data: body, include: papelUsageInclude });
+  } catch (error) {
+    if (isPrismaErrorCode(error, "P2002")) throw duplicateRoleNameError();
+    throw error;
+  }
 }
 
 export async function deletePapel(prisma: PrismaClient, id: string) {
-  const inUse = await prisma.usuarioSetor.count({ where: { papelId: id } });
-  if (inUse > 0) throw new ApiError("conflict", "Papel em uso por vínculos de usuários.");
-  try {
-    return await prisma.papelCatalogo.delete({ where: { id } });
-  } catch (error) {
-    if (isForeignKeyConstraintError(error)) {
-      throw new ApiError("conflict", "Papel associado a vínculo criado durante a exclusão.");
-    }
-    throw error;
-  }
+  const deleted = await prisma.papelCatalogo.deleteMany({
+    where: { id, usuarioSetores: { none: {} } },
+  });
+  if (deleted.count > 0) return deleted;
+
+  const existing = await prisma.papelCatalogo.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) throw new ApiError("not-found", "Papel não encontrado");
+  throw new ApiError("conflict", "Papel em uso por vínculos de usuários.");
 }

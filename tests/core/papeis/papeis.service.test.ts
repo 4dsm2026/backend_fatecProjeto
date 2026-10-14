@@ -1,12 +1,15 @@
 import type { PrismaClient } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { deletePapel, listPapeis } from "../../../src/core/papeis/papeis.service";
+import { createPapel, deletePapel, listPapeis, updatePapel } from "../../../src/core/papeis/papeis.service";
 
 const prismaMock = {
   papelCatalogo: {
     findMany: vi.fn(),
+    findUnique: vi.fn(),
     count: vi.fn(),
-    delete: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    deleteMany: vi.fn(),
   },
   usuarioSetor: {
     count: vi.fn(),
@@ -40,41 +43,60 @@ describe("papeis service", () => {
     expect(prismaMock.papelCatalogo.count).toHaveBeenCalledWith();
   });
 
-  it("deletes when no usuario-setor relation uses the role", async () => {
-    vi.mocked(prismaMock.usuarioSetor.count).mockResolvedValue(0);
-    vi.mocked(prismaMock.papelCatalogo.delete).mockResolvedValue({
-      id: "role-1",
-      nome: "Coordenador",
-      descricao: null,
-    });
+  it("conditionally deletes an unlinked role in one deleteMany operation", async () => {
+    vi.mocked(prismaMock.papelCatalogo.deleteMany).mockResolvedValue({ count: 1 });
 
     await deletePapel(prismaMock, "role-1");
 
-    expect(prismaMock.usuarioSetor.count).toHaveBeenCalledWith({ where: { papelId: "role-1" } });
-    expect(prismaMock.papelCatalogo.delete).toHaveBeenCalledWith({ where: { id: "role-1" } });
+    expect(prismaMock.papelCatalogo.deleteMany).toHaveBeenCalledWith({
+      where: { id: "role-1", usuarioSetores: { none: {} } },
+    });
+    expect(prismaMock.papelCatalogo.findUnique).not.toHaveBeenCalled();
   });
 
-  it("raises an RFC 7807 conflict and does not delete a linked role", async () => {
-    vi.mocked(prismaMock.usuarioSetor.count).mockResolvedValue(1);
+  it("returns conflict when conditional delete finds a linked role", async () => {
+    vi.mocked(prismaMock.papelCatalogo.deleteMany).mockResolvedValue({ count: 0 });
+    vi.mocked(prismaMock.papelCatalogo.findUnique).mockResolvedValue({ id: "role-1" });
 
     await expect(deletePapel(prismaMock, "role-1")).rejects.toMatchObject({
       kind: "conflict",
       status: 409,
     });
 
-    expect(prismaMock.papelCatalogo.delete).not.toHaveBeenCalled();
+    expect(prismaMock.papelCatalogo.deleteMany).toHaveBeenCalledWith({
+      where: { id: "role-1", usuarioSetores: { none: {} } },
+    });
+    expect(prismaMock.papelCatalogo.findUnique).toHaveBeenCalledWith({
+      where: { id: "role-1" },
+      select: { id: true },
+    });
   });
 
-  it("maps a foreign-key race during delete to conflict", async () => {
-    vi.mocked(prismaMock.usuarioSetor.count).mockResolvedValue(0);
-    vi.mocked(prismaMock.papelCatalogo.delete).mockRejectedValue(
-      Object.assign(new Error("Foreign key constraint failed"), { code: "P2003" }),
+  it("returns not-found when conditional delete matches no existing role", async () => {
+    vi.mocked(prismaMock.papelCatalogo.deleteMany).mockResolvedValue({ count: 0 });
+    vi.mocked(prismaMock.papelCatalogo.findUnique).mockResolvedValue(null);
+
+    await expect(deletePapel(prismaMock, "role-1")).rejects.toMatchObject({
+      kind: "not-found",
+      status: 404,
+    });
+  });
+
+  it("maps duplicate role names on create and update to conflict", async () => {
+    vi.mocked(prismaMock.papelCatalogo.create).mockRejectedValueOnce(
+      Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
+    );
+    vi.mocked(prismaMock.papelCatalogo.update).mockRejectedValueOnce(
+      Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
     );
 
-    await expect(deletePapel(prismaMock, "role-1")).rejects.toMatchObject({
+    await expect(createPapel(prismaMock, { nome: "Duplicado" })).rejects.toMatchObject({
       kind: "conflict",
       status: 409,
     });
-    expect(prismaMock.papelCatalogo.delete).toHaveBeenCalledWith({ where: { id: "role-1" } });
+    await expect(updatePapel(prismaMock, "role-1", { nome: "Duplicado" })).rejects.toMatchObject({
+      kind: "conflict",
+      status: 409,
+    });
   });
 });
