@@ -11,11 +11,11 @@ const ComunicacaoTemplateSchema = {
   properties: {
     id: { type: "string" },
     chave: { type: "string", minLength: 1, maxLength: 64 },
-    nome: { type: "string", maxLength: 160 },
-    descricao: { type: "string", nullable: true, maxLength: 500 },
+    nome: { type: "string", maxLength: 191 },
+    descricao: { type: "string", nullable: true, description: "Máximo de 65.535 bytes em UTF-8." },
     habilitado: { type: "boolean", default: true },
     assunto: { type: "string", maxLength: 500 },
-    corpo: { type: "string" },
+    corpo: { type: "string", description: "Máximo de 65.535 bytes em UTF-8." },
     variaveis: { type: "array", nullable: true, items: { type: "string" } },
     criadoEm: { type: "string", format: "date-time" },
     atualizadoEm: { type: "string", format: "date-time" },
@@ -160,11 +160,11 @@ export async function comunicacoesRoutes(app: FastifyInstance) {
         type: "object",
         required: ["nome", "assunto", "corpo"],
         properties: {
-          nome: { type: "string", minLength: 1, maxLength: 160 },
-          descricao: { type: "string", nullable: true, maxLength: 500 },
+          nome: { type: "string", minLength: 1, maxLength: 191 },
+          descricao: { type: "string", nullable: true, description: "Máximo de 65.535 bytes em UTF-8." },
           habilitado: { type: "boolean", default: true },
           assunto: { type: "string", minLength: 1, maxLength: 500 },
-          corpo: { type: "string", minLength: 1 },
+          corpo: { type: "string", minLength: 1, description: "Máximo de 65.535 bytes em UTF-8." },
           variaveis: { type: "array", items: { type: "string" } },
         },
       },
@@ -198,14 +198,18 @@ export async function comunicacoesRoutes(app: FastifyInstance) {
         properties: {
           to: { type: 'string', format: 'email', description: 'E-mail de destino do teste.', example: 'teste@exemplo.com' },
           assunto: { type: 'string', minLength: 1, maxLength: 500 },
-          corpo: { type: 'string', minLength: 1 },
+          corpo: { type: 'string', minLength: 1, description: 'Máximo de 65.535 bytes em UTF-8.' },
         }
       },
       response: {
         200: {
           description: 'E-mail de teste enviado com sucesso.',
           type: 'object',
-          properties: { message: { type: 'string', example: 'E-mail de teste enviado para teste@exemplo.com' } }
+          required: ['message', '_links'],
+          properties: {
+            message: { type: 'string', example: 'E-mail de teste enviado para teste@exemplo.com' },
+            _links: LinksSchema,
+          }
         },
         ...ProblemResponses,
       }

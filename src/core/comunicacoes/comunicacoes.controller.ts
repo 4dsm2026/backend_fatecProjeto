@@ -76,7 +76,13 @@ export async function enviarTeste(req: FastifyRequest, res: FastifyReply) {
       subject: `[TESTE] ${renderComAmostra(assunto)}`,
       html: renderComAmostra(corpo),
     });
-    await res.send({ message: `E-mail de teste enviado para ${to}` });
+    return res.send(toResource(
+      { message: `E-mail de teste enviado para ${to}` },
+      buildLinks({
+        "communication-tests": link("/admin/communication-tests", "POST"),
+        collection: link("/admin/communication-templates"),
+      }),
+    ));
   } catch {
     throw new ApiError("internal", "Falha ao enviar o e-mail de teste");
   }

@@ -291,7 +291,14 @@ describe("communication templates HAL routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ message: "E-mail de teste enviado para teste@example.com" });
+    expect(response.json()).toMatchObject({
+      message: "E-mail de teste enviado para teste@example.com",
+      _links: {
+        "communication-tests": { href: "/admin/communication-tests", method: "POST" },
+        collection: { href: "/admin/communication-templates", method: "GET" },
+      },
+    });
+    expect(response.json()._links).not.toHaveProperty("self");
     expect(response.headers.location).toBeUndefined();
     expect(sendMock).toHaveBeenCalledTimes(1);
     expect(prismaMock.comunicacaoTemplate.upsert).not.toHaveBeenCalled();
@@ -309,6 +316,75 @@ describe("communication templates HAL routes", () => {
     expect(response.headers["content-type"]).toContain("application/problem+json");
     expect(response.json().errors).toContainEqual(expect.objectContaining({ field: "to" }));
     expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts text-column byte boundaries and enforces 191-character names", async () => {
+    const headers = bearerAuth(tokenFor("ADMINISTRADOR"));
+    const maximumBytes = "é".repeat(32_767) + "a";
+    const accepted = await app.inject({
+      method: "PUT",
+      url: "/admin/communication-templates/limites",
+      headers,
+      payload: {
+        nome: "n".repeat(191),
+        descricao: "d".repeat(65_535),
+        assunto: "Assunto",
+        corpo: maximumBytes,
+      },
+    });
+    expect(Buffer.byteLength(maximumBytes, "utf8")).toBe(65_535);
+    expect(accepted.statusCode).toBe(200);
+
+    const tooLongDescription = await app.inject({
+      method: "PUT",
+      url: "/admin/communication-templates/limites",
+      headers,
+      payload: { nome: "Nome", descricao: "é".repeat(32_768), assunto: "Assunto", corpo: "Corpo" },
+    });
+    expect(tooLongDescription.statusCode).toBe(400);
+    expect(tooLongDescription.headers["content-type"]).toContain("application/problem+json");
+    expect(tooLongDescription.json().errors).toContainEqual(
+      expect.objectContaining({ field: "descricao", message: "Descrição deve ter no máximo 65.535 bytes em UTF-8." }),
+    );
+
+    const tooLongTemplateBody = await app.inject({
+      method: "PUT",
+      url: "/admin/communication-templates/limites",
+      headers,
+      payload: { nome: "Nome", assunto: "Assunto", corpo: "é".repeat(32_768) },
+    });
+    expect(tooLongTemplateBody.statusCode).toBe(400);
+    expect(tooLongTemplateBody.json().errors).toContainEqual(
+      expect.objectContaining({ field: "corpo", message: "Corpo deve ter no máximo 65.535 bytes em UTF-8." }),
+    );
+
+    const testBodyAtLimit = await app.inject({
+      method: "POST",
+      url: "/admin/communication-tests",
+      headers,
+      payload: { to: "teste@example.com", assunto: "Assunto", corpo: maximumBytes },
+    });
+    expect(testBodyAtLimit.statusCode).toBe(200);
+
+    const testBodyOverLimit = await app.inject({
+      method: "POST",
+      url: "/admin/communication-tests",
+      headers,
+      payload: { to: "teste@example.com", assunto: "Assunto", corpo: "é".repeat(32_768) },
+    });
+    expect(testBodyOverLimit.statusCode).toBe(400);
+    expect(testBodyOverLimit.json().errors).toContainEqual(
+      expect.objectContaining({ field: "corpo", message: "Corpo deve ter no máximo 65.535 bytes em UTF-8." }),
+    );
+
+    const tooLongName = await app.inject({
+      method: "PUT",
+      url: "/admin/communication-templates/limites",
+      headers,
+      payload: { nome: "n".repeat(192), assunto: "Assunto", corpo: "Corpo" },
+    });
+    expect(tooLongName.statusCode).toBe(400);
+    expect(tooLongName.json().errors).toContainEqual(expect.objectContaining({ field: "nome" }));
   });
 
   it("returns a generic problem when the mail provider rejects the test", async () => {
