@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { ApiError, fieldErrorsFromZod, path, toCollection, toResource } from "../../hateoas";
+import { ApiError, buildLinks, fieldErrorsFromZod, link, path, toCollection, toResource } from "../../hateoas";
 import type { Viewer } from "../../hateoas";
 import { ComunicacaoListQuerySchema, ComunicacaoUpsertSchema, ComunicacaoTesteSchema, buildCommunicationTemplateLinks } from "./comunicacoes.types";
 import { getTemplate, listTemplates, upsertTemplate, renderComAmostra } from "./comunicacoes.service";
@@ -35,6 +35,10 @@ export async function list(req: FastifyRequest, reply: FastifyReply) {
     page: query.page,
     size: query.size,
     total: result.total,
+    links: buildLinks({
+      "communication-tests": viewer.role === "ADMINISTRADOR" &&
+        link("/admin/communication-tests", "POST"),
+    }),
   }));
 }
 

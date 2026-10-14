@@ -61,6 +61,26 @@ async function callLink(app: FastifyInstance, item: Link, token: string, payload
   });
 }
 
+const contractPayloads: Record<string, Record<string, unknown>> = {
+  update: { nome: "Atualizado", assunto: "Assunto", corpo: "Corpo" },
+  "communication-tests": { to: "teste@example.com", assunto: "Assunto", corpo: "Corpo" },
+};
+
+async function expectLinksUsable(
+  app: FastifyInstance,
+  links: Record<string, Link | Link[]>,
+  token: string,
+): Promise<void> {
+  for (const [rel, entry] of Object.entries(links)) {
+    const actions = Array.isArray(entry) ? entry : [entry];
+    for (const action of actions) {
+      const response = await callLink(app, action, token, contractPayloads[rel]);
+      expect(response.statusCode).not.toBe(403);
+      expect(response.statusCode).not.toBe(405);
+    }
+  }
+}
+
 Object.assign(prismaMock.comunicacaoTemplate, { count: vi.fn(), findUnique: vi.fn() });
 
 function resetPrismaMocks(): void {
@@ -143,6 +163,10 @@ describe("communication templates HAL routes", () => {
     });
     expect(body._embedded["communication-templates"][0]._links).not.toHaveProperty("delete");
     expect(body._links.create).toBeUndefined();
+    expect(body._links["communication-tests"]).toEqual({
+      href: "/admin/communication-tests",
+      method: "POST",
+    });
   });
 
   it("applies pagination defaults, maximum size and bounds", async () => {
@@ -310,17 +334,7 @@ describe("communication templates HAL routes", () => {
       headers: bearerAuth(token),
     });
     const itemLinks = itemResponse.json()._links as Record<string, Link | Link[]>;
-
-    for (const entry of Object.values(itemLinks)) {
-      for (const action of Array.isArray(entry) ? entry : [entry]) {
-        const payload = action.method === "PUT"
-          ? { nome: "Atualizado", assunto: "Assunto", corpo: "Corpo" }
-          : undefined;
-        const result = await callLink(app, action, token, payload);
-        expect(result.statusCode).not.toBe(403);
-        expect(result.statusCode).not.toBe(405);
-      }
-    }
+    await expectLinksUsable(app, itemLinks, token);
 
     const collectionResponse = await app.inject({
       method: "GET",
@@ -329,13 +343,6 @@ describe("communication templates HAL routes", () => {
     });
     const collectionLinks = collectionResponse.json()._links as Record<string, Link | Link[]>;
     expect(collectionLinks).not.toHaveProperty("create");
-
-    for (const entry of Object.values(collectionLinks)) {
-      for (const action of Array.isArray(entry) ? entry : [entry]) {
-        const result = await callLink(app, action, token);
-        expect(result.statusCode).not.toBe(403);
-        expect(result.statusCode).not.toBe(405);
-      }
-    }
+    await expectLinksUsable(app, collectionLinks, token);
   });
 });
