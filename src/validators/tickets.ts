@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PaginationQuerySchema } from '../hateoas'
 
 export const StatusChamadoValues = ['ABERTO','EM_ATENDIMENTO','AGUARDANDO_USUARIO','RESOLVIDO','ENCERRADO'] as const
 export const NivelChamadoValues = ['N1','N2','N3'] as const
@@ -133,8 +134,7 @@ export const TicketUpdateSchema = z.object({
 
 export const TicketListSchema = z.object({
   query: z.object({
-    page:     z.coerce.number().int().min(1).default(1).optional(),
-    pageSize: z.coerce.number().int().min(1).max(100).default(20).optional(),
+    ...PaginationQuerySchema.shape,
     search:   z.string().optional(),
     status:    z.union([z.enum(StatusChamadoValues), z.array(z.enum(StatusChamadoValues))]).optional(),
     nivel:     z.union([z.enum(NivelChamadoValues),  z.array(z.enum(NivelChamadoValues))]).optional(),

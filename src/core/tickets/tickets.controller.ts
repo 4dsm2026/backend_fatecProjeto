@@ -17,12 +17,19 @@ import {
   statsTickets,
 } from "./tickets.service";
 import type { TicketsListQuery } from "./tickets.types";
+import { pickFilters, toCollection } from "../../hateoas";
+import type { Role } from "../../hateoas";
+import { toTicketResource } from "./tickets.links";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const createValidator = buildRouteValidator({ body: TicketCreateSchema.shape.body });
 const listValidator   = buildRouteValidator({ query: TicketListSchema.shape.query });
 const idValidator     = buildRouteValidator({ params: ParamsWithIdSchema.shape.params });
+// Filtros da URL que os links de paginação repetem (tudo da busca, menos page e size).
+const LIST_FILTER_KEYS = Object.keys(TicketListSchema.shape.query.shape).filter(
+  (k) => k !== "page" && k !== "size",
+);
 const updateValidator = buildRouteValidator({
   params: TicketUpdateSchema.shape.params,
   body:   TicketUpdateSchema.shape.body,
@@ -118,7 +125,20 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
       criadoPorId: isAluno ? authUser.sub : q.criadoPorId,
     };
 
-    await res.send(await listTickets(prisma, query));
+        const result = await listTickets(prisma, query);
+    const viewer = { id: authUser.sub, role: authUser.role as Role };
+
+    await res.send(
+      toCollection({
+        rel: "tickets",
+        basePath: "/tickets",
+        items: result.items.map((t) => toTicketResource(t, viewer)),
+        page: result.page,
+        size: result.size,
+        total: result.total,
+        filters: pickFilters(req.query, LIST_FILTER_KEYS),
+      }),
+    );
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao listar tickets");
     await res.code(500).send({ error: "Erro interno ao listar tickets" });

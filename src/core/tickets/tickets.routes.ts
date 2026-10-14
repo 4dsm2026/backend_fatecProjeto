@@ -134,6 +134,15 @@ const ForbiddenResponse = {
   },
 } as const;
 
+/** Formato do `_links` (HAL): cada `rel` tem um link ou uma lista de links. */
+const HalLinksSchema = {
+  type: "object",
+  additionalProperties: true,
+  description:
+    "Links HAL: cada chave (`self`, `reply`, `transition`...) tem um link ou uma lista " +
+    "de links no formato `{ href, method, name? }`.",
+};
+
 // Schema parcial reutilizável de um chamado (campos retornados pela maioria das operações).
 const TicketBaseSchema = {
   type: "object",
@@ -369,10 +378,10 @@ export async function ticketsRoutes(app: FastifyInstance) {
           type: "object",
           properties: {
             page: {
-              type: "integer", minimum: 1, default: 1,
-              description: "Número da página (1-indexed).",
+              type: "integer", minimum: 0, default: 0,
+              description: "Número da página (começa em 0).",
             },
-            pageSize: {
+            size: {
               type: "integer", minimum: 1, maximum: 100, default: 20,
               description: "Itens por página. Máximo: 100.",
             },
@@ -453,23 +462,43 @@ export async function ticketsRoutes(app: FastifyInstance) {
         },
         response: {
           200: {
-            description: "Lista paginada de chamados retornada com sucesso.",
+            description: "Coleção HAL paginada de chamados.",
             type: "object",
             additionalProperties: true,
             properties: {
-              total: { type: "integer", description: "Total de chamados que correspondem aos filtros.", example: 87 },
-              page: { type: "integer", description: "Página atual.", example: 1 },
-              pageSize: { type: "integer", description: "Itens por página.", example: 20 },
-              items: {
-                type: "array",
-                description: "Chamados da página atual.",
-                items: TicketBaseSchema,
+              _embedded: {
+                type: "object",
+                properties: {
+                  tickets: {
+                    type: "array",
+                    description: "Chamados da página atual, cada um com seus `_links`.",
+                    items: {
+                      ...TicketBaseSchema,
+                      properties: { ...TicketBaseSchema.properties, _links: HalLinksSchema },
+                    },
+                  },
+                },
               },
+              page: {
+                type: "object",
+                description: "Dados da paginação (a primeira página é a 0).",
+                properties: {
+                  size: { type: "integer", description: "Itens por página.", example: 20 },
+                  number: { type: "integer", description: "Página atual.", example: 0 },
+                  totalElements: {
+                    type: "integer",
+                    description: "Total de chamados que correspondem aos filtros.",
+                    example: 87,
+                  },
+                  totalPages: { type: "integer", description: "Total de páginas.", example: 5 },
+                },
+              },
+              _links: HalLinksSchema,
             },
           },
           400: {
             description:
-              "Query string inválida — ex.: `page` negativo, `pageSize` > 100, " +
+              "Query string inválida — ex.: `page` negativo, `size` > 100, " +
               "`status` com valor não reconhecido, `nivel` inválido, etc.",
             ...ValidationErrorSchema,
           },

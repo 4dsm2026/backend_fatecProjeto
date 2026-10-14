@@ -3,6 +3,7 @@ import { StatusChamado } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
 import { notifyMany } from '../notifications/notify';
+import { toSkipTake } from '../../hateoas'
 
 type Ctx = PrismaClient;
 
@@ -275,23 +276,21 @@ export async function getTicketById(prisma: Ctx, id: string, include?: TicketsLi
 }
 
 export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
-  const page     = q.page ?? 1;
-  const pageSize = Math.min(q.pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
-  const skip     = (page - 1) * pageSize;
-  const where    = buildWhere(q);
+  const page  = q.page ?? 0;
+  const size  = Math.min(q.size ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+  const where = buildWhere(q);
 
   const [total, items] = await Promise.all([
     prisma.chamado.count({ where }),
     prisma.chamado.findMany({
       where,
       orderBy: { [q.orderBy ?? 'criadoEm']: q.orderDir ?? 'desc' },
-      skip,
-      take: pageSize,
+      ...toSkipTake({ page, size }),
       include: ticketInclude(q.include),
     }),
   ]);
 
-  return { total, page, pageSize, items };
+  return { total, page, size, items };
 }
 
 export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateInput, opts: { feitoPorId?: string }) {

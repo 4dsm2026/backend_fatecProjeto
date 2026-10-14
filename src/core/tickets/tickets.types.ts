@@ -2,7 +2,7 @@ import { NivelChamado, PrioridadeChamado, StatusChamado } from '@prisma/client'
 
 export type TicketsListQuery = {
   page?: number
-  pageSize?: number
+  size?: number
   search?: string
   status?: StatusChamado | StatusChamado[]
   nivel?: NivelChamado | NivelChamado[]
