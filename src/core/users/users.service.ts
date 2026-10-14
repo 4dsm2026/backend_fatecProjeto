@@ -193,8 +193,9 @@ export async function softDeleteUser(
   prisma: PrismaClient,
   id: string,
   opts?: ServiceOpts,
+  loadedTarget?: UserResponse,
 ): Promise<UserResponse> {
-  const before = await prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
+  const before = loadedTarget ?? await prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
   if (!before) throw new ApiError('not-found', 'Usuário não encontrado');
   if (before.deletadoEm !== null) throw new ApiError('conflict', 'Usuário já removido');
 

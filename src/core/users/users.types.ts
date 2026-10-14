@@ -70,6 +70,20 @@ export function isUserAdmin(role: Role): boolean {
 	return hasRole(USER_ADMIN_ROLES, role);
 }
 
+export function isAdminSelf(user: Pick<UserPublic, "id" | "papel">, viewer: Viewer): boolean {
+	return isUserAdmin(viewer.role) && user.id === viewer.id && user.papel === "ADMINISTRADOR";
+}
+
+export function hasProtectedAdminSelfUpdate(
+	user: Pick<UserPublic, "id" | "papel">,
+	viewer: Viewer,
+	patch: { ativo?: boolean; papel?: Role; anonimizado?: boolean },
+): boolean {
+	if (!isAdminSelf(user, viewer)) return false;
+	return patch.ativo === false || patch.anonimizado === true ||
+		(patch.papel !== undefined && patch.papel !== "ADMINISTRADOR");
+}
+
 const RESTRICTED_USER_UPDATE_FIELDS = ["senha", "papel", "organizacaoId", "anonimizado", "ativo"] as const;
 
 export function hasRestrictedUserUpdateField(fields: readonly string[]): boolean {
@@ -108,9 +122,10 @@ export function buildUserLinks(user: Pick<UserPublic, "id" | "papel" | "deletado
 	const notRemoved = user.deletadoEm === null;
 	const staff = isUserStaff(viewer.role);
 	const admin = isUserAdmin(viewer.role);
+	const protectedAdminSelf = isAdminSelf(user, viewer);
 	const href = path`/users/${user.id}`;
 
-	const changeRoleLink: Link | false = notRemoved && admin
+	const changeRoleLink: Link | false = notRemoved && admin && !protectedAdminSelf
 		? link(href, "PATCH", { title: "Alterar papel" })
 		: false;
 
@@ -119,6 +134,6 @@ export function buildUserLinks(user: Pick<UserPublic, "id" | "papel" | "deletado
 		collection: staff && link("/users"),
 		update: notRemoved && canUpdateUserTarget(user, viewer) && link(href, "PATCH"),
 		"change-role": changeRoleLink,
-		delete: notRemoved && admin && link(href, "DELETE"),
+		delete: notRemoved && admin && !protectedAdminSelf && link(href, "DELETE"),
 	});
 }

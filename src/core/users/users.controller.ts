@@ -19,6 +19,7 @@ import {
   buildUserLinks,
   canUpdateUserFields,
   canUpdateUserTarget,
+  hasProtectedAdminSelfUpdate,
   hasRestrictedUserUpdateField,
   isUserAdmin,
   isUserStaff,
@@ -110,6 +111,9 @@ export async function patch(req: FastifyRequest, reply: FastifyReply) {
   if (target.deletadoEm !== null) {
     throw new ApiError('conflict', 'Usuário removido não pode ser atualizado')
   }
+  if (hasProtectedAdminSelfUpdate(target, viewer, body)) {
+    throw new ApiError('unprocessable', 'Não é permitido desativar, rebaixar ou anonimizar a própria conta de administrador')
+  }
   if (!canUpdateUserFields(target, viewer, Object.keys(body))) {
     throw new ApiError('forbidden', 'Um ou mais campos não são permitidos para este usuário')
   }
@@ -121,6 +125,12 @@ export async function removeSoft(req: FastifyRequest, reply: FastifyReply) {
   const { id } = parseOrThrow(ParamsWithIdSchema.shape.params, req.params)
   const viewer = requestViewer(req)
   const prisma = req.server.prisma
-  await softDeleteUser(prisma, id, { feitoPorId: viewer.id })
+  const target = await getUserById(prisma, id)
+  if (!target) throw new ApiError('not-found', 'Usuário não encontrado')
+  if (target.deletadoEm !== null) throw new ApiError('conflict', 'Usuário já removido')
+  if (isUserAdmin(viewer.role) && target.id === viewer.id && target.papel === 'ADMINISTRADOR') {
+    throw new ApiError('unprocessable', 'Não é permitido remover a própria conta de administrador')
+  }
+  await softDeleteUser(prisma, id, { feitoPorId: viewer.id }, target)
   return reply.code(204).send()
 }

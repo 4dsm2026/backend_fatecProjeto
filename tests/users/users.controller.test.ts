@@ -91,6 +91,13 @@ const patchMatrix = callerRoles.flatMap((callerRole) =>
   ),
 );
 
+const adminSelfMutationCases = [
+  { action: "deactivation", method: "PATCH", payload: { ativo: false } },
+  { action: "demotion", method: "PATCH", payload: { papel: "USUARIO" } },
+  { action: "anonymization", method: "PATCH", payload: { anonimizado: true } },
+  { action: "deletion", method: "DELETE" },
+] as const;
+
 function tokenFor(role: "USUARIO" | "BACKOFFICE" | "TECNICO" | "ADMINISTRADOR", sub = "user-1") {
   if (role === "ADMINISTRADOR") return makeAdminToken({ sub });
   return makeUserToken({ sub, role });
@@ -296,6 +303,71 @@ describe("users HAL routes", () => {
     expect(response.json()._links.delete.method).toBe("DELETE");
   });
 
+  it.each(adminSelfMutationCases)("rejects admin self-$action with 422 and no persistence", async (action) => {
+    const adminUser = makeUser({ id: "admin-1", papel: "ADMINISTRADOR" });
+    prismaMock.usuario.findUnique.mockResolvedValue(adminUser);
+
+    const response = await app.inject({
+      method: action.method,
+      url: "/users/admin-1",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR", "admin-1")),
+      ...( "payload" in action ? { payload: action.payload } : {}),
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditoria.create).not.toHaveBeenCalled();
+  });
+
+  it.each(adminSelfMutationCases)("allows the same $action against another admin account", async (action) => {
+    const target = makeUser({ id: "other-admin", papel: "ADMINISTRADOR" });
+    prismaMock.usuario.findUnique.mockResolvedValue(target);
+    prismaMock.usuario.update.mockResolvedValue(target);
+
+    const response = await app.inject({
+      method: action.method,
+      url: "/users/other-admin",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR", "admin-1")),
+      ...( "payload" in action ? { payload: action.payload } : {}),
+    });
+
+    expect(response.statusCode).toBe(action.method === "DELETE" ? 204 : 200);
+    expect(prismaMock.usuario.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps update but omits delete and change-role links for the admin's own resource", async () => {
+    const ownAdmin = makeUser({ id: "admin-1", papel: "ADMINISTRADOR" });
+    prismaMock.usuario.findUnique.mockResolvedValue(ownAdmin);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/users/admin-1",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR", "admin-1")),
+    });
+    const ownLinks = response.json()._links as Record<string, Link | Link[]>;
+
+    expect(ownLinks.update).toEqual({ href: "/users/admin-1", method: "PATCH" });
+    expect(ownLinks).not.toHaveProperty("delete");
+    expect(ownLinks).not.toHaveProperty("change-role");
+
+    const updateResponse = await callLink(app, ownLinks.update as Link, tokenFor("ADMINISTRADOR", "admin-1"), {
+      nome: "Nome atualizado",
+    });
+    expect(updateResponse.statusCode).not.toBe(403);
+    expect(updateResponse.statusCode).not.toBe(405);
+
+    prismaMock.usuario.findUnique.mockResolvedValue(makeUser({ id: "other-admin", papel: "ADMINISTRADOR" }));
+    const otherResponse = await app.inject({
+      method: "GET",
+      url: "/users/other-admin",
+      headers: bearerAuth(tokenFor("ADMINISTRADOR", "admin-1")),
+    });
+    const otherLinks = otherResponse.json()._links as Record<string, Link | Link[]>;
+    expect(otherLinks["change-role"]).toEqual({ href: "/users/other-admin", method: "PATCH", title: "Alterar papel" });
+    expect(otherLinks.delete).toEqual({ href: "/users/other-admin", method: "DELETE" });
+  });
+
   it.each(["BACKOFFICE", "TECNICO"] as const)("blocks %s role escalation before persistence", async (role) => {
     const response = await app.inject({
       method: "PATCH",
@@ -314,9 +386,12 @@ describe("users HAL routes", () => {
     async ({ callerRole, targetCase, field, payload }) => {
       const viewerId = `viewer-${callerRole}`;
       const target = targetUserFor(callerRole, targetCase, viewerId);
-      const mayUpdate =
+      const protectedAdminSelfAction = callerRole === "ADMINISTRADOR" && targetCase === "self" &&
+        ["papel", "anonimizado", "ativo"].includes(field);
+      const mayUpdate = !protectedAdminSelfAction && (
         callerRole === "ADMINISTRADOR" ||
-        (callerRole !== "USUARIO" && targetCase === "USUARIO" && field === "ativo");
+        (callerRole !== "USUARIO" && targetCase === "USUARIO" && field === "ativo")
+      );
       prismaMock.usuario.findUnique.mockResolvedValue(target);
 
       const response = await app.inject({
@@ -326,7 +401,10 @@ describe("users HAL routes", () => {
         payload,
       });
 
-      expect(response.statusCode).toBe(mayUpdate ? 200 : 403);
+      let expectedStatus = 403;
+      if (protectedAdminSelfAction) expectedStatus = 422;
+      else if (mayUpdate) expectedStatus = 200;
+      expect(response.statusCode).toBe(expectedStatus);
       if (mayUpdate) {
         expect(prismaMock.usuario.update).toHaveBeenCalledTimes(1);
       } else {
@@ -384,10 +462,11 @@ describe("users HAL routes", () => {
         const target = targetUserFor(callerRole, targetCase, viewer.id);
         const links = buildUserLinks(target, viewer);
         const mayUpdate = targetIsUpdatable(callerRole, targetCase);
+        const isAdminSelf = callerRole === "ADMINISTRADOR" && targetCase === "self";
 
         expect(canUpdateUserTarget(target, viewer)).toBe(mayUpdate);
         expect(Boolean(links.update)).toBe(mayUpdate);
-        expect(Boolean(links["change-role"])).toBe(callerRole === "ADMINISTRADOR");
+        expect(Boolean(links["change-role"])).toBe(callerRole === "ADMINISTRADOR" && !isAdminSelf);
 
         if (links.update) {
           prismaMock.usuario.findUnique.mockResolvedValue(target);
