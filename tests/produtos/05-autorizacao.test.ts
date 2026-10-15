@@ -159,31 +159,47 @@ describe('IDOR — anexos de chamado de outro aluno', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('IDOR — marcar notificação de outro usuário como lida', () => {
-  it('PATCH /notifications/:id/lida escopa a atualização por usuarioId', async () => {
-    prismaMock.notificacao.updateMany.mockResolvedValue({ count: 1 })
+  it('PATCH /notifications/:id escopa a busca por usuarioId', async () => {
+    const notif = {
+      id: 'notif-de-outro',
+      usuarioId: 'outro-aluno-999',
+      titulo: 'Teste',
+      mensagem: 'Teste',
+      tipo: 'SISTEMA',
+      canal: 'IN_APP',
+      criadoEm: new Date(),
+      lidaEm: null,
+      arquivadaEm: null,
+      chamadoId: null,
+    }
+    prismaMock.notificacao.findFirst.mockResolvedValue(notif)
+    prismaMock.notificacao.update.mockResolvedValue({ ...notif, lidaEm: new Date() })
 
     const res = await app.inject({
       method: 'PATCH',
-      url: '/notifications/notif-de-outro/lida',
+      url: '/notifications/notif-de-outro',
       headers: bearerAuth(alunoIntrusoToken),
+      payload: { lida: true },
     })
 
-    expect([200, 204]).toContain(res.statusCode)
+    expect(res.statusCode).toBe(200)
     // A cláusula where DEVE conter o usuarioId de quem chama (não só o id).
-    const arg = prismaMock.notificacao.updateMany.mock.calls[0][0]
+    const arg = prismaMock.notificacao.findFirst.mock.calls[0][0]
     expect(arg.where).toMatchObject({ id: 'notif-de-outro', usuarioId: 'outro-aluno-999' })
   })
 
-  it('PATCH /notifications/:id/lida — 404 quando não há match (id de outro dono)', async () => {
-    prismaMock.notificacao.updateMany.mockResolvedValue({ count: 0 })
+  it('PATCH /notifications/:id — 404 quando não há match (id de outro dono)', async () => {
+    prismaMock.notificacao.findFirst.mockResolvedValue(null)
 
     const res = await app.inject({
       method: 'PATCH',
-      url: '/notifications/notif-de-outro/lida',
+      url: '/notifications/notif-de-outro',
       headers: bearerAuth(alunoIntrusoToken),
+      payload: { lida: true },
     })
 
     expect(res.statusCode).toBe(404)
+    expect(prismaMock.notificacao.update).not.toHaveBeenCalled()
   })
 })
 

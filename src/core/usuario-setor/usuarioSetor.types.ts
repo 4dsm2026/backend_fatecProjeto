@@ -7,11 +7,13 @@ export type AlterarPapelBody = {
 };
 export type ListUsuariosDoSetorQuery = {
   page?: number;
+  size?: number;
   perPage?: number;
   search?: string;
 };
 export type ListSetoresDoUsuarioQuery = {
   page?: number;
+  size?: number;
   perPage?: number;
 };
 export type ParamsWithUsuarioId = { usuarioId: string };

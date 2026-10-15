@@ -1,161 +1,116 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { buildRouteValidator } from "../../utils/zod-helpers";
-import { sendNotFound, sendReply, sendValidationError } from "../../utils/http";
+import type { FastifyRequest, FastifyReply } from "fastify";
 import {
   VincularUsuarioSetorSchema,
   AlterarPapelUsuarioSetorSchema,
   ListUsuariosDoSetorSchema,
   ListSetoresDoUsuarioSchema,
-} from "../../validators/usuario-setor";
+} from "../../validators/usuario-setor.js";
 import {
   vincularUsuarioSetor,
-  alterarPapelUsuarioSetor,
+  alterarPapelNoSetor,
   desvincularUsuarioSetor,
   listarUsuariosDoSetor,
   listarSetoresDoUsuario,
-} from "./usuarioSetor.service";
+} from "./usuarioSetor.service.js";
+import { buildUserSectorLinks } from "./usuarioSetor.hateoas.js";
+import {
+  ApiError,
+  parseOrThrow,
+  pickFilters,
+  toCollection,
+  toResource,
+  viewerFrom,
+} from "../../hateoas/index.js";
 
+/* POST /admin/users/:id/sectors (or /users/:usuarioId/sectors) */
+export async function vincular(req: FastifyRequest, res: FastifyReply) {
+  const params = parseOrThrow(VincularUsuarioSetorSchema.shape.params, req.params);
+  const body = parseOrThrow(VincularUsuarioSetorSchema.shape.body, req.body);
+  const usuarioId = params.id ?? params.usuarioId!;
+  const viewer = viewerFrom(req);
+  const prisma = req.server.prisma;
 
-import { link, buildLinks, path } from "../../hateoas/links";
-import { toResource } from "../../hateoas/resource";
+  const vinculo = await vincularUsuarioSetor(prisma, usuarioId, body);
+  const links = buildUserSectorLinks(vinculo, viewer);
 
+  return res
+    .code(201)
+    .header("Location", (links.self as { href: string }).href)
+    .send(toResource(vinculo, links));
+}
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/* PATCH /admin/user-sectors/:id (or /user-sectors/:usuarioSetorId) */
+export async function alterarPapel(req: FastifyRequest, res: FastifyReply) {
+  const params = parseOrThrow(AlterarPapelUsuarioSetorSchema.shape.params, req.params);
+  const body = parseOrThrow(AlterarPapelUsuarioSetorSchema.shape.body, req.body);
+  const usuarioSetorId = params.id ?? params.usuarioSetorId!;
+  const viewer = viewerFrom(req);
+  const prisma = req.server.prisma;
 
-const vincularValidator = buildRouteValidator({
-  params: VincularUsuarioSetorSchema.shape.params,
-  body: VincularUsuarioSetorSchema.shape.body,
-});
-const alterarValidator = buildRouteValidator({
-  params: AlterarPapelUsuarioSetorSchema.shape.params,
-  body: AlterarPapelUsuarioSetorSchema.shape.body,
-});
-const listUsersValidator = buildRouteValidator({
-  params: ListUsuariosDoSetorSchema.shape.params,
-  query: ListUsuariosDoSetorSchema.shape.query,
-});
-const listSetoresValidator = buildRouteValidator({
-  params: ListSetoresDoUsuarioSchema.shape.params,
-  query: ListSetoresDoUsuarioSchema.shape.query,
-});
+  const updated = await alterarPapelNoSetor(prisma, usuarioSetorId, body);
+  return res.code(200).send(toResource(updated, buildUserSectorLinks(updated, viewer)));
+}
 
+/* DELETE /admin/user-sectors/:id (or /user-sectors/:usuarioSetorId) */
+export async function desvincular(req: FastifyRequest, res: FastifyReply) {
+  const rawParams = req.params as Record<string, string> | undefined;
+  const usuarioSetorId = rawParams?.id ?? rawParams?.usuarioSetorId;
+  if (!usuarioSetorId) {
+    throw new ApiError("bad-request", "usuarioSetorId obrigatório");
+  }
+  const prisma = req.server.prisma;
 
-function usuarioSetorComLinks<
-  T extends { id: string; usuarioId: string; setorId: string }
->(vinculo: T) {
-  const vinculoPath = path`/admin/user-sectors/${vinculo.id}`;
+  await desvincularUsuarioSetor(prisma, usuarioSetorId);
+  return res.code(204).send();
+}
 
-  const links = buildLinks({
-    update: link(vinculoPath, "PATCH", {
-      title: "Alterar papel do vínculo",
-    }),
+/* GET /admin/sectors/:id/users (or /sectors/:setorId/users) */
+export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply) {
+  const params = parseOrThrow(ListUsuariosDoSetorSchema.shape.params, req.params);
+  const query = parseOrThrow(ListUsuariosDoSetorSchema.shape.query, req.query);
+  const setorId = params.id ?? params.setorId!;
+  const viewer = viewerFrom(req);
+  const prisma = req.server.prisma;
 
-    delete: link(vinculoPath, "DELETE", {
-      title: "Remover vínculo",
-    }),
+  const page = query.page ?? 0;
+  const size = query.size ?? query.perPage ?? 20;
 
-    "user-sectors": link(
-      path`/admin/users/${vinculo.usuarioId}/sectors`,
-      "GET",
-      { title: "Listar setores do usuário" }
-    ),
+  const result = await listarUsuariosDoSetor(prisma, setorId, { page, size, search: query.search });
 
-    "sector-users": link(
-      path`/admin/sectors/${vinculo.setorId}/users`,
-      "GET",
-      { title: "Listar usuários do setor" }
-    ),
+  const collection = toCollection({
+    rel: "users",
+    basePath: `/admin/sectors/${setorId}/users`,
+    items: result.data.map((item) => toResource(item, buildUserSectorLinks(item, viewer))),
+    page: result.page,
+    size: result.size,
+    total: result.total,
+    filters: pickFilters(query, ["search"]),
   });
 
-  return toResource(vinculo, links);
+  return res.code(200).send(collection);
 }
 
-
-/* POST /usuarios/:usuarioId/setores */
-export async function vincular(req: FastifyRequest, res: FastifyReply) {
-  const parsed = vincularValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
-  const prisma = req.server.prisma;
-  try {
-    const r = await vincularUsuarioSetor(prisma, parsed.data!.params!.usuarioId, parsed.data!.body!);
-    await res.code(201).send(usuarioSetorComLinks(r));
-  } catch (e: any) {
-    if (e?.statusCode === 409) return sendReply(res, 409, { error: e.message });
-    req.log.error({ e }, "💥 Erro ao vincular usuário ao setor");
-    await res.code(500).send({ error: errMsg(e) });
-  }
-}
-
-/* PATCH /usuarios-setores/:usuarioSetorId */
-export async function alterarPapel(req: FastifyRequest, res: FastifyReply) {
-  const parsed = alterarValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
-  const prisma = req.server.prisma;
-  try {
-    const r = await alterarPapelUsuarioSetor(prisma, parsed.data!.params!.usuarioSetorId, parsed.data!.body!);
-    await res.send(usuarioSetorComLinks(r));
-  } catch (e: any) {
-    if (e?.code === "P2025") return sendNotFound(res, "Vínculo");
-    req.log.error({ e }, "💥 Erro ao alterar papel do vínculo");
-    await res.code(500).send({ error: errMsg(e) });
-  }
-}
-
-/* DELETE /usuarios-setores/:usuarioSetorId */
-export async function desvincular(req: FastifyRequest, res: FastifyReply) {
-  const prisma = req.server.prisma;
-  const usuarioSetorId = (req.params as any)?.usuarioSetorId as string;
-  if (!usuarioSetorId) return sendReply(res, 400, { error: "usuarioSetorId obrigatório" });
-  try {
-    await desvincularUsuarioSetor(prisma, usuarioSetorId);
-    await res.code(204).send();
-  } catch (e: any) {
-    if (e?.code === "P2025") return sendNotFound(res, "Vínculo");
-    req.log.error({ e }, "💥 Erro ao desvincular usuário do setor");
-    await res.code(500).send({ error: errMsg(e) });
-  }
-}
-
-/* GET /setores/:setorId/usuarios */
-export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply) {
-  const parsed = listUsersValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
-  const prisma = req.server.prisma;
-  try {
-    const r = await listarUsuariosDoSetor(prisma, parsed.data!.params!.setorId, parsed.data!.query!);
-    const data = r.data.map((vinculo) =>
-      usuarioSetorComLinks(vinculo)
-    );
-
-    await res.send({
-      ...r,
-      data,
-    });
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao listar usuários do setor");
-    await res.code(500).send({ error: errMsg(e) });
-  }
-}
-
-/* GET /usuarios/:usuarioId/setores */
+/* GET /admin/users/:id/sectors (or /users/:usuarioId/sectors) */
 export async function listSetoresDoUsuario(req: FastifyRequest, res: FastifyReply) {
-  const parsed = listSetoresValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
+  const params = parseOrThrow(ListSetoresDoUsuarioSchema.shape.params, req.params);
+  const query = parseOrThrow(ListSetoresDoUsuarioSchema.shape.query, req.query);
+  const usuarioId = params.id ?? params.usuarioId!;
+  const viewer = viewerFrom(req);
   const prisma = req.server.prisma;
-  try {
-    const r = await listarSetoresDoUsuario(prisma, parsed.data!.params!.usuarioId, parsed.data!.query!);
 
-    const data = r.data.map((vinculo) =>
-      usuarioSetorComLinks(vinculo)
-    );
+  const page = query.page ?? 0;
+  const size = query.size ?? query.perPage ?? 20;
 
-    await res.send({
-      ...r,
-      data,
-    });
+  const result = await listarSetoresDoUsuario(prisma, usuarioId, { page, size });
 
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao listar setores do usuário");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+  const collection = toCollection({
+    rel: "sectors",
+    basePath: `/admin/users/${usuarioId}/sectors`,
+    items: result.data.map((item) => toResource(item, buildUserSectorLinks(item, viewer))),
+    page: result.page,
+    size: result.size,
+    total: result.total,
+  });
+
+  return res.code(200).send(collection);
 }

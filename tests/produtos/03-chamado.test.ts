@@ -152,8 +152,8 @@ describe('GET /tickets — Listar Chamados', () => {
 
     expect(res.statusCode).toBe(200)
     const body = res.json()
-    expect(body).toHaveProperty('items')
-    expect(body).toHaveProperty('total', 1)
+    expect(body._embedded.tickets).toHaveLength(1)
+    expect(body.page.totalElements).toBe(1)
   })
 
   it('200 — admin pode listar todos os chamados', async () => {
@@ -167,7 +167,7 @@ describe('GET /tickets — Listar Chamados', () => {
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json().total).toBe(2)
+    expect(res.json().page.totalElements).toBe(2)
   })
 
   it('200 — filtra por status=ABERTO', async () => {

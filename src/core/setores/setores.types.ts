@@ -7,8 +7,9 @@ export type SetorCreateBody = {
 export type SetorUpdateBody = Partial<SetorCreateBody>;
 
 export type SetoresListQuery = {
+  /** Página base 0. */
   page?: number;
-  perPage?: number;
+  size?: number;
   search?: string;
   organizacaoId?: string;
 };

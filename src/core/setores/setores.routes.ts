@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import * as ctl from "./setores.controller";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 
-const TAG = "Admin - Setores";
+const TAG = "Admin - Sectors";
 
 /* ---------- Schemas reutilizáveis (SÓ PARA DOCUMENTAÇÃO) ---------- */
 
@@ -406,16 +406,13 @@ export async function setoresRoutes(app: FastifyInstance) {
         summary: "Listar setores",
         description:
           "Lista os setores em ordem alfabética pelo nome, com paginação. Os " +
-          "parâmetros de entrada atuais são `page` (base 1, padrão 1) e `perPage` " +
+          "parâmetros de paginação são `page` (base 0, padrão 0) e `size` " +
           "(de 1 a 100, padrão 20). `search` procura parcialmente no nome, sem " +
           "diferenciar maiúsculas de minúsculas; `organizacaoId` restringe a busca " +
           "a uma organização. A resposta é uma coleção HAL: `_embedded.sectors` " +
           "contém os setores com `_links`; `page` contém `size`, `number`, " +
-          "`totalElements` e `totalPages`; `_links` contém os links de navegação.\n\n" +
-          "Observação: os links HAL de paginação gerados atualmente usam `page` " +
-          "base 0 e o parâmetro `size`, enquanto os parâmetros de entrada legados " +
-          "desta rota usam `page` base 1 e `perPage`. Essa diferença ainda precisa " +
-          "ser harmonizada na lógica de paginação.\n\n" +
+          "`totalElements` e `totalPages`; `_links` contém os links de navegação " +
+          "(que repetem os filtros aplicados) e `create`.\n\n" +
           "Requer token Bearer válido e perfil `ADMINISTRADOR`.",
         security,
         querystring: {
@@ -423,16 +420,16 @@ export async function setoresRoutes(app: FastifyInstance) {
           properties: {
             page: {
               type: "integer",
-              minimum: 1,
-              default: 1,
-              description: "Página solicitada na query legada. Deve ser um inteiro maior ou igual a 1.",
+              minimum: 0,
+              default: 0,
+              description: "Página solicitada (base 0).",
             },
-            perPage: {
+            size: {
               type: "integer",
               minimum: 1,
               maximum: 100,
               default: 20,
-              description: "Quantidade por página na query legada. Deve ser um inteiro entre 1 e 100.",
+              description: "Quantidade por página. Deve ser um inteiro entre 1 e 100.",
             },
             search: {
               type: "string",

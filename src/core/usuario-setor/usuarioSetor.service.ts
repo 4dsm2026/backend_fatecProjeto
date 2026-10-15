@@ -1,32 +1,40 @@
 import { PrismaClient, Prisma } from "@prisma/client";
+import { toSkipTake } from "../../hateoas/pagination.js";
 import type {
   VincularBody, AlterarPapelBody,
   ListUsuariosDoSetorQuery, ListSetoresDoUsuarioQuery
 } from "./usuarioSetor.types";
 
+export type VincularInput =
+  | [usuarioId: string, body: VincularBody]
+  | [data: { usuarioId: string; setorId: string; papelId?: string | null }];
+
 export async function vincularUsuarioSetor(
   prisma: PrismaClient,
-  usuarioId: string,
-  body: VincularBody
+  usuarioIdOrData: string | { usuarioId: string; setorId: string; papelId?: string | null },
+  maybeBody?: VincularBody
 ) {
-  const { setorId, papelId = null } = body
+  let usuarioId: string;
+  let setorId: string;
+  let papelId: string | null = null;
 
-  try {
-    return await prisma.usuarioSetor.create({
-      data: { usuarioId, setorId, papelId },
-      include: { setor: true, papel: true },
-    });
-  } catch (e: any) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const err: any = new Error("Vínculo já existente.");
-      err.statusCode = 409;
-      throw err;
-    }
-    throw e;
+  if (typeof usuarioIdOrData === "string") {
+    usuarioId = usuarioIdOrData;
+    setorId = maybeBody!.setorId;
+    papelId = maybeBody?.papelId ?? null;
+  } else {
+    usuarioId = usuarioIdOrData.usuarioId;
+    setorId = usuarioIdOrData.setorId;
+    papelId = usuarioIdOrData.papelId ?? null;
   }
+
+  return prisma.usuarioSetor.create({
+    data: { usuarioId, setorId, papelId },
+    include: { setor: true, papel: true },
+  });
 }
 
-export async function alterarPapelUsuarioSetor(
+export async function alterarPapelNoSetor(
   prisma: PrismaClient,
   usuarioSetorId: string,
   body: AlterarPapelBody
@@ -37,6 +45,8 @@ export async function alterarPapelUsuarioSetor(
     include: { setor: true, papel: true },
   });
 }
+
+export const alterarPapelUsuarioSetor = alterarPapelNoSetor;
 
 export async function desvincularUsuarioSetor(
   prisma: PrismaClient,
@@ -50,23 +60,32 @@ export async function listarUsuariosDoSetor(
   setorId: string,
   q: ListUsuariosDoSetorQuery
 ) {
-  const { page = 1, perPage = 20, search } = q;
+  const page = q.page ?? 0;
+  const size = q.size ?? q.perPage ?? 20;
+  const { skip, take } = toSkipTake({ page, size });
+  const search = q.search;
+
   const whereUsuario = search
     ? {
         OR: [
-          { nome: { contains: search, mode: "insensitive" as const } },
-          { emailPessoal: { contains: search, mode: "insensitive" as const } },
-          { emailEducacional: { contains: search, mode: "insensitive" as const } },
-          { ra: { contains: search, mode: "insensitive" as const } },
+          { nome: { contains: search } },
+          { emailPessoal: { contains: search } },
+          { emailEducacional: { contains: search } },
+          { ra: { contains: search } },
         ],
       }
     : {};
 
+  const where = {
+    setorId,
+    ...(search ? { usuario: whereUsuario } : {}),
+  };
+
   const [data, total] = await Promise.all([
     prisma.usuarioSetor.findMany({
-      where: { setorId, usuario: whereUsuario },
-      skip: (page - 1) * perPage,
-      take: perPage,
+      where,
+      skip,
+      take,
       orderBy: { criadoEm: "desc" },
       include: {
         usuario: {
@@ -78,10 +97,10 @@ export async function listarUsuariosDoSetor(
         papel: true,
       },
     }),
-    prisma.usuarioSetor.count({ where: { setorId, usuario: whereUsuario } }),
+    prisma.usuarioSetor.count({ where }),
   ]);
 
-  return { data, total, page, perPage };
+  return { data, total, page, size, perPage: size };
 }
 
 export async function listarSetoresDoUsuario(
@@ -89,16 +108,20 @@ export async function listarSetoresDoUsuario(
   usuarioId: string,
   q: ListSetoresDoUsuarioQuery
 ) {
-  const { page = 1, perPage = 20 } = q;
+  const page = q.page ?? 0;
+  const size = q.size ?? q.perPage ?? 20;
+  const { skip, take } = toSkipTake({ page, size });
+
   const [data, total] = await Promise.all([
     prisma.usuarioSetor.findMany({
       where: { usuarioId },
-      skip: (page - 1) * perPage,
-      take: perPage,
+      skip,
+      take,
       orderBy: { criadoEm: "desc" },
       include: { setor: true, papel: true },
     }),
     prisma.usuarioSetor.count({ where: { usuarioId } }),
   ]);
-  return { data, total, page, perPage };
+
+  return { data, total, page, size, perPage: size };
 }

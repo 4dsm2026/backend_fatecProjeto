@@ -2,13 +2,13 @@ import type { HttpMethod, Link, Links, Role, Viewer } from "./types";
 
 const STAFF_ROLES: readonly Role[] = ["BACKOFFICE", "TECNICO", "ADMINISTRADOR"];
 
-/** Equipe de atendimento: BACKOFFICE, TECNICO ou ADMINISTRADOR. */
-export function isStaff(viewer: Viewer): boolean {
-  return STAFF_ROLES.includes(viewer.role);
+/** Equipe de atendimento: BACKOFFICE, TECNICO ou ADMINISTRADOR. Sem viewer, retorna false. */
+export function isStaff(viewer?: Viewer | null): boolean {
+  return !!viewer && STAFF_ROLES.includes(viewer.role);
 }
 
-export function isAdmin(viewer: Viewer): boolean {
-  return viewer.role === "ADMINISTRADOR";
+export function isAdmin(viewer?: Viewer | null): boolean {
+  return viewer?.role === "ADMINISTRADOR";
 }
 
 /**

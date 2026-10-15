@@ -39,6 +39,7 @@ describe('AnexosRoutes', () => {
 
     expect(app.get).toHaveBeenCalledWith(
         '/tickets/:id/anexos',
+        expect.any(Object),
         expect.any(Function)
     );
 });
@@ -48,6 +49,7 @@ describe('AnexosRoutes', () => {
 
     expect(app.post).toHaveBeenCalledWith(
         '/tickets/:id/anexos',
+        expect.any(Object),
         expect.any(Function)
     );
 });
@@ -98,6 +100,7 @@ describe('AnexosRoutes', () => {
 
     expect(app.get).toHaveBeenCalledWith(
         '/tickets/:id/anexos',
+        expect.any(Object),
         expect.any(Function)
     );
 
@@ -109,6 +112,7 @@ describe('AnexosRoutes', () => {
 
     expect(app.post).toHaveBeenCalledWith(
         '/tickets/:id/anexos',
+        expect.any(Object),
         expect.any(Function)
     );
 

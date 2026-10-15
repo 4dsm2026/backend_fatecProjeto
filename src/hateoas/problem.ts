@@ -134,8 +134,16 @@ export function normalizeError(error: unknown): ApiError {
   const errors = validationErrors(error);
   if (errors) return new ApiError("bad-request", "Dados inválidos", undefined, errors);
 
-  if (error.code === "P2025") return new ApiError("not-found", DEFAULT_TITLE["not-found"]);
-  if (error.code === "P2002") return new ApiError("conflict", "Registro já existe");
+  if (error.name === "ZodError" && Array.isArray(error.issues)) {
+    return new ApiError("bad-request", "Dados inválidos", undefined, fieldErrorsFromZod(error.issues));
+  }
+
+  if (error.code === "P2025") {
+    return new ApiError("not-found", DEFAULT_TITLE["not-found"], undefined, undefined, { type: "/errors/not-found" });
+  }
+  if (error.code === "P2002") {
+    return new ApiError("conflict", "Registro já existe", undefined, undefined, { type: "/errors/conflict" });
+  }
 
   const kind = typeof error.statusCode === "number" ? KIND_BY_STATUS[error.statusCode] : undefined;
   if (kind) {
