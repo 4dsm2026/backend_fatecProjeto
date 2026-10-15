@@ -15,24 +15,61 @@ import {
   listarSetoresDoUsuario,
 } from "./usuarioSetor.service";
 
+
+import { link, buildLinks, path } from "../../hateoas/links";
+import { toResource } from "../../hateoas/resource";
+
+
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-const vincularValidator  = buildRouteValidator({
+const vincularValidator = buildRouteValidator({
   params: VincularUsuarioSetorSchema.shape.params,
-  body:   VincularUsuarioSetorSchema.shape.body,
+  body: VincularUsuarioSetorSchema.shape.body,
 });
-const alterarValidator   = buildRouteValidator({
+const alterarValidator = buildRouteValidator({
   params: AlterarPapelUsuarioSetorSchema.shape.params,
-  body:   AlterarPapelUsuarioSetorSchema.shape.body,
+  body: AlterarPapelUsuarioSetorSchema.shape.body,
 });
 const listUsersValidator = buildRouteValidator({
   params: ListUsuariosDoSetorSchema.shape.params,
-  query:  ListUsuariosDoSetorSchema.shape.query,
+  query: ListUsuariosDoSetorSchema.shape.query,
 });
 const listSetoresValidator = buildRouteValidator({
   params: ListSetoresDoUsuarioSchema.shape.params,
-  query:  ListSetoresDoUsuarioSchema.shape.query,
+  query: ListSetoresDoUsuarioSchema.shape.query,
 });
+
+
+function usuarioSetorComLinks<
+  T extends { id: string; usuarioId: string; setorId: string }
+>(vinculo: T) {
+  const vinculoPath = path`/admin/user-sectors/${vinculo.id}`;
+
+  const links = buildLinks({
+    update: link(vinculoPath, "PATCH", {
+      title: "Alterar papel do vínculo",
+    }),
+
+    delete: link(vinculoPath, "DELETE", {
+      title: "Remover vínculo",
+    }),
+
+    "user-sectors": link(
+      path`/admin/users/${vinculo.usuarioId}/sectors`,
+      "GET",
+      { title: "Listar setores do usuário" }
+    ),
+
+    "sector-users": link(
+      path`/admin/sectors/${vinculo.setorId}/users`,
+      "GET",
+      { title: "Listar usuários do setor" }
+    ),
+  });
+
+  return toResource(vinculo, links);
+}
+
 
 /* POST /usuarios/:usuarioId/setores */
 export async function vincular(req: FastifyRequest, res: FastifyReply) {
@@ -41,7 +78,7 @@ export async function vincular(req: FastifyRequest, res: FastifyReply) {
   const prisma = req.server.prisma;
   try {
     const r = await vincularUsuarioSetor(prisma, parsed.data!.params!.usuarioId, parsed.data!.body!);
-    await res.code(201).send(r);
+    await res.code(201).send(usuarioSetorComLinks(r));
   } catch (e: any) {
     if (e?.statusCode === 409) return sendReply(res, 409, { error: e.message });
     req.log.error({ e }, "💥 Erro ao vincular usuário ao setor");
@@ -56,7 +93,7 @@ export async function alterarPapel(req: FastifyRequest, res: FastifyReply) {
   const prisma = req.server.prisma;
   try {
     const r = await alterarPapelUsuarioSetor(prisma, parsed.data!.params!.usuarioSetorId, parsed.data!.body!);
-    await res.send(r);
+    await res.send(usuarioSetorComLinks(r));
   } catch (e: any) {
     if (e?.code === "P2025") return sendNotFound(res, "Vínculo");
     req.log.error({ e }, "💥 Erro ao alterar papel do vínculo");
@@ -86,7 +123,14 @@ export async function listUsuariosDoSetor(req: FastifyRequest, res: FastifyReply
   const prisma = req.server.prisma;
   try {
     const r = await listarUsuariosDoSetor(prisma, parsed.data!.params!.setorId, parsed.data!.query!);
-    await res.send(r);
+    const data = r.data.map((vinculo) =>
+      usuarioSetorComLinks(vinculo)
+    );
+
+    await res.send({
+      ...r,
+      data,
+    });
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao listar usuários do setor");
     await res.code(500).send({ error: errMsg(e) });
@@ -100,7 +144,16 @@ export async function listSetoresDoUsuario(req: FastifyRequest, res: FastifyRepl
   const prisma = req.server.prisma;
   try {
     const r = await listarSetoresDoUsuario(prisma, parsed.data!.params!.usuarioId, parsed.data!.query!);
-    await res.send(r);
+
+    const data = r.data.map((vinculo) =>
+      usuarioSetorComLinks(vinculo)
+    );
+
+    await res.send({
+      ...r,
+      data,
+    });
+
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao listar setores do usuário");
     await res.code(500).send({ error: errMsg(e) });
