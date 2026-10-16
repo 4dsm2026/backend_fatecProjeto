@@ -167,8 +167,8 @@ export default async function sessionsRoutes(app: FastifyInstance) {
           201: {
             description: "Sessão criada",
             headers: {
-              Location: { schema: { type: "string", example: "/sessions/current" } },
-              "Cache-Control": { schema: { type: "string", example: "no-store" } },
+              Location: { type: "string", description: "URL da sessão criada.", example: "/sessions/current" },
+              "Cache-Control": { type: "string", description: "Resposta com tokens: nunca vai para cache.", example: "no-store" },
             },
             type: "object",
             required: ["user", "accessToken", "refreshToken", "_links"],
@@ -197,7 +197,7 @@ export default async function sessionsRoutes(app: FastifyInstance) {
           429: {
             ...problem("Conta bloqueada; informa `Retry-After` e `retryAfter`"),
             headers: {
-              "Retry-After": { schema: { type: "integer", example: 900 } },
+              "Retry-After": { type: "integer", description: "Segundos até poder tentar de novo.", example: 900 },
             },
           },
         },
