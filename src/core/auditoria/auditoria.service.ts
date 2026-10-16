@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma";
-import { RegistrarAuditoriaDTO } from "./auditoria.types";
+import type { AuditoriaListQuery, RegistrarAuditoriaDTO } from "./auditoria.types";
 
 export class AuditoriaService {
   async registrar(data: RegistrarAuditoriaDTO) {
@@ -13,31 +13,33 @@ export class AuditoriaService {
     });
   }
 
-  async listar() {
-    return prisma.auditoria.findMany({
-      orderBy: { feitoEm: "desc" },
-      include: { feitoPor: true },
-    });
-  }
+  async listar(query: AuditoriaListQuery) {
+    const where = {
+      ...(query.userId ? { feitoPorId: query.userId } : {}),
+      ...(query.from || query.to
+        ? {
+            feitoEm: {
+              ...(query.from ? { gte: query.from } : {}),
+              ...(query.to ? { lte: query.to } : {}),
+            },
+          }
+        : {}),
+    };
+    const skip = query.page * query.size;
 
-  async listarPorUsuario(usuarioId: string) {
-    return prisma.auditoria.findMany({
-      where: { feitoPorId: usuarioId },
-      orderBy: { feitoEm: "desc" },
-      include: { feitoPor: true },
-    });
-  }
-
-  async listarPorPeriodo(inicio: Date, fim: Date) {
-    return prisma.auditoria.findMany({
-      where: {
-        feitoEm: {
-          gte: inicio,
-          lte: fim,
+    const [total, items] = await Promise.all([
+      prisma.auditoria.count({ where }),
+      prisma.auditoria.findMany({
+        where,
+        orderBy: { feitoEm: "desc" },
+        skip,
+        take: query.size,
+        include: {
+          feitoPor: { select: { id: true, nome: true, ra: true } },
         },
-      },
-      orderBy: { feitoEm: "desc" },
-      include: { feitoPor: true },
-    });
+      }),
+    ]);
+
+    return { total, items };
   }
 }

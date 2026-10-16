@@ -1,103 +1,56 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { AuditoriaController } from "./auditoria.controller";
-import { buildRouteValidator, zStringTrim } from "../../utils/zod-helpers";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
+import { zStringTrim } from "../../utils/zod-helpers";
+import { AuditoriaController } from "./auditoria.controller";
+import type { RegistrarAuditoriaDTO } from "./auditoria.types";
 
 const controller = new AuditoriaController();
-
-const ListarPorPeriodoSchema = z.object({
-  inicio: zStringTrim.min(8),
-  fim: zStringTrim.min(8),
-});
 
 const RegistrarSchema = z.object({
   acao: zStringTrim.min(2),
   alvo: zStringTrim.optional(),
-  meta: z.any().optional(),
+  meta: z.unknown().optional(),
   feitoPorId: zStringTrim.optional(),
 });
 
 const preBody =
   (schema: z.ZodTypeAny) =>
-    async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
-      const v = buildRouteValidator({ body: schema }).parse(req);
-      if ("error" in v) {
-        await reply.code(400).send(v.error);
-      }
-    };
+  async (req: FastifyRequest, _reply: FastifyReply): Promise<void> => {
+    req.body = schema.parse(req.body);
+  };
 
-const preQuery =
-  (schema: z.ZodTypeAny) =>
-    async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
-      const v = buildRouteValidator({ query: schema }).parse(req);
-      if ("error" in v) {
-        await reply.code(400).send(v.error);
-      }
-    };
-
-const ValidationErrorSchema = {
+const AuditLogSchema = {
   type: "object",
-  title: "ErroDeValidacaoDeSchema",
-  required: ["message", "issues"],
   properties: {
-    message: { type: "string", example: "Validação falhou" },
-    issues: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          path: { type: "string", example: "acao" },
-          message: { type: "string", example: "Mínimo de 2 caracteres" },
-          code: { type: "string", example: "too_small" },
-        },
-      },
-    },
-  },
-} as const;
-
-const UnauthorizedErrorSchema = {
-  type: "object",
-  title: "ErroNaoAutorizado",
-  properties: {
-    error: { type: "string", example: "Não autorizado" },
-  },
-} as const;
-
-const ForbiddenErrorSchema = {
-  type: "object",
-  title: "ErroSemPermissao",
-  properties: {
-    error: { type: "string", example: "Acesso negado" },
-  },
-} as const;
-
-const AuditoriaSchema = {
-  type: "object",
-  title: "RegistroDeAuditoria",
-  properties: {
-    id: { type: "string", example: "cmj1234567890123456789012" },
-    acao: { type: "string", example: "CHAMADO_FECHADO" },
-    alvo: {
-      type: "string",
-      nullable: true,
-      description: "ID do recurso afetado pela ação (ex.: um ticket). Pode ser nulo quando a ação não afeta um recurso específico.",
-      example: "ticket-4521",
-    },
-    meta: {
-      type: "object",
-      nullable: true,
-      additionalProperties: true,
-      description: "Dados adicionais livres sobre a ação, em formato JSON.",
-    },
-    feitoPorId: { type: "string", nullable: true, example: "user-admin-88" },
+    id: { type: "string" },
+    acao: { type: "string" },
+    alvo: { type: "string", nullable: true },
+    meta: { nullable: true, additionalProperties: true },
+    feitoPorId: { type: "string", nullable: true },
     feitoEm: { type: "string", format: "date-time" },
     feitoPor: {
       type: "object",
       nullable: true,
-      additionalProperties: true,
-      description: "Dados do usuário que executou a ação (relação `feitoPor`, sempre incluída pelo service).",
+      properties: {
+        id: { type: "string" },
+        nome: { type: "string" },
+        ra: { type: "string", nullable: true },
+      },
     },
+    _links: { type: "object", additionalProperties: true },
+  },
+} as const;
+
+const ProblemSchema = {
+  type: "object",
+  required: ["type", "title", "status", "instance"],
+  properties: {
+    type: { type: "string" },
+    title: { type: "string" },
+    status: { type: "integer" },
+    detail: { type: "string" },
+    instance: { type: "string" },
   },
 } as const;
 
@@ -105,187 +58,97 @@ export default async function auditoriaRoutes(app: FastifyInstance) {
   useDocsOnlySchemas(app);
 
   app.get(
-    "/auditoria",
+    "/admin/audit-logs",
     {
       preHandler: [
-        app.authenticate as any,
-        app.authorize(["ADMINISTRADOR"]) as any
+        app.authenticate as never,
+        app.authorize(["ADMINISTRADOR"]) as never,
       ],
       schema: {
         tags: ["Auditoria"],
-        summary: "Listar todo o histórico de auditoria",
+        summary: "Listar registros de auditoria",
         description:
-          "Retorna **todos** os registros de auditoria do sistema, sem paginação, " +
-          "ordenados do mais recente para o mais antigo (`orderBy: feitoEm desc`). " +
-          "Cada registro traz junto os dados do usuário que executou a ação " +
-          "(`include: feitoPor`).\n\n" +
-          "**Restrito a administradores** — exige token válido " +
-          "(`app.authenticate`) E papel `ADMINISTRADOR` (`app.authorize`).",
-        security: [{ bearerAuth: [] }],
-        response: {
-          200: {
-            description: "Lista completa dos registros de auditoria.",
-            type: "array",
-            items: AuditoriaSchema,
-          },
-          401: {
-            description: "Token de acesso ausente, malformado, inválido ou expirado.",
-            ...UnauthorizedErrorSchema,
-          },
-          403: {
-            description: "Usuário autenticado, mas sem papel ADMINISTRADOR.",
-            ...ForbiddenErrorSchema,
-          },
-        },
-      },
-    },
-    controller.listar
-  );
-
-  app.get(
-    "/auditoria/usuario/:id",
-    {
-      preHandler: [
-        app.authenticate as any,
-        app.authorize(["ADMINISTRADOR"]) as any
-      ],
-      schema: {
-        tags: ["Auditoria"],
-        summary: "Listar o histórico de auditoria de um usuário específico",
-        description:
-          "Retorna todos os registros de auditoria em que `feitoPorId` é igual " +
-          "ao `id` informado na URL, ordenados do mais recente para o mais " +
-          "antigo. Não há checagem se o `id` corresponde a um usuário " +
-          "existente — um ID inexistente simplesmente resulta numa lista " +
-          "vazia (`200 []`), não em `404`.\n\n" +
-          "**Restrito a administradores.**",
-        security: [{ bearerAuth: [] }],
-        params: {
-          type: "object",
-          required: ["id"],
-          properties: {
-            id: { type: "string", description: "ID do usuário (feitoPorId) a filtrar.", example: "user-admin-88" },
-          },
-        },
-        response: {
-          200: {
-            description: "Lista dos registros de auditoria feitos por esse usuário (pode ser vazia).",
-            type: "array",
-            items: AuditoriaSchema,
-          },
-          401: {
-            description: "Token de acesso ausente, malformado, inválido ou expirado.",
-            ...UnauthorizedErrorSchema,
-          },
-          403: {
-            description: "Usuário autenticado, mas sem papel ADMINISTRADOR.",
-            ...ForbiddenErrorSchema,
-          },
-        },
-      },
-    },
-    controller.listarPorUsuario
-  );
-
-  app.get(
-    "/auditoria/periodo",
-    {
-      preHandler: [
-        app.authenticate as any,
-        app.authorize(["ADMINISTRADOR"]) as any,
-        preQuery(ListarPorPeriodoSchema)
-      ],
-      schema: {
-        tags: ["Auditoria"],
-        summary: "Listar o histórico de auditoria dentro de um período",
-        description:
-          "Retorna os registros com `feitoEm` entre `inicio` e `fim` " +
-          "(inclusive nos dois extremos — filtro `gte`/`lte`), ordenados do " +
-          "mais recente para o mais antigo. `inicio`/`fim` chegam como texto " +
-          "na querystring e são convertidos para `Date` antes de consultar o " +
-          "banco.\n\n" +
-          "**Restrito a administradores.**",
+          "Lista o histórico para administradores. `userId`, `from` e `to` são filtros opcionais; " +
+          "`page` começa em zero e `size` aceita de 1 a 100. A coleção não oferece link individual " +
+          "porque atualmente não existe uma rota de consulta de log por ID.",
         security: [{ bearerAuth: [] }],
         querystring: {
           type: "object",
-          required: ["inicio", "fim"],
           properties: {
-            inicio: { type: "string", minLength: 8, description: "Data/hora inicial do período (formato ISO 8601 recomendado).", example: "2026-01-01" },
-            fim: { type: "string", minLength: 8, description: "Data/hora final do período (formato ISO 8601 recomendado).", example: "2026-01-31" },
+            userId: { type: "string" },
+            from: { type: "string", format: "date-time" },
+            to: { type: "string", format: "date-time" },
+            page: { type: "integer", minimum: 0, default: 0 },
+            size: { type: "integer", minimum: 1, maximum: 100, default: 20 },
           },
         },
         response: {
           200: {
-            description: "Lista dos registros de auditoria dentro do período informado (pode ser vazia).",
-            type: "array",
-            items: AuditoriaSchema,
+            type: "object",
+            required: ["_embedded", "page", "_links"],
+            properties: {
+              _embedded: {
+                type: "object",
+                properties: {
+                  "audit-logs": { type: "array", items: AuditLogSchema },
+                },
+              },
+              page: {
+                type: "object",
+                properties: {
+                  size: { type: "integer" },
+                  number: { type: "integer" },
+                  totalElements: { type: "integer" },
+                  totalPages: { type: "integer" },
+                },
+              },
+              _links: { type: "object", additionalProperties: true },
+            },
           },
-          400: {
-            description: "`inicio` ou `fim` ausentes, ou com menos de 8 caracteres.",
-            ...ValidationErrorSchema,
-          },
-          401: {
-            description: "Token de acesso ausente, malformado, inválido ou expirado.",
-            ...UnauthorizedErrorSchema,
-          },
-          403: {
-            description: "Usuário autenticado, mas sem papel ADMINISTRADOR.",
-            ...ForbiddenErrorSchema,
-          },
+          400: ProblemSchema,
+          401: ProblemSchema,
+          403: ProblemSchema,
+          500: ProblemSchema,
         },
       },
     },
-    controller.listarPorPeriodo
+    controller.listar,
   );
 
-  app.post(
-    "/auditoria",
+  app.post<{ Body: RegistrarAuditoriaDTO }>(
+    "/admin/audit-logs",
     {
       preHandler: [
-        app.authenticate as any,
-        app.authorize(["ADMINISTRADOR"]) as any,
-        preBody(RegistrarSchema)
+        app.authenticate as never,
+        app.authorize(["ADMINISTRADOR"]) as never,
+        preBody(RegistrarSchema),
       ],
       schema: {
         tags: ["Auditoria"],
         summary: "Registrar manualmente uma entrada de auditoria",
         description:
-          "Cria um novo registro de auditoria diretamente pela API — uso " +
-          "administrativo/manual, além dos registros automáticos gerados " +
-          "internamente pelo sistema (ex.: login, troca de senha) via " +
-          "`registrarAuditoria` (src/lib/auditoria.ts).\n\n" +
-          "**Restrito a administradores.**",
+          "Mantém a operação de registro manual existente, restrita a administradores. " +
+          "O recurso criado retorna links para a coleção e para o usuário autor, se informado.",
         security: [{ bearerAuth: [] }],
         body: {
           type: "object",
           required: ["acao"],
           properties: {
-            acao: { type: "string", minLength: 2, description: "Descrição curta e padronizada da ação (ex.: CHAMADO_FECHADO).", example: "CHAMADO_FECHADO" },
-            alvo: { type: "string", nullable: true, description: "ID do recurso afetado pela ação, se houver.", example: "ticket-4521" },
-            meta: { type: "object", nullable: true, additionalProperties: true, description: "Dados adicionais livres em formato JSON." },
-            feitoPorId: { type: "string", nullable: true, description: "ID do usuário que executou a ação.", example: "user-admin-88" },
+            acao: { type: "string", minLength: 2 },
+            alvo: { type: "string" },
+            meta: { type: "object", additionalProperties: true },
+            feitoPorId: { type: "string" },
           },
         },
         response: {
-          200: {
-            description: "Registro de auditoria criado com sucesso.",
-            ...AuditoriaSchema,
-          },
-          400: {
-            description: "`acao` ausente ou com menos de 2 caracteres.",
-            ...ValidationErrorSchema,
-          },
-          401: {
-            description: "Token de acesso ausente, malformado, inválido ou expirado.",
-            ...UnauthorizedErrorSchema,
-          },
-          403: {
-            description: "Usuário autenticado, mas sem papel ADMINISTRADOR.",
-            ...ForbiddenErrorSchema,
-          },
+          201: AuditLogSchema,
+          400: ProblemSchema,
+          401: ProblemSchema,
+          403: ProblemSchema,
+          500: ProblemSchema,
         },
       },
     },
-    controller.registrar
+    controller.registrar,
   );
 }

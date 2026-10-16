@@ -1,145 +1,91 @@
-import { FastifyRequest, FastifyReply } from 'fastify'
-import { buildRouteValidator } from '../../utils/zod-helpers'
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { ApiError, parseOrThrow, toCollection, toResource, viewerFrom } from "../../hateoas";
 import {
+  ParamsWithIdSchema,
   SugestaoCreateSchema,
   SugestaoListSchema,
-  ParamsWithIdSchema,
   SugestaoResponderSchema,
-} from '../../validators/sugestoes'
+} from "../../validators/sugestoes";
+import {
+  buildSuggestionCollectionLinks,
+  buildSuggestionLinks,
+  suggestionSelfHref,
+} from "./sugestoes.hateoas";
 import {
   createSugestao,
-  listSugestoes,
   getSugestaoById,
+  listSugestoes,
   responderSugestao,
-} from './sugestoes.service'
+} from "./sugestoes.service";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
+const SUGGESTIONS = "/sugestoes";
 
-const createValidator = buildRouteValidator({ body: SugestaoCreateSchema.shape.body })
-const listValidator = buildRouteValidator({ query: SugestaoListSchema.shape.query })
-const idValidator = buildRouteValidator({ params: ParamsWithIdSchema.shape.params })
-const responderValidator = buildRouteValidator({
-  params: SugestaoResponderSchema.shape.params,
-  body: SugestaoResponderSchema.shape.body,
-})
-
-/* ============ POST /sugestoes ============ */
-export async function create(req: FastifyRequest, res: FastifyReply) {
-  const parsed = createValidator.parse(req)
-  if ('error' in parsed) {
-    await res.code(400).send(parsed.error)
-    return
-  }
-
-  const prisma = req.server.prisma
-  const usuarioId = req.user?.sub as string | undefined
-
-  try {
-    if (!usuarioId) {
-      await res.code(401).send({ error: 'Não autenticado' })
-      return
-    }
-
-    const sugestao = await createSugestao(prisma, parsed.data!.body!, { usuarioId })
-    await res.code(201).send(sugestao)
-  } catch (e) {
-    req.log.error({ e }, '💥 Erro ao criar sugestão')
-    await res.code(500).send({ error: errMsg(e) })
-  }
+function requireViewer(req: FastifyRequest) {
+  const viewer = viewerFrom(req);
+  if (!viewer) throw new ApiError("unauthorized", "Não autenticado");
+  return viewer;
 }
 
-/* ============ GET /sugestoes ============ */
-/* Aluno: lista as próprias. Staff: lista todas (com filtro de status). */
-export async function list(req: FastifyRequest, res: FastifyReply) {
-  const parsed = listValidator.parse(req)
-  if ('error' in parsed) {
-    await res.code(400).send(parsed.error)
-    return
-  }
+export async function create(req: FastifyRequest, reply: FastifyReply) {
+  const viewer = requireViewer(req);
+  const { body } = parseOrThrow(SugestaoCreateSchema, { body: req.body });
+  const suggestion = await createSugestao(req.server.prisma, body, { usuarioId: viewer.id });
+  const resource = toResource(suggestion, buildSuggestionLinks(suggestion, viewer));
 
-  const prisma = req.server.prisma
-  const authUser = req.user as { sub: string; role?: string } | undefined
-  const usuarioId = authUser?.sub
-
-  try {
-    if (!usuarioId) {
-      await res.code(401).send({ error: 'Não autenticado' })
-      return
-    }
-
-    const result = await listSugestoes(prisma, parsed.data!.query!, {
-      usuarioId,
-      role: authUser?.role,
-    })
-    await res.send(result)
-  } catch (e) {
-    req.log.error({ e }, '💥 Erro ao listar sugestões')
-    await res.code(500).send({ error: errMsg(e) })
-  }
+  return reply
+    .header("Location", suggestionSelfHref(suggestion.id))
+    .code(201)
+    .send(resource);
 }
 
-/* ============ GET /sugestoes/:id ============ */
-export async function getOne(req: FastifyRequest, res: FastifyReply) {
-  const parsed = idValidator.parse(req)
-  if ('error' in parsed) {
-    await res.code(400).send(parsed.error)
-    return
-  }
+export async function list(req: FastifyRequest, reply: FastifyReply) {
+  const viewer = requireViewer(req);
+  const { query } = parseOrThrow(SugestaoListSchema, { query: req.query });
+  const result = await listSugestoes(req.server.prisma, query, {
+    usuarioId: viewer.id,
+    role: viewer.role,
+  });
 
-  const prisma = req.server.prisma
-  const authUser = req.user as { sub: string; role?: string } | undefined
-  const usuarioId = authUser?.sub
-
-  try {
-    if (!usuarioId) {
-      await res.code(401).send({ error: 'Não autenticado' })
-      return
-    }
-
-    const { id } = parsed.data!.params!
-    const sugestao = await getSugestaoById(prisma, id, { usuarioId, role: authUser?.role })
-    if (!sugestao) {
-      await res.code(404).send({ error: 'Sugestão não encontrada' })
-      return
-    }
-
-    await res.send(sugestao)
-  } catch (e) {
-    req.log.error({ e }, '💥 Erro ao buscar sugestão')
-    await res.code(500).send({ error: errMsg(e) })
-  }
+  return reply.send(
+    toCollection({
+      rel: "suggestions",
+      basePath: SUGGESTIONS,
+      items: result.items.map((suggestion) =>
+        toResource(suggestion, buildSuggestionLinks(suggestion, viewer)),
+      ),
+      page: result.page,
+      size: result.size,
+      total: result.total,
+      filters: { status: query.status },
+      links: buildSuggestionCollectionLinks(viewer),
+    }),
+  );
 }
 
-/* ============ PATCH /sugestoes/:id ============ */
-export async function responder(req: FastifyRequest, res: FastifyReply) {
-  const parsed = responderValidator.parse(req)
-  if ('error' in parsed) {
-    await res.code(400).send(parsed.error)
-    return
-  }
+export async function getOne(req: FastifyRequest, reply: FastifyReply) {
+  const viewer = requireViewer(req);
+  const { params } = parseOrThrow(ParamsWithIdSchema, { params: req.params });
+  const suggestion = await getSugestaoById(req.server.prisma, params.id, {
+    usuarioId: viewer.id,
+    role: viewer.role,
+  });
+  if (!suggestion) throw new ApiError("not-found", "Sugestão não encontrada");
 
-  const prisma = req.server.prisma
-  const staffId = req.user?.sub as string | undefined
+  return reply.send(toResource(suggestion, buildSuggestionLinks(suggestion, viewer)));
+}
 
-  try {
-    if (!staffId) {
-      await res.code(401).send({ error: 'Não autenticado' })
-      return
-    }
+export async function responder(req: FastifyRequest, reply: FastifyReply) {
+  const viewer = requireViewer(req);
+  const { params, body } = parseOrThrow(SugestaoResponderSchema, {
+    params: req.params,
+    body: req.body,
+  });
+  const suggestion = await responderSugestao(
+    req.server.prisma,
+    params.id,
+    body,
+    { staffId: viewer.id },
+  );
 
-    const { id } = parsed.data!.params!
-    const atualizada = await responderSugestao(prisma, id, parsed.data!.body!, { staffId })
-    await res.send(atualizada)
-  } catch (e: any) {
-    if (e?.code === 'NOT_FOUND') {
-      await res.code(404).send({ error: 'Sugestão não encontrada' })
-      return
-    }
-    if (e?.code === 'LOCKED') {
-      await res.code(409).send({ error: errMsg(e) })
-      return
-    }
-    req.log.error({ e }, '💥 Erro ao responder sugestão')
-    await res.code(500).send({ error: errMsg(e) })
-  }
+  return reply.send(toResource(suggestion, buildSuggestionLinks(suggestion, viewer)));
 }

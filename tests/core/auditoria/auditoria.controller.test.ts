@@ -1,96 +1,74 @@
-import { vi, describe, it, expect } from 'vitest'
-import { AuditoriaController } from '../../../src/core/auditoria/auditoria.controller'
-import { log } from 'console'
+import { describe, expect, it, vi } from "vitest";
+import { AuditoriaController } from "../../../src/core/auditoria/auditoria.controller";
 
-describe('AuditoriaController-test', () => {
-    it('deve listar todos os logs de auditoria', async () => {
-        const fakeService: any = {
-            listar: vi.fn().mockResolvedValue([
-                { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
-            ])
-        }
+const admin = { id: "admin-1", role: "ADMINISTRADOR" };
 
-        const controller = new AuditoriaController(fakeService)
+describe("AuditoriaController", () => {
+  it("devolve a lista como coleção HAL paginada com links", async () => {
+    const logs = [{ id: "log-1", feitoPorId: "user-1", acao: "LOGIN_SUCESSO" }];
+    const service = { listar: vi.fn().mockResolvedValue({ total: 1, items: logs }) };
+    const controller = new AuditoriaController(service as never);
+    const request = {
+      query: { page: "0", size: "20", userId: "user-1" },
+      user: admin,
+    } as never;
+    const reply = { send: vi.fn() } as never;
 
-        const mockRequest: any = {}
-        const mockReply: any = { code: vi.fn().mockReturnThis, send: vi.fn() }
+    await controller.listar(request, reply);
 
-        await controller.listar(mockRequest, mockReply)
+    expect(service.listar).toHaveBeenCalledWith({
+      page: 0,
+      size: 20,
+      userId: "user-1",
+    });
+    expect(reply.send).toHaveBeenCalledWith({
+      _embedded: {
+        "audit-logs": [
+          {
+            ...logs[0],
+            _links: {
+              collection: { href: "/admin/audit-logs", method: "GET" },
+              actor: { href: "/usuarios/user-1", method: "GET" },
+            },
+          },
+        ],
+      },
+      page: { size: 20, number: 0, totalElements: 1, totalPages: 1 },
+      _links: {
+        self: { href: "/admin/audit-logs?page=0&size=20&userId=user-1", method: "GET" },
+        first: { href: "/admin/audit-logs?page=0&size=20&userId=user-1", method: "GET" },
+        last: { href: "/admin/audit-logs?page=0&size=20&userId=user-1", method: "GET" },
+        create: { href: "/admin/audit-logs", method: "POST" },
+      },
+    });
+  });
 
-        expect(fakeService.listar).toHaveBeenCalled()
+  it("devolve o registro criado como recurso com links", async () => {
+    const log = { id: "log-1", feitoPorId: null };
+    const service = { registrar: vi.fn().mockResolvedValue(log) };
+    const controller = new AuditoriaController(service as never);
+    const request = { body: { acao: "LOGIN_SUCESSO" }, user: admin } as never;
+    const reply = { code: vi.fn().mockReturnThis(), send: vi.fn() } as never;
 
-        expect(mockReply.send).toHaveBeenCalledWith([
-            { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
-        ])
-    })
+    await controller.registrar(request, reply);
 
-    it('deve listar os logs de auditoria por usuário', async () => {
-        const fakeService: any = {
-            listarPorUsuario: vi.fn().mockResolvedValue([
-                { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
-            ])
-        }
-        const controller = new AuditoriaController(fakeService)
+    expect(service.registrar).toHaveBeenCalledWith(request.body);
+    expect(reply.code).toHaveBeenCalledWith(201);
+    expect(reply.send).toHaveBeenCalledWith({
+      ...log,
+      _links: { collection: { href: "/admin/audit-logs", method: "GET" } },
+    });
+  });
 
-        const mockRequest: any = { params: { id: 'user-admin-88' } }
-        const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() }
+  it("rejeita query inválida em vez de montar uma coleção incorreta", async () => {
+    const service = { listar: vi.fn() };
+    const controller = new AuditoriaController(service as never);
+    const request = {
+      query: { page: "-1", size: "20" },
+      user: admin,
+    } as never;
 
-        await controller.listarPorUsuario(mockRequest, mockReply)
-
-        expect(fakeService.listarPorUsuario).toHaveBeenCalledWith('user-admin-88')
-
-        expect(mockReply.send).toHaveBeenCalledWith([
-            { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
-        ])
-    })
-
-
-    it('Deve listar os logs de auditoria por periodo', async () => {
-
-        const fakeService: any = {
-            listarPorPeriodo: vi.fn().mockResolvedValue([
-                { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
-            ])
-        }
-        const controller = new AuditoriaController(fakeService)
-
-        const mockRequest: any = { query: { inicio: '2026-01-01', fim: '2026-01-31' } }
-        const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() }
-
-        await controller.listarPorPeriodo(mockRequest, mockReply)
-
-        expect(fakeService.listarPorPeriodo).toHaveBeenCalledWith(
-            new Date('2026-01-01'),
-            new Date('2026-01-31')
-        )
-
-
-        expect(mockReply.send).toHaveBeenCalledWith([
-            { id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
-        ])
-
-    })
-
-
-    it('deve registrar um novo log de auditoria', async () => {
-        const fakeService: any = {
-            registrar: vi.fn().mockResolvedValue({ id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' })
-        }
-
-        const controller = new AuditoriaController(fakeService)
-
-        const mockRequest: any = {
-            body: { acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' }
-        }
-        const mockReply: any = { code: vi.fn().mockReturnThis(), send: vi.fn() }
-
-        await controller.registrar(mockRequest, mockReply)
-
-        expect(fakeService.registrar).toHaveBeenCalledWith(mockRequest.body)
-
-        expect(mockReply.code).toHaveBeenCalledWith(201)
-        
-        expect(mockReply.send).toHaveBeenCalledWith({ id: '1', acao: 'CHAMADO_FECHADO', alvo: 'ticket-4521', feitoPorId: 'user-admin-88' })
-    })
-
-})
+    await expect(controller.listar(request, { send: vi.fn() } as never)).rejects.toThrow();
+    expect(service.listar).not.toHaveBeenCalled();
+  });
+});

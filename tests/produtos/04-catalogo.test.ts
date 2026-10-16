@@ -47,6 +47,9 @@ describe('GET /catalogo', () => {
     expect(res.statusCode).toBe(200)
     const body = res.json()
     expect(body).toHaveProperty('categorias')
+    expect(body._links).toEqual({
+      self: { href: '/catalogo', method: 'GET' },
+    })
     expect(body.categorias).toHaveLength(1)
     expect(body.categorias[0]).toMatchObject({
       id: IDS.categoria,
@@ -65,7 +68,10 @@ describe('GET /catalogo', () => {
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ categorias: [] })
+    expect(res.json()).toEqual({
+      categorias: [],
+      _links: { self: { href: '/catalogo', method: 'GET' } },
+    })
   })
 
   it('200 — múltiplas categorias retornadas em ordem alfabética', async () => {
@@ -85,6 +91,7 @@ describe('GET /catalogo', () => {
 
   it('não requer autenticação — catálogo é público', async () => {
     prismaMock.categoria.findMany.mockResolvedValueOnce([makeCategoria()])
+    prismaMock.categoria.findMany.mockResolvedValueOnce([makeCategoria()])
 
     const resWithAuth = await app.inject({
       method: 'GET',
@@ -95,5 +102,20 @@ describe('GET /catalogo', () => {
 
     expect(resWithAuth.statusCode).toBe(200)
     expect(resWithoutAuth.statusCode).toBe(200)
+  })
+
+  it('devolve erros inesperados no formato RFC 7807 sem expor a mensagem interna', async () => {
+    prismaMock.categoria.findMany.mockRejectedValueOnce(new Error('database password leaked'))
+
+    const res = await app.inject({ method: 'GET', url: '/catalogo' })
+
+    expect(res.statusCode).toBe(500)
+    expect(res.headers['content-type']).toContain('application/problem+json')
+    expect(res.json()).toMatchObject({
+      type: '/errors/internal',
+      status: 500,
+      instance: '/catalogo',
+    })
+    expect(res.json()).not.toHaveProperty('detail', 'database password leaked')
   })
 })

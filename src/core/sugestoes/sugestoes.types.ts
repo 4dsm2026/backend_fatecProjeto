@@ -6,8 +6,8 @@ export type SugestaoCreateInput = {
 }
 
 export type SugestoesListQuery = {
-  page?: number
-  pageSize?: number
+  page: number
+  size: number
   status?: StatusSugestao
 }
 

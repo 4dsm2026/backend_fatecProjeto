@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PaginationQuerySchema } from '../hateoas'
 
 export const SUGESTAO_CONTEUDO_MAX = 1000
 export const SUGESTAO_RESPOSTA_MAX = 1000
@@ -20,9 +21,7 @@ export const SugestaoCreateSchema = z.object({
 })
 
 export const SugestaoListSchema = z.object({
-  query: z.object({
-    page: z.coerce.number().int().min(1).default(1).optional(),
-    pageSize: z.coerce.number().int().min(1).max(100).default(20).optional(),
+  query: PaginationQuerySchema.extend({
     status: z.enum(['NAO_RESPONDIDO', 'RESPONDIDO']).optional(),
   }),
 })

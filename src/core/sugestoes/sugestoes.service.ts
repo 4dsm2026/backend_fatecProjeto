@@ -1,10 +1,9 @@
 import { PrismaClient } from '@prisma/client'
+import { ApiError } from '../../hateoas'
+import { toSkipTake } from '../../hateoas'
 import { SugestaoCreateInput, SugestaoResponderInput, SugestoesListQuery } from './sugestoes.types'
 
 type Ctx = PrismaClient
-
-const MAX_PAGE_SIZE = 100
-const DEFAULT_PAGE_SIZE = 20
 
 const STAFF_ROLES = ['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO']
 export function isStaffRole(role?: string) {
@@ -17,7 +16,7 @@ export async function createSugestao(
   opts: { usuarioId?: string },
 ) {
   const { usuarioId } = opts
-  if (!usuarioId) throw Object.assign(new Error('Não autenticado'), { code: 'UNAUTH' })
+  if (!usuarioId) throw new ApiError('unauthorized', 'Não autenticado')
 
   return prisma.sugestao.create({
     data: {
@@ -37,8 +36,8 @@ export async function listSugestoes(
   query: SugestoesListQuery,
   opts: { usuarioId: string; role?: string },
 ) {
-  const page = query.page ?? 1
-  const pageSize = Math.min(query.pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
+  const { page, size } = query
+  const { skip, take } = toSkipTake(query)
   const staff = isStaffRole(opts.role)
 
   const where = {
@@ -51,15 +50,15 @@ export async function listSugestoes(
     prisma.sugestao.findMany({
       where,
       orderBy: { criadoEm: 'desc' },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      skip,
+      take,
       include: staff
         ? { usuario: { select: { id: true, nome: true, ra: true } } }
         : undefined,
     }),
   ])
 
-  return { total, page, pageSize, items }
+  return { total, page, size, items }
 }
 
 export async function getSugestaoById(
@@ -91,19 +90,21 @@ export async function responderSugestao(
     where: { id },
     select: { status: true, resposta: true },
   })
-  if (!atual) throw Object.assign(new Error('Sugestão não encontrada'), { code: 'NOT_FOUND' })
+  if (!atual) throw new ApiError('not-found', 'Sugestão não encontrada')
 
   if (atual.status === 'RESPONDIDO') {
-    throw Object.assign(
-      new Error('Sugestão já respondida: resposta e status não podem mais ser alterados'),
-      { code: 'LOCKED' },
+    throw new ApiError(
+      'conflict',
+      'Sugestão já respondida',
+      'Resposta e status não podem mais ser alterados',
     )
   }
 
   if (data.resposta !== undefined && atual.resposta) {
-    throw Object.assign(
-      new Error('A resposta já foi salva e não pode ser editada'),
-      { code: 'LOCKED' },
+    throw new ApiError(
+      'conflict',
+      'A resposta já foi salva',
+      'A resposta não pode ser editada',
     )
   }
 
