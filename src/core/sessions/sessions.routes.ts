@@ -2,6 +2,15 @@
 import type { FastifyInstance } from "fastify";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 import { deleteCurrentSession, getCurrentSession, getCurrentUser } from "./sessions.controller";
+import { postSession } from "./sessions.login";
+
+const LinkSchema = {
+  type: "object",
+  properties: {
+    href: { type: "string", example: "/users/me" },
+    method: { type: "string", example: "GET" },
+  },
+} as const;
 
 const ProblemSchema = {
   type: "object",
@@ -14,14 +23,19 @@ const ProblemSchema = {
     status: { type: "integer", example: 401 },
     detail: { type: "string" },
     instance: { type: "string", example: "/sessions/current" },
-  },
-} as const;
-
-const LinkSchema = {
-  type: "object",
-  properties: {
-    href: { type: "string", example: "/users/me" },
-    method: { type: "string", example: "GET" },
+    errors: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          field: { type: "string" },
+          message: { type: "string" },
+        },
+      },
+    },
+    attemptsLeft: { type: "integer" },
+    retryAfter: { type: "integer" },
+    _links: { type: "object", additionalProperties: LinkSchema },
   },
 } as const;
 
@@ -30,11 +44,11 @@ const problem = (description: string) => ({ ...ProblemSchema, description });
 export default async function sessionsRoutes(app: FastifyInstance) {
   // O `schema` abaixo só alimenta o Swagger; a lógica real fica nos controllers.
   useDocsOnlySchemas(app);
-  app.addHook("preHandler", app.authenticate as any);
 
   app.get(
     "/sessions/current",
     {
+      preHandler: [app.authenticate],
       schema: {
         tags: ["Sessions"],
         summary: "Sessão atual",
@@ -67,6 +81,7 @@ export default async function sessionsRoutes(app: FastifyInstance) {
   app.delete(
     "/sessions/current",
     {
+      preHandler: [app.authenticate],
       schema: {
         tags: ["Sessions"],
         summary: "Encerrar a sessão atual (logout)",
@@ -86,6 +101,7 @@ export default async function sessionsRoutes(app: FastifyInstance) {
   app.get(
     "/users/me",
     {
+      preHandler: [app.authenticate],
       schema: {
         tags: ["Users"],
         summary: "Usuário logado",
@@ -107,5 +123,86 @@ export default async function sessionsRoutes(app: FastifyInstance) {
       },
     },
     getCurrentUser,
+  );
+
+  app.post(
+    "/sessions",
+    {
+      schema: {
+        tags: ["Sessions"],
+        summary: "Criar sessão (login)",
+        description:
+          "Endpoint público. Autentica com exatamente um identificador (`email` ou `ra`) e senha. " +
+          "Após cinco senhas incorretas, a tentativa que causa o bloqueio ainda responde 401; " +
+          "somente a tentativa seguinte responde 429 com `Retry-After`. Se for necessário trocar " +
+          "a senha no primeiro acesso, responde 403 com `type: /errors/password-change-required` " +
+          "e o link `activate`.",
+        security: [],
+        body: {
+          description: "Informe `email` ou `ra`, mas não ambos. A senha é obrigatória.",
+          oneOf: [
+            {
+              type: "object",
+              title: "LoginPorEmail",
+              required: ["email", "password"],
+              not: { required: ["ra"] },
+              properties: {
+                email: { type: "string", format: "email" },
+                password: { type: "string", minLength: 8 },
+              },
+            },
+            {
+              type: "object",
+              title: "LoginPorRA",
+              required: ["ra", "password"],
+              not: { required: ["email"] },
+              properties: {
+                ra: { type: "string" },
+                password: { type: "string", minLength: 8 },
+              },
+            },
+          ],
+        },
+        response: {
+          201: {
+            description: "Sessão criada",
+            headers: {
+              Location: { schema: { type: "string", example: "/sessions/current" } },
+              "Cache-Control": { schema: { type: "string", example: "no-store" } },
+            },
+            type: "object",
+            required: ["user", "accessToken", "refreshToken", "_links"],
+            properties: {
+              user: {
+                type: "object",
+                required: ["id", "nome", "ra", "papel", "emailPessoal", "ativo", "precisaTrocarSenha"],
+                properties: {
+                  id: { type: "string" },
+                  nome: { type: "string" },
+                  ra: { type: "string", nullable: true },
+                  papel: { type: "string" },
+                  emailPessoal: { type: "string", nullable: true },
+                  ativo: { type: "boolean" },
+                  precisaTrocarSenha: { type: "boolean" },
+                },
+              },
+              accessToken: { type: "string" },
+              refreshToken: { type: "string" },
+              _links: { type: "object", additionalProperties: LinkSchema },
+            },
+          },
+          400: problem("Corpo inválido"),
+          401: problem("Credenciais inválidas; pode incluir `attemptsLeft`"),
+          403: problem("Usuário inativo ou troca de senha obrigatória no primeiro acesso"),
+          429: {
+            ...problem("Conta bloqueada; informa `Retry-After` e `retryAfter`"),
+            headers: {
+              "Retry-After": { schema: { type: "integer", example: 900 } },
+            },
+          },
+        },
+      },
+    },
+    postSession,
   );
 }

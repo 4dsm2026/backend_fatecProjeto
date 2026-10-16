@@ -33,7 +33,7 @@ import {
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /* ===================== CONFIG ===================== */
-const MAX_LOGIN_ATTEMPTS = 5;
+export const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 const DEFAULT_ACCESS_EXPIRES = 15 * 60;
 
@@ -54,7 +54,7 @@ function parseExpires(v?: string | number) {
 }
 
 /* ===================== Cookies helper ===================== */
-function setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
+export function setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: string) {
   const r = res as any;
   if (typeof r.setCookie !== "function") {
     try {
@@ -80,7 +80,7 @@ function setAuthCookies(res: FastifyReply, accessToken: string, refreshToken: st
 }
 
 /* ===================== Helpers de bloqueio ===================== */
-const checkAccountLock = async (prisma: any, user: any) => {
+export const checkAccountLock = async (prisma: any, user: any) => {
   if (!user.lockedUntil) return false;
   if (user.lockedUntil < new Date()) {
     await prisma.usuario.update({
@@ -92,7 +92,7 @@ const checkAccountLock = async (prisma: any, user: any) => {
   return true;
 };
 
-const recordFailedAttempt = async (
+export const recordFailedAttempt = async (
   prisma: any,
   userId: string,
   email: string,
@@ -124,7 +124,7 @@ const recordFailedAttempt = async (
   return updatedUser;
 };
 
-const resetLoginAttempts = async (
+export const resetLoginAttempts = async (
   prisma: any,
   userId: string,
   email: string,
