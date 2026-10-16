@@ -62,9 +62,20 @@ export const SugestaoResponderSchema = z.object({
           `A resposta deve ter no máximo ${SUGESTAO_RESPOSTA_MAX} caracteres`,
         )
         .optional(),
+      respostaDocumento: SugestaoDocumentoSchema.optional(),
       status: z.enum(['NAO_RESPONDIDO', 'RESPONDIDO']).optional(),
     })
     .refine((d) => d.resposta !== undefined || d.status !== undefined, {
       message: 'Informe ao menos a resposta ou o status',
+    })
+    .refine((d) => d.respostaDocumento === undefined || d.resposta !== undefined, {
+      message: 'Informe o texto junto com o documento da resposta',
+      path: ['respostaDocumento'],
+    })
+    .refine((d) =>
+      d.respostaDocumento === undefined ||
+      extrairTextoDocumento(d.respostaDocumento).trim().length > 0, {
+      message: 'A resposta deve conter texto',
+      path: ['respostaDocumento'],
     }),
 })

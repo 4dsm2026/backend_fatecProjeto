@@ -536,6 +536,7 @@ model Sugestao {
     documento    Json?
   status       StatusSugestao @default(NAO_RESPONDIDO)
   resposta     String?        @db.VarChar(1000)
+  respostaDocumento Json?
   criadoEm     DateTime       @default(now())
 
   respondidoPorId String?

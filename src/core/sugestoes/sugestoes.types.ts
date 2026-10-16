@@ -16,5 +16,6 @@ export type SugestoesListQuery = {
 
 export type SugestaoResponderInput = {
   resposta?: string
+  respostaDocumento?: SugestaoDocumento
   status?: StatusSugestao
 }

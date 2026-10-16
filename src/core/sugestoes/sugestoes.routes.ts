@@ -20,7 +20,10 @@ export async function sugestoesRoutes(app: FastifyInstance) {
   // PATCH /sugestoes/:id — somente professor/funcionário (nunca o aluno)
   app.patch(
     '/:id',
-    { preHandler: (app as any).authorize(['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO']) },
+    {
+      bodyLimit: 10 * 1024 * 1024,
+      preHandler: (app as any).authorize(['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO']),
+    },
     responder,
   )
 }

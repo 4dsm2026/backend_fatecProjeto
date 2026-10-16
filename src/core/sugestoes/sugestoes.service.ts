@@ -134,6 +134,7 @@ export async function responderSugestao(
     where: { id },
     data: {
       ...(data.resposta !== undefined ? { resposta: data.resposta } : {}),
+      ...(data.respostaDocumento !== undefined ? { respostaDocumento: data.respostaDocumento } : {}),
       ...(data.status !== undefined ? { status: data.status } : {}),
       respondidoPorId: opts.staffId,
       respondidoEm: new Date(),
