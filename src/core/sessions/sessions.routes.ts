@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 import { deleteCurrentSession, getCurrentSession, getCurrentUser } from "./sessions.controller";
 import { postSession } from "./sessions.login";
+import { postToken } from "./sessions.tokens";
 
 const LinkSchema = {
   type: "object",
@@ -204,5 +205,50 @@ export default async function sessionsRoutes(app: FastifyInstance) {
       },
     },
     postSession,
+  );
+
+  app.post(
+    "/tokens",
+    {
+      schema: {
+        tags: ["Sessions"],
+        summary: "Renovar o acesso (novo access token)",
+        description:
+          "Endpoint público: a credencial é o refresh token enviado no corpo. " +
+          "O refresh token é rotacionado e o anterior deixa de valer. Responde 401 " +
+          "se o refresh token estiver inválido, revogado ou expirado, ou se o usuário " +
+          "estiver inativo, apagado ou não existir.",
+        security: [],
+        body: {
+          type: "object",
+          required: ["refreshToken"],
+          properties: {
+            refreshToken: { type: "string", minLength: 20 },
+          },
+        },
+        response: {
+          201: {
+            description: "Tokens renovados e refresh token rotacionado",
+            headers: {
+              "Cache-Control": {
+                type: "string",
+                description: "Resposta com tokens: nunca vai para cache.",
+                example: "no-store",
+              },
+            },
+            type: "object",
+            required: ["accessToken", "refreshToken", "_links"],
+            properties: {
+              accessToken: { type: "string" },
+              refreshToken: { type: "string" },
+              _links: { type: "object", additionalProperties: LinkSchema },
+            },
+          },
+          400: problem("Corpo inválido"),
+          401: problem("Refresh token inválido, revogado ou expirado"),
+        },
+      },
+    },
+    postToken,
   );
 }
