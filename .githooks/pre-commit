@@ -1,0 +1,30 @@
+#!/bin/sh
+# Impede o commit de arquivos grandes (> 5 MB) e de arquivos de ambiente (.env).
+# Guia: https://github.com/4dsm2026/.github/blob/main/CONTRIBUTING.md#8-documentação-e-testes
+
+limite=$((5 * 1024 * 1024))
+
+problemas=$(git diff --cached --name-only --diff-filter=AM | while IFS= read -r arquivo; do
+  case "$arquivo" in
+    (*.example | *.sample) ;;
+    (.env | */.env | .env.* | */.env.*) echo "    $arquivo  (arquivo de ambiente)" ;;
+  esac
+  tamanho=$(git cat-file -s ":$arquivo" 2>/dev/null || echo 0)
+  if [ "$tamanho" -gt "$limite" ]; then
+    echo "    $arquivo  ($((tamanho / 1024 / 1024)) MB)"
+  fi
+done)
+
+if [ -n "$problemas" ]; then
+  cat >&2 <<EOF
+
+✖ Commit bloqueado:
+$problemas
+
+  - Vídeos, .zip e PDFs grandes: anexe na Release ou no PR e coloque o link na documentação.
+  - Segredos: nunca faça commit de .env. Use o .env.example, sem valores reais.
+
+EOF
+  exit 1
+fi
+exit 0
