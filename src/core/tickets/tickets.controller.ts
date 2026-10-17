@@ -97,10 +97,13 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
       "cliente", "contrato", "servico", "setor", "responsavel", "criadoPor", "historico",
     ]);
 
-    if (!ticket)
+     if (!ticket)
       return sendNotFound(res, "Chamado");
 
-    await res.send(ticket);
+    const viewer = { id: authUser.sub, role: authUser.role as Role };
+    await res.send(toTicketResource(ticket, viewer));
+
+    
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao buscar ticket");
     await res.code(500).send({ error: errMsg(e) });
