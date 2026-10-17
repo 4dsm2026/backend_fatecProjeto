@@ -1,171 +1,190 @@
-import { FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import * as ctl from "./comunicacoes.controller";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 
-// ----- Fragmentos reutilizáveis -----
+const TAG = "Admin - Comunicações";
 
-// Corpo devolvido por formatZodError quando o validador rejeita a
-// requisição por falha de schema (mesmo formato usado em todo o projeto).
-const ValidationErrorSchema = {
+const ComunicacaoTemplateSchema = {
   type: "object",
-  title: "ErroDeValidacaoDeSchema",
-  required: ["message", "issues"],
+  title: "ComunicacaoTemplate",
+  required: ["id", "chave", "nome", "habilitado", "assunto", "corpo", "criadoEm", "atualizadoEm"],
   properties: {
-    message: { type: "string", example: "Validação falhou" },
-    issues: {
+    id: { type: "string" },
+    chave: { type: "string", minLength: 1, maxLength: 64 },
+    nome: { type: "string", maxLength: 160 },
+    descricao: { type: "string", nullable: true, maxLength: 500 },
+    habilitado: { type: "boolean", default: true },
+    assunto: { type: "string", maxLength: 500 },
+    corpo: { type: "string", description: "Máximo de 65.535 bytes em UTF-8." },
+    variaveis: { type: "array", nullable: true, items: { type: "string" } },
+    criadoEm: { type: "string", format: "date-time" },
+    atualizadoEm: { type: "string", format: "date-time" },
+  },
+} as const;
+
+const LinkSchema = {
+  type: "object",
+  required: ["href", "method"],
+  properties: {
+    href: { type: "string" },
+    method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+  },
+} as const;
+
+const LinksSchema = {
+  type: "object",
+  additionalProperties: { oneOf: [LinkSchema, { type: "array", items: LinkSchema }] },
+} as const;
+
+const ProblemSchema = {
+  type: "object",
+  required: ["type", "title", "status", "instance"],
+  properties: {
+    type: { type: "string" },
+    title: { type: "string" },
+    status: { type: "integer" },
+    detail: { type: "string" },
+    instance: { type: "string" },
+    errors: {
       type: "array",
       items: {
         type: "object",
-        properties: {
-          path: { type: "string", example: "nome" },
-          message: { type: "string", example: "Campo obrigatório" },
-          code: { type: "string", example: "too_small" },
-        },
+        required: ["field", "message"],
+        properties: { field: { type: "string" }, message: { type: "string" } },
       },
     },
   },
 } as const;
 
-// Corpo enviado pelo preHandler `app.authorize(['ADMINISTRADOR'])` quando o
-// usuário está autenticado, mas não tem papel de administrador.
-const ForbiddenErrorSchema = {
+const ComunicacaoResourceSchema = {
+  ...ComunicacaoTemplateSchema,
+  required: [...ComunicacaoTemplateSchema.required, "_links"],
+  properties: { ...ComunicacaoTemplateSchema.properties, _links: LinksSchema },
+} as const;
+
+const ComunicacoesCollectionSchema = {
   type: "object",
-  title: "ErroSemPermissao",
+  required: ["_embedded", "page", "_links"],
   properties: {
-    error: { type: "string", example: "Acesso negado" },
+    _embedded: {
+      type: "object",
+      required: ["communication-templates"],
+      properties: {
+        "communication-templates": { type: "array", items: ComunicacaoResourceSchema },
+      },
+    },
+    page: {
+      type: "object",
+      required: ["size", "number", "totalElements", "totalPages"],
+      properties: {
+        size: { type: "integer" },
+        number: { type: "integer" },
+        totalElements: { type: "integer" },
+        totalPages: { type: "integer" },
+      },
+    },
+    _links: LinksSchema,
   },
 } as const;
 
-// Espelha exatamente o que `listTemplates`/`upsertTemplate` retornam
-// (tabela comunicacaoTemplate) — ver src/core/comunicacoes/comunicacoes.service.ts.
-const ComunicacaoTemplateSchema = {
-  type: "object",
-  title: "ComunicacaoTemplate",
-  properties: {
-    chave: { type: "string", description: "Identificador único do template.", example: "boas-vindas" },
-    nome: { type: "string", example: "E-mail de boas-vindas" },
-    descricao: { type: "string", nullable: true },
-    habilitado: { type: "boolean", default: true },
-    assunto: { type: "string" },
-    corpo: { type: "string", description: "Corpo do e-mail. Suporta variáveis (ver campo `variaveis`)." },
-    variaveis: {
-      type: "array",
-      items: { type: "string" },
-      description: "Nomes das variáveis que podem ser interpoladas no `assunto`/`corpo` (ex.: nome do usuário).",
-    },
-  },
+const ProblemResponses = {
+  400: { description: "Dados inválidos.", ...ProblemSchema },
+  401: { description: "Token ausente, inválido ou expirado.", ...ProblemSchema },
+  403: { description: "Apenas ADMINISTRADOR pode gerenciar templates.", ...ProblemSchema },
+  404: { description: "Template de comunicação não encontrado.", ...ProblemSchema },
+  409: { description: "Conflito ao persistir o template.", ...ProblemSchema },
+  429: { description: "Limite de requisições excedido.", ...ProblemSchema },
+  500: { description: "Erro inesperado.", ...ProblemSchema },
 } as const;
 
 export async function comunicacoesRoutes(app: FastifyInstance) {
   useDocsOnlySchemas(app);
 
   const handlers = {
-    preHandler: [app.authenticate, app.authorize(['ADMINISTRADOR'])],
+    preHandler: [app.authenticate, app.authorize(["ADMINISTRADOR"])],
   };
+  const security = [{ bearerAuth: [] }];
 
-  app.get('/comunicacoes', {
+  app.get("/communication-templates", {
     ...handlers,
     schema: {
-      tags: ['Admin - Comunicações'],
-      summary: 'Listar todos os templates de comunicação cadastrados',
-      description:
-        "Retorna todos os templates de e-mail persistidos no banco, ordenados " +
-        "por `chave` (ordem alfabética). O front mescla essa lista com um " +
-        "conjunto de templates padrão (default) que não são persistidos — " +
-        "esta rota devolve apenas os templates que já foram salvos ao menos " +
-        "uma vez via `PUT /comunicacoes/:chave`.\n\n" +
-        "**Restrito a administradores** — exige token válido " +
-        "(`app.authenticate`) E papel `ADMINISTRADOR` (`app.authorize`).",
-      security: [{ bearerAuth: [] }],
+      tags: [TAG],
+      summary: "Listar templates de comunicação",
+      description: "Retorna uma coleção HAL paginada de templates persistidos, ordenados por `chave`.",
+      security,
+      querystring: {
+        type: "object",
+        properties: {
+          page: { type: "integer", minimum: 0, default: 0 },
+          size: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+        },
+      },
       response: {
-        200: {
-          description: "Lista de templates persistidos.",
-          type: 'object',
-          properties: {
-            data: { type: 'array', items: ComunicacaoTemplateSchema }
-          }
-        },
-        401: {
-          description: 'Token de acesso ausente, malformado, inválido ou expirado.',
-          type: 'object',
-          properties: { error: { type: 'string', example: 'Não autorizado' } }
-        },
-        403: {
-          description: 'Usuário autenticado, mas sem papel ADMINISTRADOR.',
-          ...ForbiddenErrorSchema,
-        },
-        500: {
-          description: 'Erro inesperado ao listar os templates.',
-          type: 'object',
-          properties: { error: { type: 'string' } }
-        }
-      }
-    }
+        200: { description: "Coleção HAL paginada.", ...ComunicacoesCollectionSchema },
+        ...ProblemResponses,
+      },
+    },
   }, ctl.list);
 
-  app.put('/comunicacoes/:chave', {
+  app.get("/communication-templates/:chave", {
     ...handlers,
     schema: {
-      tags: ['Admin - Comunicações'],
-      summary: 'Criar ou atualizar um template de comunicação pela chave',
-      description:
-        "Operação de upsert: se já existir um template com essa `chave`, ele " +
-        "é atualizado por completo (todos os campos do corpo substituem os " +
-        "valores anteriores); se não existir, um novo template é criado com " +
-        "essa `chave`.\n\n" +
-        "**Restrito a administradores.**",
-      security: [{ bearerAuth: [] }],
+      tags: [TAG],
+      summary: "Buscar template de comunicação pela chave",
+      security,
       params: {
-        type: 'object',
-        required: ['chave'],
-        properties: {
-          chave: { type: 'string', example: 'boas-vindas', description: 'Identificador único do template.' }
-        }
-      },
-      body: {
-        type: 'object',
-        required: ['nome', 'assunto', 'corpo'],
-        properties: {
-          nome: { type: 'string', minLength: 1, maxLength: 160 },
-          descricao: { type: 'string', nullable: true, maxLength: 500 },
-          habilitado: { type: 'boolean', default: true },
-          assunto: { type: 'string', minLength: 1, maxLength: 500 },
-          corpo: { type: 'string', minLength: 1, description: 'Suporta variáveis interpoladas (ver `variaveis`).' },
-          variaveis: { type: 'array', items: { type: 'string' } },
-        }
+        type: "object",
+        required: ["chave"],
+        properties: { chave: { type: "string", minLength: 1, maxLength: 64 } },
       },
       response: {
-        200: {
-          description: 'Template salvo (criado ou atualizado).',
-          ...ComunicacaoTemplateSchema,
+        200: { description: "Recurso HAL de template.", ...ComunicacaoResourceSchema },
+        ...ProblemResponses,
+      },
+    },
+  }, ctl.getOne);
+
+  app.put("/communication-templates/:chave", {
+    ...handlers,
+    schema: {
+      tags: [TAG],
+      summary: "Criar ou atualizar template de comunicação pela chave",
+      description: "Criação retorna 201 com Location; atualização retorna 200.",
+      security,
+      params: {
+        type: "object",
+        required: ["chave"],
+        properties: { chave: { type: "string", minLength: 1, maxLength: 64 } },
+      },
+      body: {
+        type: "object",
+        required: ["nome", "assunto", "corpo"],
+        properties: {
+          nome: { type: "string", minLength: 1, maxLength: 160 },
+          descricao: { type: "string", nullable: true, maxLength: 500 },
+          habilitado: { type: "boolean", default: true },
+          assunto: { type: "string", minLength: 1, maxLength: 500 },
+          corpo: { type: "string", minLength: 1, description: "Máximo de 65.535 bytes em UTF-8." },
+          variaveis: { type: "array", items: { type: "string" } },
         },
-        400: {
-          description: 'Corpo ou parâmetro fora do schema (campo obrigatório ausente ou mal formatado).',
-          ...ValidationErrorSchema,
+      },
+      response: {
+        201: {
+          description: "Template criado como recurso HAL.",
+          headers: { Location: { type: "string", example: "/admin/communication-templates/boas-vindas" } },
+          ...ComunicacaoResourceSchema,
         },
-        401: {
-          description: 'Token de acesso ausente, malformado, inválido ou expirado.',
-          type: 'object',
-          properties: { error: { type: 'string', example: 'Não autorizado' } }
-        },
-        403: {
-          description: 'Usuário autenticado, mas sem papel ADMINISTRADOR.',
-          ...ForbiddenErrorSchema,
-        },
-        500: {
-          description: 'Erro inesperado ao salvar o template.',
-          type: 'object',
-          properties: { error: { type: 'string' } }
-        }
-      }
-    }
+        200: { description: "Template atualizado como recurso HAL.", ...ComunicacaoResourceSchema },
+        ...ProblemResponses,
+      },
+    },
   }, ctl.upsert);
 
-  app.post('/comunicacoes/teste', {
+  app.post('/communication-tests', {
     ...handlers,
     schema: {
       tags: ['Admin - Comunicações'],
-      summary: 'Enviar um e-mail de teste com assunto/corpo fornecidos',
+      summary: 'Enviar um teste de comunicação por e-mail',
       description:
         "Envia imediatamente um e-mail de teste para o destinatário `to`, " +
         "usando o `assunto`/`corpo` informados no corpo da requisição — não " +
@@ -179,33 +198,20 @@ export async function comunicacoesRoutes(app: FastifyInstance) {
         properties: {
           to: { type: 'string', format: 'email', description: 'E-mail de destino do teste.', example: 'teste@exemplo.com' },
           assunto: { type: 'string', minLength: 1, maxLength: 500 },
-          corpo: { type: 'string', minLength: 1 },
+          corpo: { type: 'string', minLength: 1, description: 'Máximo de 65.535 bytes em UTF-8.' },
         }
       },
       response: {
         200: {
           description: 'E-mail de teste enviado com sucesso.',
           type: 'object',
-          properties: { message: { type: 'string', example: 'E-mail de teste enviado para teste@exemplo.com' } }
+          required: ['message', '_links'],
+          properties: {
+            message: { type: 'string', example: 'E-mail de teste enviado para teste@exemplo.com' },
+            _links: LinksSchema,
+          }
         },
-        400: {
-          description: 'Corpo fora do schema (campo obrigatório ausente ou e-mail inválido).',
-          ...ValidationErrorSchema,
-        },
-        401: {
-          description: 'Token de acesso ausente, malformado, inválido ou expirado.',
-          type: 'object',
-          properties: { error: { type: 'string', example: 'Não autorizado' } }
-        },
-        403: {
-          description: 'Usuário autenticado, mas sem papel ADMINISTRADOR.',
-          ...ForbiddenErrorSchema,
-        },
-        502: {
-          description: 'Falha ao enviar o e-mail — erro reportado pelo provedor de e-mail configurado.',
-          type: 'object',
-          properties: { error: { type: 'string', description: 'Mensagem prefixada com "Falha ao enviar e-mail: ".' } }
-        }
+        ...ProblemResponses,
       }
     }
   }, ctl.enviarTeste);

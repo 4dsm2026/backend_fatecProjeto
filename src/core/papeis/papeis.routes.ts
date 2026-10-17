@@ -1,4 +1,4 @@
-import { FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import * as ctl from "./papeis.controller";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 
@@ -54,38 +54,89 @@ const papelBody = {
   },
 } as const;
 
+const LinkSchema = {
+  type: "object",
+  required: ["href", "method"],
+  properties: {
+    href: { type: "string" },
+    method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+  },
+} as const;
+
+const LinksSchema = {
+  type: "object",
+  additionalProperties: { oneOf: [LinkSchema, { type: "array", items: LinkSchema }] },
+} as const;
+
+const ProblemSchema = {
+  type: "object",
+  required: ["type", "title", "status", "instance"],
+  properties: {
+    type: { type: "string" },
+    title: { type: "string" },
+    status: { type: "integer" },
+    detail: { type: "string" },
+    instance: { type: "string" },
+    errors: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["field", "message"],
+        properties: { field: { type: "string" }, message: { type: "string" } },
+      },
+    },
+  },
+} as const;
+
+const PapelResourceSchema = {
+  type: "object",
+  required: ["id", "nome", "descricao", "_links"],
+  properties: { ...papelSchema.properties, _links: LinksSchema },
+} as const;
+
+const RolesCollectionSchema = {
+  type: "object",
+  required: ["_embedded", "page", "_links"],
+  properties: {
+    _embedded: {
+      type: "object",
+      required: ["roles"],
+      properties: { roles: { type: "array", items: PapelResourceSchema } },
+    },
+    page: {
+      type: "object",
+      required: ["size", "number", "totalElements", "totalPages"],
+      properties: {
+        size: { type: "integer" },
+        number: { type: "integer" },
+        totalElements: { type: "integer" },
+        totalPages: { type: "integer" },
+      },
+    },
+    _links: LinksSchema,
+  },
+} as const;
+
 const validationError = (
   description: string,
   pathExample: string,
   messageExample: string,
-  codeExample = "too_small",
 ) => ({
+  ...ProblemSchema,
   description,
-  type: "object",
-  required: ["message", "issues"],
   properties: {
-    message: { type: "string", example: "Validação falhou" },
-    issues: {
-      type: "array",
-      description: "Falhas encontradas pelo Zod. `path` identifica o campo, `message` explica a regra e `code` informa o código da validação.",
-      items: {
-        type: "object",
-        required: ["path", "message", "code"],
-        properties: {
-          path: { type: "string", example: pathExample },
-          message: { type: "string", example: messageExample },
-          code: { type: "string", example: codeExample },
-        },
-      },
+    ...ProblemSchema.properties,
+    errors: {
+      ...ProblemSchema.properties.errors,
+      example: [{ field: pathExample, message: messageExample }],
     },
   },
 });
 
 const errorResponse = (description: string, example: string) => ({
+  ...ProblemSchema,
   description,
-  type: "object",
-  required: ["error"],
-  properties: { error: { type: "string", example } },
+  properties: { ...ProblemSchema.properties, title: { type: "string", example } },
 });
 
 const RateLimitHeaders = {
@@ -104,6 +155,7 @@ const RateLimitHeaders = {
 } as const;
 
 const rateLimit429 = (endpointDescription: string) => ({
+  ...ProblemSchema,
   description:
     `${endpointDescription} A API aplica um limite global de 100 requisições por minuto ` +
     "por IP; os endereços de loopback 127.0.0.1 e ::1 estão na lista de exceção.",
@@ -112,17 +164,6 @@ const rateLimit429 = (endpointDescription: string) => ({
     "retry-after": {
       type: "integer",
       description: "Segundos que o cliente deve aguardar antes de repetir a requisição.",
-    },
-  },
-  type: "object",
-  required: ["statusCode", "error", "message"],
-  properties: {
-    statusCode: { type: "integer", example: 429 },
-    error: { type: "string", example: "Too Many Requests" },
-    message: {
-      type: "string",
-      description: "Mensagem informa quantos segundos faltam para o limite ser liberado.",
-      example: "Limite de requisições atingido. Tente novamente em 42s.",
     },
   },
 });
@@ -136,7 +177,7 @@ const forbidden = errorResponse(
   "Acesso negado",
 );
 const papelNotFound = errorResponse(
-  "O papel solicitado não existe. O corpo identifica o recurso não encontrado.",
+  "O papel solicitado não existe.",
   "Papel não encontrado",
 );
 const databaseError = (description: string, example: string) => errorResponse(description, example);
@@ -154,37 +195,40 @@ export async function papeisRoutes(app: FastifyInstance) {
 
   const security = [{ bearerAuth: [] }];
 
-  app.get('/papeis', {
+  app.get('/roles', {
     ...handlers,
     schema: {
       tags: [TAG],
       summary: "Listar papéis",
       description:
-        "Lista todos os papéis cadastrados no catálogo, ordenados alfabeticamente " +
-        "pelo nome. A resposta é um array; este endpoint não recebe parâmetros " +
-        "de paginação ou filtros.\n\n" +
+        "Lista os papéis do catálogo em uma coleção HAL paginada, ordenada alfabeticamente pelo nome.\n\n" +
         "Requer token Bearer válido e perfil `ADMINISTRADOR`.",
       security,
+      querystring: {
+        type: "object",
+        properties: {
+          page: { type: "integer", minimum: 0, default: 0 },
+          size: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+        },
+      },
       response: {
         200: {
-          description: "Lista retornada com sucesso; pode ser um array vazio se não houver papéis cadastrados.",
+          description: "Coleção HAL paginada de papéis.",
           headers: RateLimitHeaders,
-          type: "array",
-          items: papelSchema,
+          ...RolesCollectionSchema,
         },
         401: unauthorized,
         403: forbidden,
         429: rateLimit429("A listagem foi recusada antes do controller porque o cliente excedeu o limite global."),
         500: databaseError(
-          "Falha inesperada ao consultar o catálogo. O controller retorna `{ error }` " +
-          "com a mensagem da exceção do Prisma ou do banco de dados.",
-          "Mensagem da exceção ocorrida ao consultar o catálogo",
+          "Falha inesperada ao consultar o catálogo. Detalhes internos não são expostos.",
+          "Erro interno do servidor",
         ),
       },
     },
   }, ctl.list)
 
-  app.post('/papeis', {
+  app.post('/roles', {
     ...handlers,
     schema: {
       tags: [TAG],
@@ -199,31 +243,31 @@ export async function papeisRoutes(app: FastifyInstance) {
       body: { ...papelBody, required: ["nome"] },
       response: {
         201: {
-          description: "Papel criado com sucesso. Retorna o registro persistido, incluindo o ID gerado pelo Prisma.",
-          headers: RateLimitHeaders,
-          ...papelSchema,
+          description: "Papel criado como recurso HAL.",
+          headers: {
+            ...RateLimitHeaders,
+            Location: { type: "string", example: "/admin/roles/cm1234567890abcdef123456" },
+          },
+          ...PapelResourceSchema,
         },
         400: validationError(
-          "Falha na validação Zod do corpo. O formato é `{ message, issues }`; " +
+          "Falha na validação. O problem inclui `errors` com os campos inválidos; " +
           "por exemplo, quando `nome` está ausente ou tem menos de 2 caracteres.",
           "nome",
-          "Required",
-          "invalid_type",
+          "Obrigatório",
         ),
         401: unauthorized,
         403: forbidden,
         429: rateLimit429("A criação foi recusada antes do controller porque o cliente excedeu o limite global."),
         500: databaseError(
-          "Falha inesperada ao persistir o papel. Isso inclui falhas do banco e " +
-          "violação da unicidade de `nome`; o controller retorna `{ error }` " +
-          "com a mensagem da exceção, sem convertê-la em 409.",
-          "Mensagem da exceção ocorrida ao criar o papel",
+          "Falha inesperada ao persistir o papel. Detalhes internos não são expostos; nomes duplicados retornam 409.",
+          "Erro interno do servidor",
         ),
       },
     },
   }, ctl.create)
 
-  app.get('/papeis/:id', {
+  app.get('/roles/:id', {
     ...handlers,
     schema: {
       tags: [TAG],
@@ -236,12 +280,12 @@ export async function papeisRoutes(app: FastifyInstance) {
       params: idParams,
       response: {
         200: {
-          description: "Papel encontrado. Retorna `id`, `nome` e `descricao`.",
+          description: "Papel encontrado como recurso HAL.",
           headers: RateLimitHeaders,
-          ...papelSchema,
+          ...PapelResourceSchema,
         },
         400: validationError(
-          "Falha na validação Zod do parâmetro. O formato é `{ message, issues }`; " +
+          "Falha na validação do parâmetro; o problem inclui `errors` com os campos inválidos. " +
           "ocorre, por exemplo, se `id` for uma string vazia.",
           "id",
           "String must contain at least 1 character(s)",
@@ -251,15 +295,14 @@ export async function papeisRoutes(app: FastifyInstance) {
         404: papelNotFound,
         429: rateLimit429("A busca foi recusada antes do controller porque o cliente excedeu o limite global."),
         500: databaseError(
-          "Falha inesperada ao consultar o papel. O controller retorna `{ error }` " +
-          "com a mensagem da exceção do Prisma ou do banco de dados.",
-          "Mensagem da exceção ocorrida ao buscar o papel",
+          "Falha inesperada ao consultar o papel. Detalhes internos não são expostos.",
+          "Erro interno do servidor",
         ),
       },
     },
   }, ctl.getOne)
 
-  app.patch('/papeis/:id', {
+  app.patch('/roles/:id', {
     ...handlers,
     schema: {
       tags: [TAG],
@@ -275,13 +318,13 @@ export async function papeisRoutes(app: FastifyInstance) {
       body: papelBody,
       response: {
         200: {
-          description: "Papel atualizado com sucesso. Retorna o registro persistido com seus valores atuais.",
+          description: "Papel atualizado como recurso HAL.",
           headers: RateLimitHeaders,
-          ...papelSchema,
+          ...PapelResourceSchema,
         },
         400: validationError(
-          "Falha na validação Zod dos parâmetros ou do corpo. O formato é " +
-          "`{ message, issues }`; pode ocorrer se `id` for vazio, `nome` tiver " +
+          "Falha na validação dos parâmetros ou do corpo; o problem inclui `errors` com os campos inválidos. " +
+          "Pode ocorrer se `id` for vazio, `nome` tiver " +
           "menos de 2 caracteres ou `descricao` for uma string vazia.",
           "nome",
           "String must contain at least 2 character(s)",
@@ -291,16 +334,14 @@ export async function papeisRoutes(app: FastifyInstance) {
         404: papelNotFound,
         429: rateLimit429("A atualização foi recusada antes do controller porque o cliente excedeu o limite global."),
         500: databaseError(
-          "Falha inesperada ao atualizar o papel. Isso inclui falhas do banco e " +
-          "violação da unicidade de `nome`; o controller converte somente " +
-          "`P2025` em 404 e retorna os demais erros em `{ error }`.",
-          "Mensagem da exceção ocorrida ao atualizar o papel",
+          "Falha inesperada ao atualizar o papel. Detalhes internos não são expostos; nomes duplicados retornam 409.",
+          "Erro interno do servidor",
         ),
       },
     },
   }, ctl.patch)
 
-  app.delete('/papeis/:id', {
+  app.delete('/roles/:id', {
     ...handlers,
     schema: {
       tags: [TAG],
@@ -320,7 +361,7 @@ export async function papeisRoutes(app: FastifyInstance) {
           type: "null",
         },
         400: validationError(
-          "Falha na validação Zod do parâmetro. O formato é `{ message, issues }`; " +
+          "Falha na validação do parâmetro; o problem inclui `errors` com os campos inválidos. " +
           "ocorre, por exemplo, se `id` for uma string vazia.",
           "id",
           "String must contain at least 1 character(s)",
@@ -331,9 +372,8 @@ export async function papeisRoutes(app: FastifyInstance) {
         409: inUseConflict,
         429: rateLimit429("A exclusão foi recusada antes do controller porque o cliente excedeu o limite global."),
         500: databaseError(
-          "Falha inesperada ao verificar vínculos ou excluir o papel. O controller " +
-          "converte `P2025` em 404 e os demais erros em `{ error }`.",
-          "Mensagem da exceção ocorrida ao excluir o papel",
+          "Falha inesperada ao verificar vínculos ou excluir o papel. Detalhes internos não são expostos.",
+          "Erro interno do servidor",
         ),
       },
     },
