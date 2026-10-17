@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { create, getOne, list, patch, removeSoft, stats } from "./tickets.controller.js";
+import { create, getOne, list, patch, stats } from "./tickets.controller.js";
 import { ticketMessagesRoutes } from "../ticket-messages/messages.routes.js";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 
@@ -847,11 +847,16 @@ export async function ticketsRoutes(app: FastifyInstance) {
             slaDias: { type: "integer", minimum: 1, nullable: true, description: "SLA em dias." },
             vencimentoSla: { type: "string", format: "date-time", nullable: true, description: "Data/hora de vencimento do SLA." },
           },
+          arquivado: {
+            type: "boolean",
+            description: "`true` arquiva o chamado e `false` desarquiva (só ADMINISTRADOR).",
+          },
         },
         response: {
           200: {
-            description: "Chamado atualizado com sucesso. Retorna o registro completo atualizado.",
+            description: "Chamado atualizado com sucesso. Retorna o registro completo atualizado, com `_links`.",
             ...TicketBaseSchema,
+            properties: { ...TicketBaseSchema.properties, _links: HalLinksSchema },
           },
           400: {
             description:
@@ -865,6 +870,18 @@ export async function ticketsRoutes(app: FastifyInstance) {
             ...ValidationErrorSchema,
           },
           401: Unauthorized401WithSelfCheck,
+          403: {
+            description: "Sem permissão para a ação (não é da equipe, ou só o administrador arquiva).",
+            type: "object",
+            additionalProperties: true,
+          },
+          409: {
+            description:
+              "O estado do chamado não permite a ação: transição inválida, prazo de 30 dias " +
+              "para reabrir vencido, ou chamado arquivado.",
+            type: "object",
+            additionalProperties: true,
+          },
           404: NotFoundChamadoResponse,
           429: RateLimit429Response,
           500: {
@@ -880,64 +897,6 @@ export async function ticketsRoutes(app: FastifyInstance) {
       },
     },
     patch,
-  );
-
-  // DELETE /tickets/:id
-  app.delete(
-    "/:id",
-    {
-      schema: {
-        tags: ["Tickets"],
-        summary: "Remover um chamado (soft delete)",
-        description:
-          "Realiza soft delete no chamado — preenche `deletadoEm` com a data/hora " +
-          "atual, sem excluir o registro do banco. O chamado deixa de aparecer em " +
-          "listagens e buscas (filtrados por `deletadoEm = null`).\n\n" +
-          "**Regra de acesso anti-IDOR:** mesma regra de `GET /tickets/:id` — " +
-          "alunos só podem deletar os próprios chamados.\n\n" +
-          "**Auditoria:** um registro de auditoria (`DELETE_SOFT_CHAMADO`) é " +
-          "criado como efeito colateral assíncrono (fire-and-forget). Se falhar, " +
-          "o delete ainda é concluído normalmente.\n\n" +
-          "**Sem reversão via API:** não existe endpoint para reverter um soft " +
-          "delete — o campo `deletadoEm` só pode ser limpo diretamente no banco.",
-        params: {
-          type: "object",
-          required: ["id"],
-          properties: {
-            id: {
-              type: "string", minLength: 1,
-              description: "ID do chamado a ser soft-deletado.",
-              example: EXAMPLE_TICKET_ID,
-            },
-          },
-        },
-        response: {
-          200: {
-            description:
-              "Chamado soft-deletado com sucesso. Retorna o registro atualizado com " +
-              "`deletadoEm` preenchido.",
-            ...TicketBaseSchema,
-          },
-          400: {
-            description: "Parâmetro `id` ausente ou vazio.",
-            ...ValidationErrorSchema,
-          },
-          401: Unauthorized401WithSelfCheck,
-          404: NotFoundChamadoResponse,
-          429: RateLimit429Response,
-          500: {
-            description:
-              "Erro inesperado ao remover (soft) o chamado. `error` é a mensagem crua " +
-              "da exceção (via `errMsg()`), não sanitizada.",
-            type: "object",
-            properties: {
-              error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
-            },
-          },
-        },
-      },
-    },
-    removeSoft,
   );
 
   app.register(ticketMessagesRoutes, { prefix: "" });
