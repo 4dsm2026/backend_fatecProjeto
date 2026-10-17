@@ -3,7 +3,8 @@ import { StatusChamado } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
 import { notifyMany } from '../notifications/notify';
-import { toSkipTake } from '../../hateoas'
+import { toSkipTake } from '../../hateoas';
+import { isReopen } from './ticket-rules'
 
 type Ctx = PrismaClient;
 
@@ -300,6 +301,17 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
 
   const isStatusChange   = !!data.status && data.status !== before.status;
   const oldResponsavelId = before.responsavelId;
+  const novoStatus = isStatusChange ? data.status : undefined;
+  const fechando   = novoStatus === StatusChamado.ENCERRADO || novoStatus === StatusChamado.RESOLVIDO;
+  const reabrindo  = !!novoStatus && isReopen(before.status, novoStatus);
+
+  let encerradoEm: Date | null | undefined;
+  if (fechando) encerradoEm = new Date();
+  else if (reabrindo) encerradoEm = null;
+
+  let arquivadoEm: Date | null | undefined;
+  if (data.arquivado === true) arquivadoEm = new Date();
+  else if (data.arquivado === false) arquivadoEm = null;
 
   const updated = await prisma.chamado.update({
     where: { id },
@@ -321,14 +333,21 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
         slaHoras:    (data as any).slaHoras,
         slaDias:     (data as any).slaDias,
       }),
-      vencimentoSla: (data as any).vencimentoSla ? new Date((data as any).vencimentoSla) : undefined,
-      encerradoEm:
-        data.status &&
-        (data.status === StatusChamado.ENCERRADO || data.status === StatusChamado.RESOLVIDO)
-          ? new Date()
-          : undefined,
+      encerradoEm,
+      arquivadoEm,
     },
   });
+
+    if (data.arquivado !== undefined) {
+    prisma.auditoria.create({
+      data: {
+        feitoPorId: feitoPorId ?? null,
+        acao: data.arquivado ? 'ARQUIVAR_CHAMADO' : 'DESARQUIVAR_CHAMADO',
+        alvo: id,
+        meta: { protocolo: before.protocolo },
+      },
+    }).catch(() => {});
+  }
 
   if (isStatusChange) {
     const [, alvoInfo] = await Promise.all([

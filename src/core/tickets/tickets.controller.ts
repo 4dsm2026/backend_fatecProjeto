@@ -17,9 +17,18 @@ import {
   statsTickets,
 } from "./tickets.service";
 import type { TicketsListQuery } from "./tickets.types";
-import { path, pickFilters, toCollection } from "../../hateoas";
-import type { Role } from "../../hateoas";
-import { toTicketResource } from "./tickets.links";
+import { ApiError, isStaff, path, pickFilters, toCollection } from "../../hateoas";
+import type { Role, Viewer } from "../../hateoas";
+import { toTicketContext, toTicketResource } from "./tickets.links";
+import {
+  canArchiveTicket,
+  canTransition,
+  canUnarchiveTicket,
+  canUpdateTicket,
+  isReopen,
+  REOPEN_WINDOW_DAYS,
+} from "./ticket-rules";
+import type { TicketContext, TicketStatus } from "./ticket-rules";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -170,6 +179,47 @@ export async function stats(req: FastifyRequest, res: FastifyReply) {
   }
 }
 
+type PatchBody = { status?: TicketStatus; arquivado?: boolean; [campo: string]: unknown };
+
+/** Bloqueio: a equipe recebe 409 (o estado não permite); os demais, 403 (sem permissão). */
+function blocked(viewer: Viewer, detail: string): ApiError {
+  return new ApiError(isStaff(viewer) ? "conflict" : "forbidden", "Ação não permitida", detail);
+}
+
+function assertFieldsAllowed(ctx: TicketContext, viewer: Viewer, hasFields: boolean): void {
+  if (!hasFields || canUpdateTicket(ctx, viewer)) return;
+  throw blocked(viewer, "Os dados do chamado só podem ser editados pela equipe, e não em chamado encerrado ou arquivado.");
+}
+
+function assertStatusAllowed(ctx: TicketContext, viewer: Viewer, to: TicketStatus | undefined): void {
+  if (!to || to === ctx.status || canTransition(ctx, to, viewer)) return;
+  if (ctx.archivedAt) throw new ApiError("conflict", "Ação não permitida", "O chamado está arquivado (somente leitura).");
+  if (isReopen(ctx.status, to)) {
+    throw new ApiError("conflict", "Ação não permitida", `O prazo de ${REOPEN_WINDOW_DAYS} dias para reabrir o chamado terminou.`);
+  }
+  throw blocked(viewer, `Não é possível mudar o chamado de ${ctx.status} para ${to}.`);
+}
+
+function assertArchiveAllowed(ctx: TicketContext, viewer: Viewer, arquivado: boolean | undefined): void {
+  if (arquivado === true && !canArchiveTicket(ctx, viewer)) {
+    throw ctx.archivedAt
+      ? new ApiError("conflict", "Ação não permitida", "O chamado já está arquivado.")
+      : new ApiError("forbidden", "Ação não permitida", "Só o administrador arquiva chamados.");
+  }
+  if (arquivado === false && !canUnarchiveTicket(ctx, viewer)) {
+    throw ctx.archivedAt
+      ? new ApiError("forbidden", "Ação não permitida", "Só o administrador desarquiva chamados.")
+      : new ApiError("conflict", "Ação não permitida", "O chamado não está arquivado.");
+  }
+}
+
+function assertPatchAllowed(ctx: TicketContext, viewer: Viewer, body: PatchBody): void {
+  const { status, arquivado, ...fields } = body;
+  assertFieldsAllowed(ctx, viewer, Object.keys(fields).length > 0);
+  assertStatusAllowed(ctx, viewer, status);
+  assertArchiveAllowed(ctx, viewer, arquivado);
+}
+
 /* ============ PATCH /tickets/:id ============ */
 export async function patch(req: FastifyRequest, res: FastifyReply) {
   const parsed = updateValidator.parse(req);
@@ -180,19 +230,22 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   if (!authUser) return;
   const feitoPorId = authUser.sub;
 
-  try {
+   try {
     const id = parsed.data!.params!.id;
+    const body = parsed.data!.body!;
 
     if (await denyMissingTicketAccess(prisma, id, authUser, res)) return;
 
-    const ticket = await updateTicket(
-      prisma,
-      id,
-      parsed.data!.body!,
-      { feitoPorId },
-    );
-    await res.send(ticket);
+    const viewer = { id: authUser.sub, role: authUser.role as Role };
+    const current = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } });
+    if (!current) return sendNotFound(res, "Chamado");
+
+    assertPatchAllowed(toTicketContext(current), viewer, body);
+
+    const ticket = await updateTicket(prisma, id, body, { feitoPorId });
+    await res.send(toTicketResource(ticket, viewer));
   } catch (e: any) {
+    if (e instanceof ApiError) throw e;
     if (e?.code === "P2025")
       return sendNotFound(res, "Chamado");
     req.log.error({ e }, "💥 Erro ao atualizar ticket");

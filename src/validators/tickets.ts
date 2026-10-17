@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import { PaginationQuerySchema } from '../hateoas'
 
-export const StatusChamadoValues = ['ABERTO','EM_ATENDIMENTO','AGUARDANDO_USUARIO','RESOLVIDO','ENCERRADO'] as const
-export const NivelChamadoValues = ['N1','N2','N3'] as const
-export const PrioridadeChamadoValues = ['BAIXA','MEDIA','ALTA','URGENTE'] as const
+export const StatusChamadoValues = ['ABERTO', 'EM_ATENDIMENTO', 'AGUARDANDO_USUARIO', 'RESOLVIDO', 'ENCERRADO'] as const
+export const NivelChamadoValues = ['N1', 'N2', 'N3'] as const
+export const PrioridadeChamadoValues = ['BAIXA', 'MEDIA', 'ALTA', 'URGENTE'] as const
 
 const IncludeKeysEnum = z.enum([
   'cliente',
@@ -28,58 +28,58 @@ export const ParamsWithIdSchema = z.object({
  */
 const CAMPOS_OBRIGATORIOS_POR_SERVICO: Record<string, string[]> = {
   // Secretaria
-  'secretaria-declaracao-matricula':   ['finalidade'],
-  'secretaria-historico-escolar':      ['semestreReferencia', 'formatoDesejado'],
+  'secretaria-declaracao-matricula': ['finalidade'],
+  'secretaria-historico-escolar': ['semestreReferencia', 'formatoDesejado'],
   'secretaria-aproveitamento-estudos': ['instituicaoOrigem', 'disciplinasOrigem', 'disciplinasPretendidas', 'justificativa'],
-  'secretaria-revisao-nota':           ['disciplina', 'avaliacao', 'justificativa'],
-  'secretaria-correcao-dados-siga':    ['dadoAlterar', 'novoValor'],
+  'secretaria-revisao-nota': ['disciplina', 'avaliacao', 'justificativa'],
+  'secretaria-correcao-dados-siga': ['dadoAlterar', 'novoValor'],
   'secretaria-rematricula-fora-prazo': ['justificativa'],
   // Coordenação
-  'coordenacao-duvida-matriz-curricular':              ['tipoDemanda', 'justificativa'],
-  'coordenacao-reuniao':                               ['tipoDemanda', 'justificativa'],
-  'coordenacao-analise-disciplina-equivalencia':       ['tipoDemanda', 'justificativa'],
-  'coordenacao-orientacao-tg-tcc-projeto-integrador':  ['tipoDemanda', 'justificativa'],
+  'coordenacao-duvida-matriz-curricular': ['tipoDemanda', 'justificativa'],
+  'coordenacao-reuniao': ['tipoDemanda', 'justificativa'],
+  'coordenacao-analise-disciplina-equivalencia': ['tipoDemanda', 'justificativa'],
+  'coordenacao-orientacao-tg-tcc-projeto-integrador': ['tipoDemanda', 'justificativa'],
   // Estágio
   'estagio-termo-compromisso': ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
-  'estagio-termo-aditivo':     ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
-  'estagio-relatorio':         ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
-  'estagio-rescisao':          ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
+  'estagio-termo-aditivo': ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
+  'estagio-relatorio': ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
+  'estagio-rescisao': ['empresa', 'tipoEstagio', 'dataInicio', 'tipoDocumento'],
   'estagio-duvida-obrigatorio-nao-obrigatorio': ['tipoEstagio', 'duvida'],
   // Sistemas / TI
-  'sistemas-problema-acesso-siga':           ['tipoProblema'],
-  'sistemas-dados-divergentes-siga':         ['tipoProblema'],
-  'sistemas-email-institucional':            ['emailInstitucional', 'tipoProblema'],
-  'sistemas-redefinicao-senha-institucional':['emailInstitucional', 'tipoProblema'],
+  'sistemas-problema-acesso-siga': ['tipoProblema'],
+  'sistemas-dados-divergentes-siga': ['tipoProblema'],
+  'sistemas-email-institucional': ['emailInstitucional', 'tipoProblema'],
+  'sistemas-redefinicao-senha-institucional': ['emailInstitucional', 'tipoProblema'],
 };
 
 const TicketBodySchema = z.object({
-  titulo:    z.string().min(3),
+  titulo: z.string().min(3),
   descricao: z.string().min(3),
   prioridade: z.enum(PrioridadeChamadoValues).optional().default('MEDIA'),
-  nivel:      z.enum(NivelChamadoValues).optional().default('N1'),
+  nivel: z.enum(NivelChamadoValues).optional().default('N1'),
   // FK fields (DB IDs)
-  servicoId:     z.string().nullish(),
-  setorId:       z.string().nullish(),
-  clienteId:     z.string().nullish(),
-  contratoId:    z.string().nullish(),
+  servicoId: z.string().nullish(),
+  setorId: z.string().nullish(),
+  clienteId: z.string().nullish(),
+  contratoId: z.string().nullish(),
   responsavelId: z.string().nullish(),
   organizacaoId: z.string().nullish(),
   // Campos do wizard do catálogo acadêmico
-  catalogoServicoId:     z.string().nullish(),
-  catalogoCategoriaId:   z.string().nullish(),
+  catalogoServicoId: z.string().nullish(),
+  catalogoCategoriaId: z.string().nullish(),
   catalogoCategoriaNome: z.string().nullish(),
-  categoriaId:           z.string().nullish(),
-  categoriaNome:         z.string().nullish(),
-  setorProvavel:         z.string().max(256).nullish(),
-  dadosAcademicos:       z.record(z.unknown()).nullish(),
-  camposEspecificos:     z.record(z.unknown()).nullish(),
-  origem:                z.string().max(64).nullish(),
-  precisaAcaoDoAluno:    z.boolean().optional(),
-  planoMigracao:         z.string().nullish(),
+  categoriaId: z.string().nullish(),
+  categoriaNome: z.string().nullish(),
+  setorProvavel: z.string().max(256).nullish(),
+  dadosAcademicos: z.record(z.unknown()).nullish(),
+  camposEspecificos: z.record(z.unknown()).nullish(),
+  origem: z.string().max(64).nullish(),
+  precisaAcaoDoAluno: z.boolean().optional(),
+  planoMigracao: z.string().nullish(),
   anexos: z.array(z.object({
-    nome:    z.string(),
+    nome: z.string(),
     tamanho: z.number(),
-    tipo:    z.string(),
+    tipo: z.string(),
   })).nullish(),
 }).superRefine((body, ctx) => {
   const sid =
@@ -110,22 +110,23 @@ export const TicketCreateSchema = z.object({
 export const TicketUpdateSchema = z.object({
   params: z.object({ id: z.string().min(1) }),
   body: z.object({
-    titulo:    z.string().min(3).optional(),
+    titulo: z.string().min(3).optional(),
     descricao: z.string().min(3).optional(),
     prioridade: z.enum(PrioridadeChamadoValues).optional(),
-    nivel:      z.enum(NivelChamadoValues).optional(),
-    status:     z.enum(StatusChamadoValues).optional(),
-    servicoId:     z.string().nullish(),
-    setorId:       z.string().nullish(),
-    clienteId:     z.string().nullish(),
-    contratoId:    z.string().nullish(),
+    nivel: z.enum(NivelChamadoValues).optional(),
+    status: z.enum(StatusChamadoValues).optional(),
+    servicoId: z.string().nullish(),
+    setorId: z.string().nullish(),
+    clienteId: z.string().nullish(),
+    contratoId: z.string().nullish(),
     responsavelId: z.string().nullish(),
     organizacaoId: z.string().nullish(),
     precisaAcaoDoAluno: z.boolean().optional(),
-    observacaoInterna:  z.string().max(4000).nullish(),
+    observacaoInterna: z.string().max(4000).nullish(),
     slaHoras: z.number().int().positive().nullish(),
-    slaDias:  z.number().int().positive().nullish(),
+    slaDias: z.number().int().positive().nullish(),
     vencimentoSla: z.string().datetime().nullish(),
+    arquivado: z.boolean().optional(),
   }).refine(
     (b) => Object.keys(b).length > 0,
     { message: 'Nenhum campo para atualizar' },
@@ -135,28 +136,28 @@ export const TicketUpdateSchema = z.object({
 export const TicketListSchema = z.object({
   query: z.object({
     ...PaginationQuerySchema.shape,
-    search:   z.string().optional(),
-    status:    z.union([z.enum(StatusChamadoValues), z.array(z.enum(StatusChamadoValues))]).optional(),
-    nivel:     z.union([z.enum(NivelChamadoValues),  z.array(z.enum(NivelChamadoValues))]).optional(),
+    search: z.string().optional(),
+    status: z.union([z.enum(StatusChamadoValues), z.array(z.enum(StatusChamadoValues))]).optional(),
+    nivel: z.union([z.enum(NivelChamadoValues), z.array(z.enum(NivelChamadoValues))]).optional(),
     prioridade: z.union([z.enum(PrioridadeChamadoValues), z.array(z.enum(PrioridadeChamadoValues))]).optional(),
-    clienteId:     z.string().optional(),
-    contratoId:    z.string().optional(),
-    setorId:       z.string().optional(),
-    servicoId:     z.string().optional(),
+    clienteId: z.string().optional(),
+    contratoId: z.string().optional(),
+    setorId: z.string().optional(),
+    servicoId: z.string().optional(),
     responsavelId: z.string().optional(),
     organizacaoId: z.string().optional(),
-    criadoPorId:   z.string().optional(),
-    arquivados:    z.enum(['excluir', 'incluir', 'somente']).optional(),
-    criadoDe:  IsoDate,
+    criadoPorId: z.string().optional(),
+    arquivados: z.enum(['excluir', 'incluir', 'somente']).optional(),
+    criadoDe: IsoDate,
     criadoAte: IsoDate,
-    orderBy:  z.enum(['criadoEm','atualizadoEm']).default('criadoEm').optional(),
-    orderDir: z.enum(['asc','desc']).default('desc').optional(),
+    orderBy: z.enum(['criadoEm', 'atualizadoEm']).default('criadoEm').optional(),
+    orderDir: z.enum(['asc', 'desc']).default('desc').optional(),
     include: z
       .union([
         z.array(IncludeKeysEnum),
         z.string()
-         .transform((s) => s.split(',').map((x) => x.trim()))
-         .pipe(z.array(IncludeKeysEnum))
+          .transform((s) => s.split(',').map((x) => x.trim()))
+          .pipe(z.array(IncludeKeysEnum))
       ])
       .optional(),
   }),

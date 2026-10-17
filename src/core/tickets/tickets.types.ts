@@ -49,4 +49,5 @@ export type TicketCreateInput = {
 
 export type TicketUpdateInput = Partial<TicketCreateInput> & {
   status?: StatusChamado
+  arquivado?: boolean
 }
