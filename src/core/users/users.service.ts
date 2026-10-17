@@ -137,6 +137,9 @@ export async function listUsers(
 ): Promise<UserListResult> {
   const where: Prisma.UsuarioWhereInput = {
     deletadoEm: null,
+    ...(q.papel ? { papel: q.papel } : {}),
+    ...(q.organizacaoId ? { organizacaoId: q.organizacaoId } : {}),
+    ...(q.ativo !== undefined ? { ativo: q.ativo } : {}),
     ...(q.q
       ? {
           OR: [

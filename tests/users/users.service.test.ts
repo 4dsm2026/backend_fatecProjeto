@@ -80,6 +80,59 @@ describe("users service", () => {
     expect(userPublicSelect).toHaveProperty("observacoesAtendimento");
   });
 
+  it.each([
+    {
+      name: "q",
+      filters: { q: "Ana" },
+      where: { OR: [
+        { nome: { contains: "Ana" } },
+        { emailPessoal: { contains: "Ana" } },
+        { emailEducacional: { contains: "Ana" } },
+        { ra: { contains: "Ana" } },
+      ] },
+    },
+    { name: "papel", filters: { papel: "USUARIO" as const }, where: { papel: "USUARIO" } },
+    { name: "organizacaoId", filters: { organizacaoId: "org-1" }, where: { organizacaoId: "org-1" } },
+    { name: "ativo=true", filters: { ativo: true }, where: { ativo: true } },
+    { name: "ativo=false", filters: { ativo: false }, where: { ativo: false } },
+  ])("applies the $name filter to findMany and count", async ({ filters, where }) => {
+    await listUsers(prismaMock, { page: 0, size: 20, ...filters });
+
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletadoEm: null, ...where }) }),
+    );
+    expect(prismaMock.usuario.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ deletadoEm: null, ...where }),
+    });
+  });
+
+  it("combines every legacy filter in one database predicate", async () => {
+    const where = {
+      deletadoEm: null,
+      papel: "USUARIO",
+      organizacaoId: "org-1",
+      ativo: false,
+      OR: [
+        { nome: { contains: "Ana" } },
+        { emailPessoal: { contains: "Ana" } },
+        { emailEducacional: { contains: "Ana" } },
+        { ra: { contains: "Ana" } },
+      ],
+    };
+
+    await listUsers(prismaMock, {
+      page: 0,
+      size: 20,
+      q: "Ana",
+      papel: "USUARIO",
+      organizacaoId: "org-1",
+      ativo: false,
+    });
+
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+    expect(prismaMock.usuario.count).toHaveBeenCalledWith({ where });
+  });
+
   it("creates a user and returns the selected public projection", async () => {
     const created = await createUser(prismaMock, {
       nome: "Ana Silva",

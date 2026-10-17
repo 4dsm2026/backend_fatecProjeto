@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { PaginationQuerySchema, buildLinks, link, path } from "../../hateoas";
 import type { Link, Role, Viewer } from "../../hateoas";
+import { PapelEnum } from "../../validators/users";
 import { z } from "zod";
 
 export const USER_STAFF_ROLES = ["ADMINISTRADOR", "BACKOFFICE", "TECNICO"] as const satisfies readonly Role[];
@@ -49,6 +50,9 @@ export type UserPublic = Prisma.UsuarioGetPayload<{ select: typeof userPublicSel
 
 export const UsersListQuerySchema = PaginationQuerySchema.extend({
 	q: z.string().trim().min(1).optional(),
+	papel: PapelEnum.optional(),
+	organizacaoId: z.string().min(1).optional(),
+	ativo: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
 });
 
 export type UsersListQuery = z.infer<typeof UsersListQuerySchema>;
@@ -124,6 +128,7 @@ export function buildUserLinks(user: Pick<UserPublic, "id" | "papel" | "deletado
 	const admin = isUserAdmin(viewer.role);
 	const protectedAdminSelf = isAdminSelf(user, viewer);
 	const href = path`/users/${user.id}`;
+	const canManageSectors = viewer.role === "ADMINISTRADOR" || viewer.role === "TECNICO";
 
 	const changeRoleLink: Link | false = notRemoved && admin && !protectedAdminSelf
 		? link(href, "PATCH", { title: "Alterar papel" })
@@ -135,5 +140,6 @@ export function buildUserLinks(user: Pick<UserPublic, "id" | "papel" | "deletado
 		update: notRemoved && canUpdateUserTarget(user, viewer) && link(href, "PATCH"),
 		"change-role": changeRoleLink,
 		delete: notRemoved && admin && !protectedAdminSelf && link(href, "DELETE"),
+		sectors: notRemoved && canManageSectors && link(path`/admin/users/${user.id}/sectors`),
 	});
 }

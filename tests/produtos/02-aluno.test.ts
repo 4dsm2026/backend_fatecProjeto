@@ -234,6 +234,12 @@ describe('GET /usuarios — Listar', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json()._embedded.users[0]).toMatchObject({ papel: 'USUARIO' })
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ deletadoEm: null, papel: 'USUARIO' }),
+    }))
+    expect(prismaMock.usuario.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ deletadoEm: null, papel: 'USUARIO' }),
+    })
   })
 
   it('200 — busca por texto (q=)', async () => {
@@ -247,6 +253,17 @@ describe('GET /usuarios — Listar', () => {
     })
 
     expect(res.statusCode).toBe(200)
+    const where = expect.objectContaining({
+      deletadoEm: null,
+      OR: expect.arrayContaining([
+        { nome: { contains: 'Maria' } },
+        { emailPessoal: { contains: 'Maria' } },
+        { emailEducacional: { contains: 'Maria' } },
+        { ra: { contains: 'Maria' } },
+      ]),
+    })
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }))
+    expect(prismaMock.usuario.count).toHaveBeenCalledWith({ where })
   })
 
   it('401 — sem autenticação', async () => {

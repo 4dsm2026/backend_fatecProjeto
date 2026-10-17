@@ -7,6 +7,7 @@ import authVerify from "../../src/plugins/auth-verify";
 import prismaPlugin from "../../src/plugins/prisma";
 import { makeAdminToken, makeUserToken, bearerAuth } from "../helpers/auth";
 import { usersRoutes } from "../../src/core/users/users.routes";
+import { usuarioSetorRoutes } from "../../src/core/usuario-setor/usuarioSetor.routes";
 import { buildUserLinks, canUpdateUserTarget } from "../../src/core/users/users.types";
 import type { UserResponse } from "../../src/types/users";
 
@@ -113,6 +114,8 @@ function resetPrismaMocks(): void {
   prismaMock.usuario.findMany.mockResolvedValue([activeUser]);
   prismaMock.usuario.update.mockResolvedValue(activeUser);
   prismaMock.usuario.count.mockResolvedValue(45);
+  prismaMock.usuarioSetor.findMany.mockResolvedValue([]);
+  prismaMock.usuarioSetor.count.mockResolvedValue(0);
   prismaMock.auditoria.create.mockResolvedValue({});
 }
 
@@ -134,6 +137,7 @@ beforeAll(async () => {
   await app.register(authVerify);
   registerProblemHandler(app);
   await app.register(usersRoutes, { prefix: "/users" });
+  await app.register(usuarioSetorRoutes, { prefix: "/admin" });
   await app.ready();
 });
 
@@ -239,13 +243,54 @@ describe("users HAL routes", () => {
   it("emits prev/next/last links for a middle page", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/users?page=2&size=10&q=Ana",
+      url: "/users?page=2&size=10&q=Ana&papel=USUARIO&ativo=false&organizacaoId=org-1",
       headers: bearerAuth(tokenFor("ADMINISTRADOR", "admin-1")),
     });
 
-    expect(response.json()._links.prev.href).toBe("/users?page=1&q=Ana&size=10");
-    expect(response.json()._links.next.href).toBe("/users?page=3&q=Ana&size=10");
-    expect(response.json()._links.last.href).toBe("/users?page=4&q=Ana&size=10");
+    expect(response.json()._links.self.href).toBe("/users?ativo=false&organizacaoId=org-1&page=2&papel=USUARIO&q=Ana&size=10");
+    expect(response.json()._links.first.href).toBe("/users?ativo=false&organizacaoId=org-1&page=0&papel=USUARIO&q=Ana&size=10");
+    expect(response.json()._links.prev.href).toBe("/users?ativo=false&organizacaoId=org-1&page=1&papel=USUARIO&q=Ana&size=10");
+    expect(response.json()._links.next.href).toBe("/users?ativo=false&organizacaoId=org-1&page=3&papel=USUARIO&q=Ana&size=10");
+    expect(response.json()._links.last.href).toBe("/users?ativo=false&organizacaoId=org-1&page=4&papel=USUARIO&q=Ana&size=10");
+  });
+
+  it.each([
+    { name: "papel fora do enum", url: "/users?papel=INVALIDO", field: "papel" },
+    { name: "ativo inválido", url: "/users?ativo=sim", field: "ativo" },
+    { name: "papel repetido", url: "/users?papel=USUARIO&papel=TECNICO", field: "papel" },
+  ])("returns a problem response with errors for $name", async ({ url, field }) => {
+    const response = await app.inject({
+      method: "GET",
+      url,
+      headers: bearerAuth(tokenFor("ADMINISTRADOR", "admin-1")),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(response.json().errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field, message: expect.any(String) }),
+    ]));
+    expect(prismaMock.usuario.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["ADMINISTRADOR", "TECNICO"] as const)("exposes and contracts the sectors link for %s", async (role) => {
+    const token = tokenFor(role, `${role.toLowerCase()}-1`);
+    const response = await app.inject({
+      method: "GET",
+      url: "/users/user-1",
+      headers: bearerAuth(token),
+    });
+    const sectorsLink = response.json()._links.sectors as Link;
+
+    expect(sectorsLink).toEqual({ href: "/admin/users/user-1/sectors", method: "GET" });
+    const contracted = await callLink(app, sectorsLink, token);
+    expect(contracted.statusCode).toBe(200);
+    expect(contracted.json()._embedded.sectors).toEqual([]);
+  });
+
+  it.each(["USUARIO", "BACKOFFICE"] as const)("does not expose a sectors link to %s", (role) => {
+    const links = buildUserLinks(activeUser, { id: "viewer-1", role });
+    expect(links).not.toHaveProperty("sectors");
   });
 
   it("gives the owner self/update links without staff links", async () => {
@@ -262,6 +307,7 @@ describe("users HAL routes", () => {
     expect(links).not.toHaveProperty("collection");
     expect(links).not.toHaveProperty("delete");
     expect(links).not.toHaveProperty("change-role");
+    expect(links).not.toHaveProperty("sectors");
   });
 
   it("returns 403 when a user requests another user's resource", async () => {
@@ -301,6 +347,7 @@ describe("users HAL routes", () => {
     expect(response.json()._links.update.method).toBe("PATCH");
     expect(response.json()._links["change-role"].method).toBe("PATCH");
     expect(response.json()._links.delete.method).toBe("DELETE");
+    expect(response.json()._links.sectors).toEqual({ href: "/admin/users/user-1/sectors", method: "GET" });
   });
 
   it.each(adminSelfMutationCases)("rejects admin self-$action with 422 and no persistence", async (action) => {

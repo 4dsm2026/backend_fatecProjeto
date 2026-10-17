@@ -217,6 +217,9 @@ export async function usersRoutes(app: FastifyInstance) {
             page: { type: "integer", minimum: 0, default: 0 },
             size: { type: "integer", minimum: 1, maximum: 100, default: 20 },
             q: { type: "string", minLength: 1 },
+            papel: { type: "string", enum: ["USUARIO", "BACKOFFICE", "TECNICO", "ADMINISTRADOR"] },
+            organizacaoId: { type: "string", minLength: 1 },
+            ativo: { type: "string", enum: ["true", "false"] },
           },
         },
         response: {

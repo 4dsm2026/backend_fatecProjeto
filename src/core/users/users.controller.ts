@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { ApiError, buildLinks, fieldErrorsFromZod, link, path, toCollection, toResource } from '../../hateoas'
+import { ApiError, buildLinks, fieldErrorsFromZod, link, path, pickFilters, toCollection, toResource } from '../../hateoas'
 import type { Viewer } from '../../hateoas'
 import { z } from 'zod'
 import {
@@ -82,7 +82,7 @@ export async function list(req: FastifyRequest, reply: FastifyReply) {
     page: query.page,
     size: query.size,
     total: result.total,
-    filters: { q: query.q },
+    filters: pickFilters(query, ['q', 'papel', 'ativo', 'organizacaoId']),
     links: buildLinks({
       create: isUserAdmin(viewer.role) && link('/users', 'POST'),
     }),
