@@ -140,7 +140,8 @@ export default async function sessionsRoutes(app: FastifyInstance) {
         summary: "Alterar a própria senha",
         description:
           "Altera a senha do usuário autenticado após validar a senha atual. A nova senha usa a política " +
-          "oficial `zStrongPassword` e, em caso de sucesso, encerra as demais sessões do mesmo usuário e retorna 204.",
+          "oficial `zStrongPassword` e, em caso de sucesso, encerra TODAS as sessões ativas do usuário, inclusive a atual " +
+          "(o cliente deve pedir um novo login) e retorna 204.",
         security: [{ bearerAuth: [] }],
         body: {
           type: "object",

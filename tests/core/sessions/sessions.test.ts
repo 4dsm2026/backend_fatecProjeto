@@ -269,7 +269,7 @@ describe('PUT /users/me/password', () => {
     mockSend.mockResolvedValue(undefined)
   })
 
-  it('204 — troca a senha do usuário autenticado e revoga as demais sessões', async () => {
+  it('204 — troca a senha do usuário autenticado e revoga TODAS as sessões ativas (inclusive a atual)', async () => {
     prismaMock.usuario.findUnique.mockResolvedValue(user)
     prismaMock.usuario.update.mockResolvedValue({ id: USER_ID })
     prismaMock.sessao.updateMany.mockResolvedValue({ count: 2 })
@@ -337,6 +337,66 @@ describe('PUT /users/me/password', () => {
 
     expect(res.statusCode).toBe(204)
     expect(prismaMock.usuario.update).toHaveBeenCalled()
+  })
+
+  it('204 — registra a auditoria troca_senha_sucesso', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(user)
+    prismaMock.usuario.update.mockResolvedValue({ id: USER_ID })
+    prismaMock.sessao.updateMany.mockResolvedValue({ count: 1 })
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
+
+    expect(res.statusCode).toBe(204)
+    expect(prismaMock.auditoria.create).toHaveBeenCalledWith({
+      data: { feitoPorId: USER_ID, acao: 'troca_senha_sucesso', alvo: USER_ID, meta: {} },
+    })
+  })
+
+  it('204 — avisa por e-mail o dono da conta, sem senha nenhuma no conteúdo', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(user)
+    prismaMock.usuario.update.mockResolvedValue({ id: USER_ID })
+    prismaMock.sessao.updateMany.mockResolvedValue({ count: 1 })
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
+
+    expect(res.statusCode).toBe(204)
+    await vi.waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1))
+    const aviso = mockSend.mock.calls[0][0]
+    expect(aviso.to).toBe('joao@example.com')
+    const conteudo = JSON.stringify(aviso)
+    for (const segredo of ['Atual123!', 'NovaSenha1!', 'hash-nova', 'hash-atual']) {
+      expect(conteudo).not.toContain(segredo)
+    }
+  })
+
+  it('422 — registra troca_senha_falha e não revoga sessão nem envia e-mail', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(user)
+    vi.mocked(passwordModule.verifyPassword).mockResolvedValue(false)
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Errada123!', novaSenha: 'NovaSenha1!' })
+
+    expectProblem(res, 422)
+    expect(prismaMock.auditoria.create).toHaveBeenCalledWith({
+      data: {
+        feitoPorId: USER_ID,
+        acao: 'troca_senha_falha',
+        alvo: USER_ID,
+        meta: { motivo: 'senha_atual_incorreta' },
+      },
+    })
+    expect(prismaMock.sessao.updateMany).not.toHaveBeenCalled()
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it('409 — usuário sem senha local definida', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue({ ...user, senhaHash: null })
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
+
+    expectProblem(res, 409)
+    expect(passwordModule.verifyPassword).not.toHaveBeenCalled()
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled()
+    expect(prismaMock.sessao.updateMany).not.toHaveBeenCalled()
   })
 
   it('401 — sem token', async () => {

@@ -2,6 +2,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { ApiError, entryLinks, parseOrThrow, toResource } from "../../hateoas";
 import type { Links, Viewer } from "../../hateoas";
+import { registrarAuditoria } from "../../lib/auditoria";
 import { hashPassword, verifyPassword } from "../../security/password";
 import { TrocarSenhaSchema } from "../../validators/auth";
 import { enviarAvisoSenhaAlterada } from "../auth/senha-alterada.service";
@@ -121,6 +122,12 @@ export const putCurrentUserPassword = async (req: FastifyRequest, res: FastifyRe
 
   const senhaConfere = await verifyPassword(user.senhaHash, senhaAtual);
   if (!senhaConfere) {
+    await registrarAuditoria({
+      feitoPorId: user.id,
+      acao: "troca_senha_falha",
+      alvo: user.id,
+      meta: { motivo: "senha_atual_incorreta" },
+    });
     throw new ApiError(
       "unprocessable",
       "Senha atual incorreta",
@@ -139,6 +146,8 @@ export const putCurrentUserPassword = async (req: FastifyRequest, res: FastifyRe
       data: { revogadaEm: new Date() },
     });
   });
+
+  await registrarAuditoria({ feitoPorId: user.id, acao: "troca_senha_sucesso", alvo: user.id, meta: {} });
 
   void enviarAvisoSenhaAlterada({
     nome: user.nome,
