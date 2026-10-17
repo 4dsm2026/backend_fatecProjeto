@@ -104,8 +104,10 @@ function buildMock() {
       findMany: vi.fn(),
       upsert: vi.fn(),
     },
-    sugestao: {
+     sugestao: {
       create: vi.fn(),
+      count: vi.fn(),
+      findMany: vi.fn(),
     },
   }
   // $transaction passes the mock itself as the tx client so inner calls work
