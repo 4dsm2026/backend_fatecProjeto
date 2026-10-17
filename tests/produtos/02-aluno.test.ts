@@ -217,9 +217,9 @@ describe('GET /usuarios — Listar', () => {
 
     expect(res.statusCode).toBe(200)
     const body = res.json()
-    expect(body).toHaveProperty('items')
-    expect(body).toHaveProperty('total', 1)
-    expect(body.items).toHaveLength(1)
+    expect(body).toHaveProperty('_embedded.users')
+    expect(body.page.totalElements).toBe(1)
+    expect(body._embedded.users).toHaveLength(1)
   })
 
   it('200 — filtra por papel=USUARIO', async () => {
@@ -233,7 +233,13 @@ describe('GET /usuarios — Listar', () => {
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json().items[0]).toMatchObject({ papel: 'USUARIO' })
+    expect(res.json()._embedded.users[0]).toMatchObject({ papel: 'USUARIO' })
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ deletadoEm: null, papel: 'USUARIO' }),
+    }))
+    expect(prismaMock.usuario.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ deletadoEm: null, papel: 'USUARIO' }),
+    })
   })
 
   it('200 — busca por texto (q=)', async () => {
@@ -247,6 +253,17 @@ describe('GET /usuarios — Listar', () => {
     })
 
     expect(res.statusCode).toBe(200)
+    const where = expect.objectContaining({
+      deletadoEm: null,
+      OR: expect.arrayContaining([
+        { nome: { contains: 'Maria' } },
+        { emailPessoal: { contains: 'Maria' } },
+        { emailEducacional: { contains: 'Maria' } },
+        { ra: { contains: 'Maria' } },
+      ]),
+    })
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }))
+    expect(prismaMock.usuario.count).toHaveBeenCalledWith({ where })
   })
 
   it('401 — sem autenticação', async () => {
@@ -330,7 +347,7 @@ describe('PATCH /usuarios/:id — Atualizar', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('DELETE /usuarios/:id — Soft Delete (Anonimização)', () => {
-  it('200 — anonimiza e inativa o usuário', async () => {
+  it('204 — anonimiza e inativa o usuário', async () => {
     const before = makeAluno()
     const anonimizado = {
       ...makeAluno(),
@@ -351,9 +368,8 @@ describe('DELETE /usuarios/:id — Soft Delete (Anonimização)', () => {
       headers: bearerAuth(adminToken),
     })
 
-    expect(res.statusCode).toBe(200)
-    const body = res.json()
-    expect(body).toMatchObject({ anonimizado: true, ativo: false })
+    expect(res.statusCode).toBe(204)
+    expect(res.body).toBe('')
   })
 
   it('404 — usuário não existe para exclusão', async () => {
