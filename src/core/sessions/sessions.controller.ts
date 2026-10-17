@@ -1,7 +1,10 @@
 // src/core/sessions/sessions.controller.ts
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { ApiError, entryLinks, toResource } from "../../hateoas";
+import { ApiError, entryLinks, parseOrThrow, toResource } from "../../hateoas";
 import type { Links, Viewer } from "../../hateoas";
+import { hashPassword, verifyPassword } from "../../security/password";
+import { TrocarSenhaSchema } from "../../validators/auth";
+import { enviarAvisoSenhaAlterada } from "../auth/senha-alterada.service";
 import { userPublicSelect } from "../auth/user-public";
 import { buildCurrentUserLinks, buildSessionLinks } from "./sessions.links";
 
@@ -94,4 +97,59 @@ export const getCurrentUser = async (req: FastifyRequest, res: FastifyReply): Pr
       buildCurrentUserLinks(viewer, { canUpdate: canUpdateOwnProfile(viewer), extra: menuLinks(viewer) }),
     ),
   );
+};
+
+/* ===================== PUT /users/me/password ===================== */
+export const putCurrentUserPassword = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
+  const { senhaAtual, novaSenha } = parseOrThrow(TrocarSenhaSchema, req.body);
+  const viewer = viewerOf(req);
+
+  const user = await req.server.prisma.usuario.findUnique({
+    where: { id: viewer.id },
+    select: {
+      id: true,
+      nome: true,
+      senhaHash: true,
+      emailPessoal: true,
+      emailEducacional: true,
+    },
+  });
+  if (!user) throw new ApiError("not-found", "Usuário não encontrado");
+  if (!user.senhaHash) {
+    throw new ApiError("conflict", "Usuário sem senha local definida");
+  }
+
+  const senhaConfere = await verifyPassword(user.senhaHash, senhaAtual);
+  if (!senhaConfere) {
+    throw new ApiError(
+      "unprocessable",
+      "Senha atual incorreta",
+      "A senha atual informada não confere com a senha cadastrada.",
+    );
+  }
+
+  const novaSenhaHash = await hashPassword(novaSenha);
+  await req.server.prisma.$transaction(async (tx) => {
+    await tx.usuario.update({
+      where: { id: user.id },
+      data: { senhaHash: novaSenhaHash, precisaTrocarSenha: false, passwordUpdatedAt: new Date() },
+    });
+    await tx.sessao.updateMany({
+      where: { usuarioId: user.id, revogadaEm: null },
+      data: { revogadaEm: new Date() },
+    });
+  });
+
+  void enviarAvisoSenhaAlterada({
+    nome: user.nome,
+    emailPessoal: user.emailPessoal,
+    emailEducacional: user.emailEducacional,
+    motivo: "troca",
+    ip: req.ip,
+    userAgent: String(req.headers["user-agent"] ?? ""),
+  }).catch((err) => {
+    req.log.error({ err }, "💥 Falha ao enviar aviso de senha alterada");
+  });
+
+  await res.code(204).send();
 };

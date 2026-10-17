@@ -4,13 +4,21 @@
  */
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 
+const { mockSend } = vi.hoisted(() => ({ mockSend: vi.fn() }))
+
 vi.mock('../../../src/lib/prisma')
 vi.mock('../../../src/jobs/cleanupAnexos', () => ({ scheduleCleanupAnexos: vi.fn() }))
+vi.mock('../../../src/config/mail', () => ({ getMailDriver: () => ({ send: mockSend }) }))
+vi.mock('../../../src/security/password', () => ({
+  hashPassword: vi.fn().mockResolvedValue('hash-nova'),
+  verifyPassword: vi.fn().mockResolvedValue(true),
+}))
 
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../../../src/app'
 import { prismaMock } from '../../../src/lib/__mocks__/prisma'
 import { generateAccessToken } from '../../../src/utils/jwt'
+import * as passwordModule from '../../../src/security/password'
 import { bearerAuth } from '../../helpers/auth'
 import { resetMocks } from '../../helpers/reset'
 import type { TestRole } from '../../helpers/auth'
@@ -230,6 +238,109 @@ describe('GET /users/me', () => {
 
   it('401 — sem token', async () => {
     const res = await call()
+
+    expectProblem(res, 401)
+    expect(res.headers['www-authenticate']).toBe('Bearer')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('PUT /users/me/password', () => {
+  const call = (token?: string, payload?: Record<string, unknown>) =>
+    app.inject({
+      method: 'PUT',
+      url: '/users/me/password',
+      headers: token ? bearerAuth(token) : {},
+      payload,
+    })
+
+  const user = {
+    id: USER_ID,
+    nome: 'João',
+    senhaHash: 'hash-atual',
+    emailPessoal: 'joao@example.com',
+    emailEducacional: null,
+  }
+
+  beforeEach(() => {
+    resetMocks()
+    vi.mocked(passwordModule.verifyPassword).mockResolvedValue(true)
+    vi.mocked(passwordModule.hashPassword).mockResolvedValue('hash-nova')
+    mockSend.mockResolvedValue(undefined)
+  })
+
+  it('204 — troca a senha do usuário autenticado e revoga as demais sessões', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(user)
+    prismaMock.usuario.update.mockResolvedValue({ id: USER_ID })
+    prismaMock.sessao.updateMany.mockResolvedValue({ count: 2 })
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
+
+    expect(res.statusCode).toBe(204)
+    expect(res.body).toBe('')
+    expect(passwordModule.verifyPassword).toHaveBeenCalledWith('hash-atual', 'Atual123!')
+    expect(prismaMock.usuario.update).toHaveBeenCalledWith({
+      where: { id: USER_ID },
+      data: { senhaHash: 'hash-nova', precisaTrocarSenha: false, passwordUpdatedAt: expect.any(Date) },
+    })
+    expect(prismaMock.sessao.updateMany).toHaveBeenCalledWith({
+      where: { usuarioId: USER_ID, revogadaEm: null },
+      data: { revogadaEm: expect.any(Date) },
+    })
+  })
+
+  it('400 — payload inválido', async () => {
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Atual123!', novaSenha: 'fraca' })
+
+    expectProblem(res, 400)
+    expect(prismaMock.usuario.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('422 — senha atual incorreta', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(user)
+    vi.mocked(passwordModule.verifyPassword).mockResolvedValue(false)
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Errada123!', novaSenha: 'NovaSenha1!' })
+
+    expectProblem(res, 422)
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled()
+  })
+
+  it('404 — usuário autenticado não existe mais', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(null)
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
+
+    expectProblem(res, 404)
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled()
+    expect(prismaMock.sessao.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('500 — falha na transação não persiste a troca', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(user)
+    prismaMock.$transaction.mockRejectedValueOnce(new Error('DB falhou'))
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
+
+    expectProblem(res, 500)
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled()
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it('204 — falha no envio do e-mail não reverte a troca', async () => {
+    prismaMock.usuario.findUnique.mockResolvedValue(user)
+    prismaMock.usuario.update.mockResolvedValue({ id: USER_ID })
+    prismaMock.sessao.updateMany.mockResolvedValue({ count: 2 })
+    mockSend.mockRejectedValueOnce(new Error('SMTP indisponível'))
+
+    const res = await call(tokenWith('USUARIO'), { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
+
+    expect(res.statusCode).toBe(204)
+    expect(prismaMock.usuario.update).toHaveBeenCalled()
+  })
+
+  it('401 — sem token', async () => {
+    const res = await call(undefined, { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
 
     expectProblem(res, 401)
     expect(res.headers['www-authenticate']).toBe('Bearer')

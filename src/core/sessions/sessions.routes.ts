@@ -1,7 +1,12 @@
 // src/core/sessions/sessions.routes.ts
 import type { FastifyInstance } from "fastify";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
-import { deleteCurrentSession, getCurrentSession, getCurrentUser } from "./sessions.controller";
+import {
+  deleteCurrentSession,
+  getCurrentSession,
+  getCurrentUser,
+  putCurrentUserPassword,
+} from "./sessions.controller";
 import { postSession } from "./sessions.login";
 import { postToken } from "./sessions.tokens";
 
@@ -124,6 +129,42 @@ export default async function sessionsRoutes(app: FastifyInstance) {
       },
     },
     getCurrentUser,
+  );
+
+  app.put(
+    "/users/me/password",
+    {
+      preHandler: [app.authenticate],
+      schema: {
+        tags: ["Users"],
+        summary: "Alterar a própria senha",
+        description:
+          "Altera a senha do usuário autenticado após validar a senha atual. A nova senha usa a política " +
+          "oficial `zStrongPassword` e, em caso de sucesso, encerra as demais sessões do mesmo usuário e retorna 204.",
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: "object",
+          required: ["senhaAtual", "novaSenha"],
+          properties: {
+            senhaAtual: { type: "string", minLength: 1, description: "Senha atual do usuário autenticado." },
+            novaSenha: {
+              type: "string",
+              minLength: 8,
+              description: "Nova senha: deve atender à política `zStrongPassword` (8+ caracteres, maiúscula, minúscula, número e símbolo).",
+            },
+          },
+        },
+        response: {
+          204: { description: "Senha alterada com sucesso (sem corpo).", type: "null" },
+          400: problem("Corpo inválido ou nova senha fora da política `zStrongPassword`"),
+          401: problem("Sem token, token inválido/expirado (`WWW-Authenticate`)"),
+          404: problem("Usuário autenticado não existe mais"),
+          409: problem("Usuário sem senha local definida"),
+          422: problem("Senha atual incorreta"),
+        },
+      },
+    },
+    putCurrentUserPassword,
   );
 
   app.post(
