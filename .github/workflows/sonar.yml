@@ -1,0 +1,58 @@
+name: SonarQube
+
+on:
+  push:
+    branches: [main, Fiat-Uno]
+  pull_request:
+    branches: [main, Fiat-Uno]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/workflow_fatec
+      JWT_ACCESS_SECRET: ci-test-secret
+      JWT_REFRESH_SECRET: ci-test-refresh-secret
+      JWT_ACCESS_EXPIRES: 15m
+      JWT_REFRESH_EXPIRES: 7d
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      - name: Lint
+        run: pnpm lint
+        continue-on-error: true # TEMPORÁRIO: remover na Fase 3 (GUIA seção 10)
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Tests with coverage
+        run: pnpm exec vitest run --coverage
+        continue-on-error: true # TEMPORÁRIO: remover na Fase 3 (GUIA seção 10)
+
+      - name: SonarQube scan
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@v8.3.0
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
