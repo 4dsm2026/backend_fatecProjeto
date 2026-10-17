@@ -17,7 +17,7 @@ import {
   statsTickets,
 } from "./tickets.service";
 import type { TicketsListQuery } from "./tickets.types";
-import { pickFilters, toCollection } from "../../hateoas";
+import { path, pickFilters, toCollection } from "../../hateoas";
 import type { Role } from "../../hateoas";
 import { toTicketResource } from "./tickets.links";
 
@@ -70,9 +70,15 @@ export async function create(req: FastifyRequest, res: FastifyReply) {
 
   const feitoPorId = authUser.sub;
 
-  try {
+    try {
     const ticket = await createTicket(prisma, parsed.data!.body!, { feitoPorId });
-    await res.code(201).send(ticket);
+    if (!ticket) throw new Error("Chamado criado não foi encontrado");
+
+    const viewer = { id: feitoPorId, role: authUser.role as Role };
+    await res
+      .header("Location", path`/tickets/${ticket.id}`)
+      .code(201)
+      .send(toTicketResource(ticket, viewer));
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao criar ticket");
     await res.code(500).send({ error: errMsg(e) });
