@@ -615,7 +615,9 @@ export async function ticketsRoutes(app: FastifyInstance) {
               "Chamado criado com sucesso. Retorna o chamado completo com relações " +
               "`servico` e `criadoPor` incluídas. O protocolo (ex.: `TCK-A1B2C3`) é " +
               "gerado automaticamente e é único no sistema.",
+            headers: { Location: { type: "string", example: "/tickets/clx1" } },
             ...TicketBaseSchema,
+            properties: { ...TicketBaseSchema.properties, _links: HalLinksSchema },
           },
           400: {
             description:
