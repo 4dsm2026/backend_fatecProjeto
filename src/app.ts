@@ -124,7 +124,8 @@ export async function buildApp() {
   // 🔌 WebSocket — autenticado por handshake no primeiro frame.
   // O cliente envia { type: "auth", token } logo após conectar, evitando
   // o JWT na query string (que vaza em logs de acesso/proxy).
-  // O token via ?token= ainda é aceito como fallback de compatibilidade.
+  // Depois do handshake o canal é só de saída: o servidor envia eventos
+  // apenas para os usuários envolvidos (sendToUsersWS).
   // ---------------------------------------------------------
   const connections = new Map<string, import("ws").WebSocket>();
   const AUTH_TIMEOUT_MS = 10_000;
@@ -176,28 +177,9 @@ export async function buildApp() {
         return;
       }
 
-      try {
-        if (data.type === "nova_mensagem") {
-          const { chamadoId, mensagem, autorId, autor } = data;
-          for (const [, client] of connections) {
-            if (client.readyState === client.OPEN) {
-              client.send(JSON.stringify({
-                type: "nova_mensagem",
-                chamadoId,
-                mensagem: {
-                  id: Date.now().toString(),
-                  conteudo: mensagem,
-                  criadoEm: new Date().toISOString(),
-                  autorId,
-                  autor,
-                },
-              }));
-            }
-          }
-        }
-      } catch (err) {
-        app.log.error({ err }, "Erro ao processar WS message");
-      }
+      // Autenticado, o cliente não envia mais eventos: mensagens são criadas
+      // pela rota HTTP (que confere permissão) e entregues por sendToUsersWS.
+      // Repassar o que o cliente manda permitiria mensagens falsas para todos.
     });
 
     socket.on("close", () => {
@@ -213,9 +195,14 @@ export async function buildApp() {
     });
   });
 
-  (globalThis as any).broadcastWS = (data: any) => {
-    for (const [, socket] of connections) {
-      if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
+  // Entrega um evento em tempo real só para os usuários indicados.
+  // Não existe envio para "todos os conectados": cada evento carrega dados
+  // de um chamado e só pode chegar a quem tem acesso a ele.
+  (globalThis as any).sendToUsersWS = (userIds: Iterable<string>, data: any) => {
+    const payload = JSON.stringify(data);
+    for (const userId of new Set(userIds)) {
+      const socket = connections.get(userId);
+      if (socket && socket.readyState === socket.OPEN) socket.send(payload);
     }
   };
 

@@ -51,7 +51,7 @@ describe('ticket-messages-test', () => {
             notifyUsers: vi.fn()
         }
 
-            ; (globalThis as any).broadcastWS = vi.fn()
+            ; (globalThis as any).sendToUsersWS = vi.fn()
 
         prismaMock.mensagem.create.mockResolvedValue({
             id: 'msg-1',
@@ -84,6 +84,37 @@ describe('ticket-messages-test', () => {
         await createTicketMessage(prismaMock, 'chamado-1', 'user-1', 'Preciso de ajuda')
 
         expect((global as any).fastifyAppInstance.notifyUsers).not.toHaveBeenCalled()
+    })
+
+    it('envia a mensagem em tempo real só para quem participa do chamado', async () => {
+        ;(global as any).fastifyAppInstance = { notifyUsers: vi.fn() }
+        const sendToUsersWS = vi.fn()
+        ;(globalThis as any).sendToUsersWS = sendToUsersWS
+
+        prismaMock.mensagem.create.mockResolvedValue({
+            id: 'msg-9',
+            chamadoId: 'chamado-9',
+            autorId: 'staff-1',
+            conteudo: 'Sua declaração está pronta',
+            autor: { id: 'staff-1', nome: 'Ana', emailPessoal: 'ana@teste.com' }
+        })
+        prismaMock.chamado.findUnique.mockResolvedValue({
+            criadoPorId: 'aluno-1',
+            responsavelId: 'staff-1',
+            setorId: 'setor-1',
+            organizacaoId: 'org-1',
+            protocolo: 'TCK-009'
+        })
+        prismaMock.usuarioSetor.findMany.mockResolvedValue([{ usuarioId: 'staff-2' }])
+
+        await createTicketMessage(prismaMock, 'chamado-9', 'staff-1', 'Sua declaração está pronta')
+
+        expect(sendToUsersWS).toHaveBeenCalledTimes(1)
+        const [destinatarios, evento] = sendToUsersWS.mock.calls[0]
+        expect(new Set(destinatarios)).toEqual(new Set(['aluno-1', 'staff-2', 'staff-1']))
+        expect(destinatarios).not.toContain('outro-aluno')
+        expect(evento).toMatchObject({ type: 'nova_mensagem', chamadoId: 'chamado-9' })
+        expect((globalThis as any).broadcastWS).toBeUndefined()
     })
 
     it.each([

@@ -43,12 +43,13 @@ export async function createTicketMessage(
     vinculos.forEach(v => { if (v.usuarioId !== autorId) userIds.add(v.usuarioId); });
   }
 
-  // 📡 Envia notificação persistente + broadcast em tempo real
+  // 📡 Envia notificação persistente + evento em tempo real
   const app: any = (global as any).fastifyAppInstance; // setado no app.ts
 
-  // 🔥 1. Broadcast WebSocket (para atualizar os chats de todos conectados)
-  if ((globalThis as any).broadcastWS) {
-    (globalThis as any).broadcastWS({
+  // 🔥 1. WebSocket: atualiza o chat aberto só de quem participa do chamado
+  //    (os mesmos usuários notificados + o autor, para as outras abas dele).
+  if ((globalThis as any).sendToUsersWS) {
+    (globalThis as any).sendToUsersWS([...userIds, autorId], {
       type: "nova_mensagem",
       chamadoId,
       mensagem: msg,
