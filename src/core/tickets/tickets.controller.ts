@@ -1,6 +1,6 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { buildRouteValidator } from "../../utils/zod-helpers";
-import { sendNotFound, sendUnauthorized, sendValidationError } from "../../utils/http";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import type { PrismaClient } from "@prisma/client";
+import { z } from "zod";
 import {
   TicketCreateSchema,
   TicketListSchema,
@@ -13,12 +13,22 @@ import {
   alunoSemAcessoAoChamado,
   listTickets,
   updateTicket,
-  softDeleteTicket,
   statsTickets,
 } from "./tickets.service";
 import type { TicketsListQuery } from "./tickets.types";
-import { ApiError, isStaff, path, pickFilters, toCollection } from "../../hateoas";
-import type { Role, Viewer } from "../../hateoas";
+import {
+  ApiError,
+  buildLinks,
+  isStaff,
+  link,
+  parseOrThrow,
+  path,
+  pickFilters,
+  toCollection,
+  toResource,
+  viewerFrom,
+} from "../../hateoas";
+import type { Viewer } from "../../hateoas";
 import { toTicketContext, toTicketResource } from "./tickets.links";
 import {
   canArchiveTicket,
@@ -30,153 +40,88 @@ import {
 } from "./ticket-rules";
 import type { TicketContext, TicketStatus } from "./ticket-rules";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-const createValidator = buildRouteValidator({ body: TicketCreateSchema.shape.body });
-const listValidator   = buildRouteValidator({ query: TicketListSchema.shape.query });
-const idValidator     = buildRouteValidator({ params: ParamsWithIdSchema.shape.params });
 // Filtros da URL que os links de paginação repetem (tudo da busca, menos page e size).
 const LIST_FILTER_KEYS = Object.keys(TicketListSchema.shape.query.shape).filter(
   (k) => k !== "page" && k !== "size",
 );
-const updateValidator = buildRouteValidator({
-  params: TicketUpdateSchema.shape.params,
-  body:   TicketUpdateSchema.shape.body,
+
+const StatsQuerySchema = z.object({
+  query: z.object({ organizacaoId: z.string().optional() }),
 });
 
-async function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
-  const authUser = req.user as { sub: string; role: string } | undefined;
-  if (!authUser) {
-    await res.code(401).send({ error: "Não autenticado" });
-    return null;
-  }
-
-  return authUser;
+function requireViewer(req: FastifyRequest): Viewer {
+  const viewer = viewerFrom(req);
+  if (!viewer) throw new ApiError("unauthorized", "Não autenticado");
+  return viewer;
 }
 
-async function denyMissingTicketAccess(
-  prisma: any,
-  id: string,
-  authUser: { sub: string; role: string } | undefined,
-  res: FastifyReply,
-) {
-  if (await alunoSemAcessoAoChamado(prisma, id, authUser)) {
-    await res.code(404).send({ error: "Chamado não encontrado" });
-    return true;
-  }
-
-  return false;
+/** Chamado de outro aluno: mesma resposta 404 do chamado inexistente (não vaza existência). */
+async function assertCanSeeTicket(prisma: PrismaClient, id: string, viewer: Viewer): Promise<void> {
+  const semAcesso = await alunoSemAcessoAoChamado(prisma, id, { sub: viewer.id, role: viewer.role });
+  if (semAcesso) throw new ApiError("not-found", "Chamado não encontrado");
 }
 
 /* ============ POST /tickets ============ */
 export async function create(req: FastifyRequest, res: FastifyReply) {
-  const parsed = createValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
+  const { body } = parseOrThrow(TicketCreateSchema, { body: req.body });
+  const viewer = requireViewer(req);
 
-  const prisma = req.server.prisma;
-  const authUser = await requireAuthUser(req, res);
-  if (!authUser) return;
+  const ticket = await createTicket(req.server.prisma, body, { feitoPorId: viewer.id });
+  if (!ticket) throw new ApiError("internal", "Erro interno do servidor");
 
-  const feitoPorId = authUser.sub;
-
-    try {
-    const ticket = await createTicket(prisma, parsed.data!.body!, { feitoPorId });
-    if (!ticket) throw new Error("Chamado criado não foi encontrado");
-
-    const viewer = { id: feitoPorId, role: authUser.role as Role };
-    await res
-      .header("Location", path`/tickets/${ticket.id}`)
-      .code(201)
-      .send(toTicketResource(ticket, viewer));
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao criar ticket");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+  return res
+    .header("Location", path`/tickets/${ticket.id}`)
+    .code(201)
+    .send(toTicketResource(ticket, viewer));
 }
 
 /* ============ GET /tickets/:id ============ */
 export async function getOne(req: FastifyRequest, res: FastifyReply) {
-  const parsed = idValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
-
+  const { params } = parseOrThrow(ParamsWithIdSchema, { params: req.params });
+  const viewer = requireViewer(req);
   const prisma = req.server.prisma;
-  const authUser = await requireAuthUser(req, res);
-  if (!authUser) return;
-  try {
-    const id = parsed.data!.params!.id;
 
-    // Chamado inexistente ou de outro aluno: mesma resposta 404 (não vaza existência).
-    if (await denyMissingTicketAccess(prisma, id, authUser, res)) return;
+  await assertCanSeeTicket(prisma, params.id, viewer);
 
-    const ticket = await getTicketById(prisma, id, [
-      "cliente", "contrato", "servico", "setor", "responsavel", "criadoPor", "historico",
-    ]);
+  const ticket = await getTicketById(prisma, params.id, [
+    "cliente", "contrato", "servico", "setor", "responsavel", "criadoPor", "historico",
+  ]);
+  if (!ticket) throw new ApiError("not-found", "Chamado não encontrado");
 
-     if (!ticket)
-      return sendNotFound(res, "Chamado");
-
-    const viewer = { id: authUser.sub, role: authUser.role as Role };
-    await res.send(toTicketResource(ticket, viewer));
-
-    
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao buscar ticket");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+  return res.send(toTicketResource(ticket, viewer));
 }
 
 /* ============ GET /tickets ============ */
 export async function list(req: FastifyRequest, res: FastifyReply) {
-  const parsed = listValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
+  const { query } = parseOrThrow(TicketListSchema, { query: req.query });
+  const viewer = requireViewer(req);
 
-  const prisma = req.server.prisma;
-  const authUser = await requireAuthUser(req, res);
-  if (!authUser) return;
+  const filters: TicketsListQuery = {
+    ...query,
+    criadoPorId: viewer.role === "USUARIO" ? viewer.id : query.criadoPorId,
+  };
+  const result = await listTickets(req.server.prisma, filters);
 
-  try {
-    const q = parsed.data!.query!;
-    const isAluno = authUser.role === "USUARIO";
-
-    const query: TicketsListQuery = {
-      ...q,
-      criadoPorId: isAluno ? authUser.sub : q.criadoPorId,
-    };
-
-        const result = await listTickets(prisma, query);
-    const viewer = { id: authUser.sub, role: authUser.role as Role };
-
-    await res.send(
-      toCollection({
-        rel: "tickets",
-        basePath: "/tickets",
-        items: result.items.map((t) => toTicketResource(t, viewer)),
-        page: result.page,
-        size: result.size,
-        total: result.total,
-        filters: pickFilters(req.query, LIST_FILTER_KEYS),
-      }),
-    );
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao listar tickets");
-    await res.code(500).send({ error: "Erro interno ao listar tickets" });
-  }
+  return res.send(
+    toCollection({
+      rel: "tickets",
+      basePath: "/tickets",
+      items: result.items.map((t) => toTicketResource(t, viewer)),
+      page: result.page,
+      size: result.size,
+      total: result.total,
+      filters: pickFilters(req.query, LIST_FILTER_KEYS),
+    }),
+  );
 }
 
 /* ============ GET /tickets/stats ============ */
 export async function stats(req: FastifyRequest, res: FastifyReply) {
-  const prisma   = req.server.prisma;
-  const authUser = await requireAuthUser(req, res);
-  if (!authUser) return;
+  requireViewer(req);
+  const { query } = parseOrThrow(StatsQuerySchema, { query: req.query });
 
-  try {
-    const organizacaoId = (req.query as any)?.organizacaoId as string | undefined;
-    const result = await statsTickets(prisma, { organizacaoId });
-    await res.send(result);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao computar stats de tickets");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+  const result = await statsTickets(req.server.prisma, { organizacaoId: query.organizacaoId });
+  return res.send(toResource(result, buildLinks({ self: link("/ticket-stats") })));
 }
 
 type PatchBody = { status?: TicketStatus; arquivado?: boolean; [campo: string]: unknown };
@@ -222,38 +167,26 @@ function assertPatchAllowed(ctx: TicketContext, viewer: Viewer, body: PatchBody)
 
 /* ============ PATCH /tickets/:id ============ */
 export async function patch(req: FastifyRequest, res: FastifyReply) {
-  const parsed = updateValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
+  const { params, body } = parseOrThrow(TicketUpdateSchema, { params: req.params, body: req.body });
+  const viewer = requireViewer(req);
+  const prisma = req.server.prisma;
 
-  const prisma     = req.server.prisma;
-  const authUser   = await requireAuthUser(req, res);
-  if (!authUser) return;
-  const feitoPorId = authUser.sub;
+  await assertCanSeeTicket(prisma, params.id, viewer);
 
-   try {
-    const id = parsed.data!.params!.id;
-    const body = parsed.data!.body!;
+  const current = await prisma.chamado.findFirst({ where: { id: params.id, deletadoEm: null } });
+  if (!current) throw new ApiError("not-found", "Chamado não encontrado");
 
-    if (await denyMissingTicketAccess(prisma, id, authUser, res)) return;
+  assertPatchAllowed(toTicketContext(current), viewer, body);
 
-    const viewer = { id: authUser.sub, role: authUser.role as Role };
-    const current = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } });
-    if (!current) return sendNotFound(res, "Chamado");
-
-    assertPatchAllowed(toTicketContext(current), viewer, body);
-
-    const ticket = await updateTicket(prisma, id, body, { feitoPorId });
-    await res.send(toTicketResource(ticket, viewer));
-  } catch (e: any) {
-    if (e instanceof ApiError) throw e;
-    if (e?.code === "P2025")
-      return sendNotFound(res, "Chamado");
-    req.log.error({ e }, "💥 Erro ao atualizar ticket");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+  const ticket = await updateTicket(prisma, params.id, body, { feitoPorId: viewer.id });
+  return res.send(toTicketResource(ticket, viewer));
 }
 
+
+
 /* ============ DELETE /tickets/:id (soft) ============ */
+/*
+
 export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
   const parsed = idValidator.parse(req);
   if ("error" in parsed) return sendValidationError(res, parsed.error);
@@ -281,3 +214,4 @@ export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
     await res.code(500).send({ error: errMsg(e) });
   }
 }
+*/

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { StatusChamado } from '@prisma/client';
+import { Prisma, StatusChamado } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
 import { notifyMany } from '../notifications/notify';
@@ -12,9 +12,13 @@ const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
 
 /* ========================= helpers ========================= */
-
 const pick = <T extends Record<string, unknown>>(obj: T): Partial<T> =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v != null)) as Partial<T>;
+
+
+/** Campo Json do Prisma: ausente vira NULL do banco (`Prisma.DbNull`), não JSON `null`. */
+const toJsonInput = (value: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull =>
+  value == null ? Prisma.DbNull : (value as Prisma.InputJsonValue);
 
 const ticketInclude = (include?: TicketsListQuery['include']) => {
   const base = {
@@ -23,7 +27,7 @@ const ticketInclude = (include?: TicketsListQuery['include']) => {
   };
   if (!include) return base;
   const arr = Array.isArray(include) ? include : [include];
-  for (const k of arr) (base as any)[k] = true;
+    for (const k of arr) base[k] = true;
   return base;
 };
 
@@ -197,8 +201,8 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
       catalogoCategoriaId:   resolvedCatalogoCatId ?? null,
       catalogoCategoriaNome: resolvedCatNome,
       setorProvavel:         data.setorProvavel  ?? null,
-      dadosAcademicos:       (data.dadosAcademicos  as any) ?? null,
-      camposEspecificos:     (data.camposEspecificos as any) ?? null,
+      dadosAcademicos:       toJsonInput(data.dadosAcademicos),
+      camposEspecificos:     toJsonInput(data.camposEspecificos),
       origem:                data.origem           ?? null,
       precisaAcaoDoAluno:    data.precisaAcaoDoAluno ?? false,
     },
@@ -264,16 +268,20 @@ export async function alunoSemAcessoAoChamado(
 }
 
 export async function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
-  const baseInclude: any = ticketInclude(include);
-  baseInclude.mensagens = {
-    include: { autor: { select: { id: true, nome: true, emailPessoal: true } } },
-    orderBy: { criadoEm: 'asc' },
-  };
-  baseInclude.historico = {
-    include: { porUsuario: { select: { id: true, nome: true, emailPessoal: true } } },
-    orderBy: { criadoEm: 'desc' },
-  };
-  return prisma.chamado.findFirst({ where: { id, deletadoEm: null }, include: baseInclude });
+  return prisma.chamado.findFirst({
+    where: { id, deletadoEm: null },
+    include: {
+      ...ticketInclude(include),
+      mensagens: {
+        include: { autor: { select: { id: true, nome: true, emailPessoal: true } } },
+        orderBy: { criadoEm: 'asc' },
+      },
+      historico: {
+        include: { porUsuario: { select: { id: true, nome: true, emailPessoal: true } } },
+        orderBy: { criadoEm: 'desc' },
+      },
+    },
+  });
 }
 
 export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
@@ -329,12 +337,11 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
         responsavelId: data.responsavelId,
         organizacaoId: data.organizacaoId,
         precisaAcaoDoAluno: data.precisaAcaoDoAluno,
-        observacaoInterna:  (data as any).observacaoInterna,
-        slaHoras:    (data as any).slaHoras,
-        slaDias:     (data as any).slaDias,
+        observacaoInterna:  data.observacaoInterna,
+        slaHoras:    data.slaHoras,
+        slaDias:     data.slaDias,
       }),
-      encerradoEm,
-      arquivadoEm,
+      vencimentoSla: data.vencimentoSla ? new Date(data.vencimentoSla) : undefined,
     },
   });
 

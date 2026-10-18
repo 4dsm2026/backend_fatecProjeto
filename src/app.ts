@@ -14,7 +14,7 @@ import sessionsRoutes from "./core/sessions/sessions.routes";
 import authVerify from "./plugins/auth-verify";
 import auditoriaRoutes from "./core/auditoria/auditoria.routes";
 import { usersRoutes } from "./core/users/users.routes";
-import { ticketsRoutes } from "./core/tickets/tickets.routes";
+import { ticketsRoutes, ticketStatsRoutes } from "./core/tickets/tickets.routes";
 import { catalogoRoutes } from "./core/catalogo/catalogo.routes";
 import swaggerPlugin from "./plugins/swagger";
 import helmetPlugin from "./plugins/helmet";
@@ -64,7 +64,7 @@ export async function buildApp() {
     ? env.CORS_ORIGIN.split(",").map((o) => o.trim())
     : [];
 
-    await app.register(cors, {
+  await app.register(cors, {
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
       if (allowedOrigins.includes(origin)) return cb(null, true);
@@ -77,7 +77,7 @@ export async function buildApp() {
     credentials: true,
   });
 
-    await app.register(fastifyCookie, {
+  await app.register(fastifyCookie, {
     secret: env.COOKIE_SECRET,
     parseOptions: {
       httpOnly: true,
@@ -122,7 +122,7 @@ export async function buildApp() {
     }
   });
 
-    // Raiz da API (HATEOAS): links de entrada de acordo com o papel de quem pede
+  // Raiz da API (HATEOAS): links de entrada de acordo com o papel de quem pede
   app.get("/api", { preHandler: [app.authenticate] }, async (req) => {
     const user = req.user as { sub: string; role: Role };
     return toResource({}, entryLinks({ id: user.sub, role: user.role }));
@@ -132,6 +132,7 @@ export async function buildApp() {
   app.register(sessionsRoutes);
   app.register(usersRoutes, { prefix: "/usuarios" });
   app.register(ticketsRoutes, { prefix: "/tickets" });
+  app.register(ticketStatsRoutes, { prefix: "/ticket-stats" });
   app.register(catalogoRoutes, { prefix: "/catalogo" });
   app.register(setoresRoutes, { prefix: "/admin" });
   app.register(papeisRoutes, { prefix: "/admin" });

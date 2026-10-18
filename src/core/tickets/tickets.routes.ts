@@ -183,11 +183,166 @@ const TicketBaseSchema = {
     origem: { type: "string", nullable: true },
     precisaAcaoDoAluno: { type: "boolean", example: false },
     encerradoEm: { type: "string", format: "date-time", nullable: true },
+    arquivadoEm: { type: "string", format: "date-time", nullable: true },
     deletadoEm: { type: "string", format: "date-time", nullable: true },
     criadoEm: { type: "string", format: "date-time" },
     atualizadoEm: { type: "string", format: "date-time" },
   },
 } as const;
+
+/** Opções da rota de estatísticas: servem a `/ticket-stats` e ao alias legado `/tickets/stats`. */
+function statsRouteOptions(app: FastifyInstance) {
+  return {
+    preHandler: app.authorize(["ADMINISTRADOR", "BACKOFFICE", "TECNICO"]),
+    schema: {
+      tags: ["Tickets"],
+      summary: "Obter estatísticas agregadas de chamados",
+      description:
+        "Retorna métricas e agregações globais de chamados: total por status, " +
+        "por nível, por prioridade, por setor, por responsável, tempo médio de " +
+        "resolução (TTR), percentual resolvido no prazo (SLA), e tendência dos " +
+        "últimos 7 dias.\n\n" +
+        "**Restrição de papel:** somente `ADMINISTRADOR`, `BACKOFFICE` e " +
+        "`TECNICO` podem acessar. Alunos (`USUARIO`) recebem `403`.\n\n" +
+        "**Filtro opcional por organização:** se `organizacaoId` for informado " +
+        "como query parameter, todas as agregações são filtradas para aquela " +
+        "organização. Caso contrário, considera todos os chamados não deletados.",
+      querystring: {
+        type: "object",
+        properties: {
+          organizacaoId: {
+            type: "string",
+            description:
+              "ID da organização para filtrar as estatísticas. Se omitido, " +
+              "retorna estatísticas de TODOS os chamados.",
+          },
+        },
+      },
+      response: {
+        200: {
+          description:
+            "Estatísticas calculadas com sucesso. Todos os campos numéricos " +
+            "consideram apenas chamados com `deletadoEm = null`.",
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            total: {
+              type: "integer",
+              description: "Total de chamados não deletados (soma de todos os status).",
+              example: 142,
+            },
+            porStatus: {
+              type: "object",
+              description: "Contagem de chamados por cada status possível.",
+              properties: {
+                ABERTO: { type: "integer", example: 45 },
+                EM_ATENDIMENTO: { type: "integer", example: 30 },
+                AGUARDANDO_USUARIO: { type: "integer", example: 12 },
+                RESOLVIDO: { type: "integer", example: 35 },
+                ENCERRADO: { type: "integer", example: 20 },
+              },
+            },
+            porNivel: {
+              type: "object",
+              description: "Contagem por nível de suporte.",
+              properties: {
+                N1: { type: "integer", example: 80 },
+                N2: { type: "integer", example: 45 },
+                N3: { type: "integer", example: 17 },
+              },
+            },
+            porPrioridade: {
+              type: "object",
+              description: "Contagem por prioridade.",
+              properties: {
+                BAIXA: { type: "integer", example: 20 },
+                MEDIA: { type: "integer", example: 60 },
+                ALTA: { type: "integer", example: 40 },
+                URGENTE: { type: "integer", example: 22 },
+              },
+            },
+            porSetor: {
+              type: "array",
+              description: "Contagem de chamados agrupados por setor, ordenados do mais para o menos.",
+              items: {
+                type: "object",
+                properties: {
+                  setorId: { type: "string", nullable: true },
+                  setorNome: { type: "string", example: "Secretaria Acadêmica" },
+                  total: { type: "integer", example: 35 },
+                },
+              },
+            },
+            porResponsavel: {
+              type: "array",
+              description: "Contagem de chamados agrupados por responsável.",
+              items: {
+                type: "object",
+                properties: {
+                  responsavelId: { type: "string", nullable: true },
+                  responsavelNome: { type: "string", example: "Maria Silva" },
+                  total: { type: "integer", example: 28 },
+                },
+              },
+            },
+            ttrMedioHoras: {
+              type: "number",
+              description: "Tempo médio de resolução em horas (chamados RESOLVIDO + ENCERRADO).",
+              example: 48.5,
+            },
+            slaMedioDias: {
+              type: "number",
+              description: "SLA médio em dias (ttrMedioHoras / 24).",
+              example: 2.02,
+            },
+            pctNoPrazo: {
+              type: "integer",
+              description:
+                "Percentual (0–100) de chamados encerrados dentro do prazo de SLA " +
+                "(apenas os que possuem `vencimentoSla`).",
+              example: 85,
+            },
+            pctResolvidos: {
+              type: "integer",
+              description: "Percentual (0–100) de chamados resolvidos ou encerrados sobre o total.",
+              example: 39,
+            },
+            tendencia7dias: {
+              type: "array",
+              description: "Chamados criados por dia nos últimos 7 dias.",
+              items: {
+                type: "object",
+                properties: {
+                  dia: { type: "string", format: "date", example: "2026-09-30" },
+                  total: { type: "integer", example: 5 },
+                },
+              },
+            },
+            atualizadoEm: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp do momento em que as estatísticas foram calculadas.",
+            },
+            _links: HalLinksSchema,
+          },
+        },
+        401: Unauthorized401WithSelfCheck,
+        403: ForbiddenResponse,
+        429: RateLimit429Response,
+        500: {
+          description:
+            "Erro inesperado ao computar estatísticas. `error` é a mensagem crua " +
+            "da exceção (via `errMsg()`), não sanitizada — pode conter detalhes " +
+            "internos do banco de dados.",
+          type: "object",
+          properties: {
+            error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
+          },
+        },
+      },
+    },
+  };
+}
 
 export async function ticketsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate as any);
@@ -196,161 +351,8 @@ export async function ticketsRoutes(app: FastifyInstance) {
   // gerar a documentação — a validação real continua 100% via Zod (preHandler).
   useDocsOnlySchemas(app);
 
-  // GET /tickets/stats  — deve vir ANTES de /:id para não ser interceptado como param
-  // Estatísticas globais são de equipe; aluno (USUARIO) não acessa.
-  app.get(
-    "/stats",
-    {
-      preHandler: (app as any).authorize(["ADMINISTRADOR", "BACKOFFICE", "TECNICO"]),
-      schema: {
-        tags: ["Tickets"],
-        summary: "Obter estatísticas agregadas de chamados",
-        description:
-          "Retorna métricas e agregações globais de chamados: total por status, " +
-          "por nível, por prioridade, por setor, por responsável, tempo médio de " +
-          "resolução (TTR), percentual resolvido no prazo (SLA), e tendência dos " +
-          "últimos 7 dias.\n\n" +
-          "**Restrição de papel:** somente `ADMINISTRADOR`, `BACKOFFICE` e " +
-          "`TECNICO` podem acessar. Alunos (`USUARIO`) recebem `403`.\n\n" +
-          "**Filtro opcional por organização:** se `organizacaoId` for informado " +
-          "como query parameter, todas as agregações são filtradas para aquela " +
-          "organização. Caso contrário, considera todos os chamados não deletados.",
-        querystring: {
-          type: "object",
-          properties: {
-            organizacaoId: {
-              type: "string",
-              description:
-                "ID da organização para filtrar as estatísticas. Se omitido, " +
-                "retorna estatísticas de TODOS os chamados.",
-            },
-          },
-        },
-        response: {
-          200: {
-            description:
-              "Estatísticas calculadas com sucesso. Todos os campos numéricos " +
-              "consideram apenas chamados com `deletadoEm = null`.",
-            type: "object",
-            additionalProperties: true,
-            properties: {
-              total: {
-                type: "integer",
-                description: "Total de chamados não deletados (soma de todos os status).",
-                example: 142,
-              },
-              porStatus: {
-                type: "object",
-                description: "Contagem de chamados por cada status possível.",
-                properties: {
-                  ABERTO: { type: "integer", example: 45 },
-                  EM_ATENDIMENTO: { type: "integer", example: 30 },
-                  AGUARDANDO_USUARIO: { type: "integer", example: 12 },
-                  RESOLVIDO: { type: "integer", example: 35 },
-                  ENCERRADO: { type: "integer", example: 20 },
-                },
-              },
-              porNivel: {
-                type: "object",
-                description: "Contagem por nível de suporte.",
-                properties: {
-                  N1: { type: "integer", example: 80 },
-                  N2: { type: "integer", example: 45 },
-                  N3: { type: "integer", example: 17 },
-                },
-              },
-              porPrioridade: {
-                type: "object",
-                description: "Contagem por prioridade.",
-                properties: {
-                  BAIXA: { type: "integer", example: 20 },
-                  MEDIA: { type: "integer", example: 60 },
-                  ALTA: { type: "integer", example: 40 },
-                  URGENTE: { type: "integer", example: 22 },
-                },
-              },
-              porSetor: {
-                type: "array",
-                description: "Contagem de chamados agrupados por setor, ordenados do mais para o menos.",
-                items: {
-                  type: "object",
-                  properties: {
-                    setorId: { type: "string", nullable: true },
-                    setorNome: { type: "string", example: "Secretaria Acadêmica" },
-                    total: { type: "integer", example: 35 },
-                  },
-                },
-              },
-              porResponsavel: {
-                type: "array",
-                description: "Contagem de chamados agrupados por responsável.",
-                items: {
-                  type: "object",
-                  properties: {
-                    responsavelId: { type: "string", nullable: true },
-                    responsavelNome: { type: "string", example: "Maria Silva" },
-                    total: { type: "integer", example: 28 },
-                  },
-                },
-              },
-              ttrMedioHoras: {
-                type: "number",
-                description: "Tempo médio de resolução em horas (chamados RESOLVIDO + ENCERRADO).",
-                example: 48.5,
-              },
-              slaMedioDias: {
-                type: "number",
-                description: "SLA médio em dias (ttrMedioHoras / 24).",
-                example: 2.02,
-              },
-              pctNoPrazo: {
-                type: "integer",
-                description:
-                  "Percentual (0–100) de chamados encerrados dentro do prazo de SLA " +
-                  "(apenas os que possuem `vencimentoSla`).",
-                example: 85,
-              },
-              pctResolvidos: {
-                type: "integer",
-                description: "Percentual (0–100) de chamados resolvidos ou encerrados sobre o total.",
-                example: 39,
-              },
-              tendencia7dias: {
-                type: "array",
-                description: "Chamados criados por dia nos últimos 7 dias.",
-                items: {
-                  type: "object",
-                  properties: {
-                    dia: { type: "string", format: "date", example: "2026-09-30" },
-                    total: { type: "integer", example: 5 },
-                  },
-                },
-              },
-              atualizadoEm: {
-                type: "string",
-                format: "date-time",
-                description: "Timestamp do momento em que as estatísticas foram calculadas.",
-              },
-            },
-          },
-          401: Unauthorized401WithSelfCheck,
-          403: ForbiddenResponse,
-          429: RateLimit429Response,
-          500: {
-            description:
-              "Erro inesperado ao computar estatísticas. `error` é a mensagem crua " +
-              "da exceção (via `errMsg()`), não sanitizada — pode conter detalhes " +
-              "internos do banco de dados.",
-            type: "object",
-            properties: {
-              error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
-            },
-          },
-        },
-      },
-    },
-    stats,
-  );
+  // Alias legado de GET /ticket-stats (o front ainda chama). Remover no 13.9.
+  app.get("/stats", statsRouteOptions(app), stats);
 
   // GET /tickets
   app.get(
@@ -683,6 +685,7 @@ export async function ticketsRoutes(app: FastifyInstance) {
             additionalProperties: true,
             properties: {
               ...TicketBaseSchema.properties,
+              _links: HalLinksSchema,
               setor: {
                 type: "object", nullable: true, additionalProperties: true,
                 description: "Dados do setor vinculado ao chamado.",
@@ -846,10 +849,10 @@ export async function ticketsRoutes(app: FastifyInstance) {
             slaHoras: { type: "integer", minimum: 1, nullable: true, description: "SLA em horas." },
             slaDias: { type: "integer", minimum: 1, nullable: true, description: "SLA em dias." },
             vencimentoSla: { type: "string", format: "date-time", nullable: true, description: "Data/hora de vencimento do SLA." },
-          },
-          arquivado: {
-            type: "boolean",
-            description: "`true` arquiva o chamado e `false` desarquiva (só ADMINISTRADOR).",
+            arquivado: {
+              type: "boolean",
+              description: "`true` arquiva o chamado e `false` desarquiva (só ADMINISTRADOR).",
+            },
           },
         },
         response: {
@@ -900,4 +903,11 @@ export async function ticketsRoutes(app: FastifyInstance) {
   );
 
   app.register(ticketMessagesRoutes, { prefix: "" });
+}
+
+export async function ticketStatsRoutes(app: FastifyInstance) {
+  useDocsOnlySchemas(app);
+
+  const options = statsRouteOptions(app);
+  app.get("/", { ...options, preHandler: [app.authenticate, options.preHandler] }, stats);
 }
