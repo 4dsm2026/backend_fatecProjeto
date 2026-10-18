@@ -37,7 +37,7 @@ API do **WorkFlow FATEC**, o portal de atendimento acadêmico da Fatec. Cuida de
 | Validação | [Zod](https://zod.dev/) |
 | Autenticação | JWT (access + refresh), senhas com Argon2 |
 | E-mail | [Resend](https://resend.com/) ou AWS SES |
-| Arquivos | Disco local ou S3 |
+| Arquivos | Disco local (o driver S3 ainda não existe — [#121](https://github.com/4dsm2026/backend_fatecProjeto/issues/121)) |
 | Tempo real | WebSocket (`/ws`) |
 | Testes | [Vitest](https://vitest.dev/) |
 | Documentação da API | Swagger em `/docs` |
@@ -118,9 +118,9 @@ Validadas na inicialização por `src/env.ts`: se faltar uma obrigatória, a API
 | `MAIL_FROM` | | `Suporte <no-reply@workflowfatec.com.br>` | Remetente dos e-mails |
 | `RESEND_API_KEY` | se `resend` | — | Chave do Resend |
 | `AWS_SES_REGION`, `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` | se `ses` | — | Credenciais do SES |
-| `STORAGE_DRIVER` | | `local` | `local` ou `s3` |
+| `STORAGE_DRIVER` | | `local` | Só `local` funciona hoje: com `s3` os anexos continuam indo para o disco ([#121](https://github.com/4dsm2026/backend_fatecProjeto/issues/121)) |
 | `LOCAL_STORAGE_DIR` | | `./uploads` | Pasta dos anexos quando `local` |
-| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | se `s3` | — | Bucket dos anexos |
+| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | — | — | Reservadas para o driver S3, ainda não usadas pelo código |
 
 Para gerar segredos fortes: `openssl rand -hex 32`. **Nunca faça commit do `.env`**: o hook `pre-commit` bloqueia.
 
@@ -208,6 +208,7 @@ analytics/report.py    # relatório de análise de chamados (Python, usa a API)
 
 - `Dockerfile`: imagem de produção (Node 20).
 - `.github/workflows/deploy.yml`: deploy na AWS ECS, disparado **manualmente** em *Actions → Deploy to AWS ECS*.
+- ⚠️ No ECS Fargate o disco do container é temporário: enquanto o driver S3 não existir, **os anexos se perdem a cada deploy ou reinício** ([#121](https://github.com/4dsm2026/backend_fatecProjeto/issues/121)).
 - Versões: cada merge em `main` gera uma release automática (veja [Releases](https://github.com/4dsm2026/backend_fatecProjeto/releases)).
 
 ## Contribuindo
