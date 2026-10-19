@@ -1,344 +1,216 @@
-<a href="https://github.com/seu-usuario" target="_blank">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:B71C1C,100:FF1744&height=200&section=header&text=WorkFlow&fontSize=80&fontAlignY=35&animation=fadeIn&fontColor=white" width="100%"/>
+<a href="https://github.com/4dsm2026" target="_blank">
+  <img alt="WorkFlow" src="https://capsule-render.vercel.app/api?type=waving&color=0:B71C1C,100:FF1744&height=200&section=header&text=WorkFlow&fontSize=80&fontAlignY=35&animation=fadeIn&fontColor=white" width="100%"/>
 </a>
 
-![Status](https://img.shields.io/badge/status-ativo-brightgreen)
+# WorkFlow FATEC — Backend (API)
 
-## 🚀 Do Zero ao Deploy Local
+[![CI](https://github.com/4dsm2026/backend_fatecProjeto/actions/workflows/ci.yml/badge.svg)](https://github.com/4dsm2026/backend_fatecProjeto/actions/workflows/ci.yml)
+[![Versão](https://img.shields.io/github/v/release/4dsm2026/backend_fatecProjeto?label=vers%C3%A3o)](https://github.com/4dsm2026/backend_fatecProjeto/releases)
+[![Manual](https://img.shields.io/badge/manual-docs-0075ca)](https://4dsm2026.github.io/docs_fatecProjeto/)
+![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-obrigat%C3%B3rio-F69220?logo=pnpm&logoColor=white)
 
-**Guia definitivo para rodar backend e frontend localmente — na ordem certa, sem surpresas.**
+API do **WorkFlow FATEC**, o portal de atendimento acadêmico da Fatec. Cuida de autenticação (e-mail ou RA), solicitações (chamados) com conversa e anexos, catálogo de serviços, setores e papéis, caixa de sugestões, notificações em tempo real, e-mails automáticos e auditoria.
 
-Siga cada etapa rigorosamente. Pular passos é o caminho mais curto para dores de cabeça com **CORS**, **tokens inconsistentes** e **variáveis de ambiente mal configuradas**. Nós já passamos por isso para que você não precise.
+**Interface:** [frontend_fatecProjeto](https://github.com/4dsm2026/frontend_fatecProjeto) · **Manual e arquitetura:** [site de documentação](https://4dsm2026.github.io/docs_fatecProjeto/) · **Quadro:** [WorkFlow 2026](https://github.com/orgs/4dsm2026/projects/3) · **Como contribuir:** [guia da organização](https://github.com/4dsm2026/.github/blob/main/CONTRIBUTING.md)
 
-**Equipe Docs/DevOps** 
+## Sumário
 
----
-## 🧰 Pré-requisitos
+- [Stack](#stack)
+- [Pré-requisitos](#pré-requisitos)
+- [Como rodar localmente](#como-rodar-localmente)
+- [Usuários de teste](#usuários-de-teste)
+- [Variáveis de ambiente](#variáveis-de-ambiente)
+- [Scripts](#scripts)
+- [Testes](#testes)
+- [API](#api)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Problemas comuns](#problemas-comuns)
+- [Deploy](#deploy)
 
-![Node.js](https://img.shields.io/badge/-Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white&labelColor=2D2D2D)
-![pnpm](https://img.shields.io/badge/-pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white&labelColor=2D2D2D)
-![Docker](https://img.shields.io/badge/-Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white&labelColor=2D2D2D)
+## Stack
 
-# ⚠️ ATENÇÃO! ⚠️
-<!-- Badge -->
-<p align="center">
-  <img src="https://img.shields.io/badge/%F0%9F%9A%A8-USE%20SEMPRE%20pnpm-FF0000?style=for-the-badge&logo=pnpm&logoColor=white&labelColor=1E1E1E" 
-       alt="Use sempre pnpm" />
-</p>
+| | |
+|---|---|
+| Servidor | [Fastify 5](https://fastify.dev/) + TypeScript |
+| Banco | MySQL 8 com [Prisma 6](https://www.prisma.io/) (migrações em `prisma/migrations/`) |
+| Validação | [Zod](https://zod.dev/) |
+| Autenticação | JWT (access + refresh), senhas com Argon2 |
+| E-mail | [Resend](https://resend.com/) ou AWS SES |
+| Arquivos | Disco local (o driver S3 ainda não existe — [#121](https://github.com/4dsm2026/backend_fatecProjeto/issues/121)) |
+| Tempo real | WebSocket (`/ws`) |
+| Testes | [Vitest](https://vitest.dev/) |
+| Documentação da API | Swagger em `/docs` |
 
-<!-- Aviso -->
-<blockquote>
-  <p align="center">
-    <strong>⚠️ IMPORTANTE:</strong> Use sempre <code>pnpm</code>, <strong>nunca</strong> <code>npm</code>.
-  </p>
-  <p align="center">
-    Ambos os repositórios possuem <code>pnpm-lock.yaml</code>. Instalar ou rodar com <code>npm</code> gera 
-    <strong>inconsistência de versões</strong> e pode até <strong>não funcionar</strong> 
-    (<code>npm run dev</code> falha porque as dependências não batem com o que o projeto espera).
-  </p>
-</blockquote>
+## Pré-requisitos
 
-<p align="center">
-  <img src="https://img.shields.io/badge/%F0%9F%90%B3-Docker%20Desktop%20instalado%20%26%20ABERTO-2496ED?style=for-the-badge&logo=docker&logoColor=white&labelColor=1E1E1E" 
-       alt="Docker Desktop instalado e aberto" />
-</p>
+- **Node.js 20+**
+- **pnpm**. ⚠️ Use sempre `pnpm`, nunca `npm`: o projeto tem `pnpm-lock.yaml`, e o `npm` instala versões diferentes. Para ativar: `corepack enable`.
+- **Docker Desktop** instalado e **aberto** (para o MySQL).
 
-## 1. Backend
+## Como rodar localmente
+
 ```bash
-git clone https://github.com/maysanazario/backend_fatecProjeto.git
+# 1. Dependências
+git clone https://github.com/4dsm2026/backend_fatecProjeto.git
 cd backend_fatecProjeto
 pnpm install
-```
-Se aparecer `ERR_PNPM_IGNORED_BUILDS`, rode:
-```bash
-pnpm approve-builds
-# marca todos pressionando a tecla 'a' (prisma, @prisma/client, argon2, esbuild, etc.) e confirma pressionando 'enter'
-pnpm install
-```
-## Banco de dados (Docker)
 
-```bash
+# 2. Banco de dados (MySQL na porta 3307 + Adminer em http://localhost:8080)
 docker compose up -d
+
+# 3. Variáveis de ambiente
+cp .env.example .env
+#   → no .env, troque a porta do DATABASE_URL de 3306 para 3307
+#   → troque os segredos "change-me" (veja Variáveis de ambiente)
+
+# 4. Prisma: client, tabelas e dados de teste
+pnpm prisma:generate
+pnpm prisma:migrate
+pnpm prisma:seed
+
+# 5. Subir a API
+pnpm dev
 ```
 
-Sobe MySQL 8 e o Adminer (`http://localhost:8080`).
+A API sobe em **http://localhost:3333**:
 
-<blockquote>
-  <p align="center">
-    <strong>⚠️ IMPORTANTE:</strong> A porta exposta é <code>3307</code>, <strong>não</strong> <code>3306</code>.
-  </p>
-  <p align="center">
-    O <code>docker-compose.yml</code> mapeia essa porta de propósito, para <strong>não conflitar</strong> 
-    com um MySQL local que a pessoa já tenha. O <code>.env.example</code> mostra <code>3306</code> — 
-    <strong>precisa trocar</strong>.
-  </p>
-</blockquote>
+- `GET /health`: deve responder `{"status":"ok","db":"connected"}`;
+- **http://localhost:3333/docs**: Swagger, com todas as rotas.
 
-<blockquote>
-  <p align="center">
-    <strong>⚠️ AVISO DE PORTAS (Ambiente Acadêmico / Redes Restritas)</strong>
-  </p>
-  
-  <p align="left">
-    <strong>1️⃣ MySQL:</strong>
-    <br />
-    &nbsp;&nbsp;• Porta no host: <code>3307</code>
-    <br />
-    &nbsp;&nbsp;• Porta no container: <code>3306</code>
-    <br />
-    &nbsp;&nbsp;• <em>(Mapeamento feito propositalmente para não conflitar com MySQL local)</em>
-  </p>
-  
-  <p align="left">
-    <strong>2️⃣ Adminer (Interface Web):</strong>
-    <br />
-    &nbsp;&nbsp;• Acesse: <code>http://localhost:8080</code>
-    <br />
-    &nbsp;&nbsp;• Server: <code>db</code> | User: <code>root</code> | Pass: <code>root</code> | DB: <code>workflow_fatec</code>
-  </p>
-  
-  <p align="left">
-    <strong>3️⃣ Se a porta 8080 estiver em uso:</strong>
-    <br />
-    &nbsp;&nbsp;• Edite o <code>docker-compose.yml</code>
-    <br />
-    &nbsp;&nbsp;• Altere <code>"8080:8080"</code> para <code>"8081:8080"</code> (ou porta disponível)
-    <br />
-    &nbsp;&nbsp;• Exemplo: <code>ports: - "8081:8080"</code>
-  </p>
-</blockquote>
+Depois, suba o [frontend](https://github.com/4dsm2026/frontend_fatecProjeto#como-rodar-localmente).
+
+> Se o `pnpm install` mostrar `ERR_PNPM_IGNORED_BUILDS`, rode `pnpm approve-builds`, marque todos com `a`, confirme com Enter e rode `pnpm install` de novo.
+
+**Por que a porta 3307?** O `docker-compose.yml` expõe o MySQL na 3307 para não conflitar com um MySQL que já esteja instalado na 3306. No Adminer, use: servidor `db`, usuário `root`, senha `root`, banco `workflow_fatec`. Se a porta 8080 estiver ocupada, troque `"8080:8080"` por `"8081:8080"` no `docker-compose.yml`.
+
+## Usuários de teste
+
+Criados pelo `pnpm prisma:seed` (`prisma/seed.js`). **Só existem no banco local.**
+
+| Perfil | Login (aba) | Senha | Observação |
+|---|---|---|---|
+| Administrador | `admin@example.com` (Funcionário) | `wf-fatec2026` | Entra direto |
+| Secretaria (Backoffice) | `ana.costa@fatec.sp.gov.br` (Funcionário) | `Fatec@2026` | Troca a senha no 1º acesso |
+| Aluno | RA `123456789` (Aluno) | `Fatec@2026` | Troca a senha no 1º acesso |
+| Aluno | RA `987654321` (Aluno) | `Fatec@2026` | Troca a senha no 1º acesso |
+| Aluno | RA `998877665` (Aluno) | `Fatec@2026` | Troca a senha no 1º acesso |
+
+A nova senha do primeiro acesso precisa ter 8+ caracteres, letra maiúscula, minúscula, número e símbolo.
 
 ## Variáveis de ambiente
 
-```bash
-cp .env.example .env
-```
+Validadas na inicialização por `src/env.ts`: se faltar uma obrigatória, a API não sobe e mostra qual é.
 
-No `.env`, ajuste:
-
-```dotenv
-DATABASE_URL="mysql://root:root@localhost:3307/workflow_fatec"
-CORS_ORIGIN=http://localhost:3000,http://192.168.152.1:3000
-APP_WEB_URL=http://localhost:3000
-```
-
-- `CORS_ORIGIN` por padrão vem `http://localhost:5173` (porta de outro framework) — se não trocar pra `3000`, o login falha com "Failed to fetch" (é CORS bloqueado, mas o navegador não deixa claro).
-- `APP_WEB_URL` é usado pra montar os links de e-mail (reset de senha, primeiro acesso).
-- **Anote os valores de `JWT_ACCESS_SECRET`, `JWT_ISSUER` e `JWT_AUDIENCE`** — o frontend precisa dos mesmos valores exatos (ver seção do frontend).
-
-## Banco: gerar client e aplicar schema
-
-```bash
-pnpm prisma:generate
-pnpm prisma:migrate
-```
-
-### Popular com usuários de teste
-
-```bash
-pnpm prisma:seed
-```
-
-Cria:
-
-| Papel | Login | Senha | Observação |
+| Variável | Obrigatória | Padrão | Para quê |
 |---|---|---|---|
-| Administrador | `admin@example.com` | `wf-fatec2026` | Entra direto |
-| Secretaria (Backoffice) | `ana.costa@fatec.sp.gov.br` | `Fatec@2026` | Pede troca de senha no 1º acesso |
-| Aluno | RA `123456789` | `Fatec@2026` | Pede troca de senha no 1º acesso |
-| Aluno | RA `987654321` | `Fatec@2026` | Pede troca de senha no 1º acesso |
-| Aluno | RA `998877665` | `Fatec@2026` | Pede troca de senha no 1º acesso |
+| `DATABASE_URL` | ✅ | — | Conexão com o MySQL. Local: `mysql://root:root@localhost:3307/workflow_fatec` |
+| `JWT_ACCESS_SECRET` | ✅ | — | Assina o token de acesso. **Tem que ser igual ao do frontend** |
+| `JWT_REFRESH_SECRET` | ✅ | — | Assina o token de renovação |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | | `helpdesk` / `helpdesk-app` | Emissor e público do token. **Iguais aos do frontend** |
+| `JWT_ACCESS_EXPIRES` / `JWT_REFRESH_EXPIRES` | | `15m` / `7d` | Validade dos tokens |
+| `DEFAULT_TEMP_PASSWORD` | ✅ | — | Senha temporária de alunos e funcionários cadastrados pelo painel |
+| `COOKIE_SECRET` | em produção | — | Assina os cookies |
+| `PORT` | | `3333` | Porta da API |
+| `CORS_ORIGIN` | | — | Origens liberadas, separadas por vírgula. Local: `http://localhost:3000` |
+| `APP_WEB_URL` | em produção | — | Endereço do frontend, usado nos links dos e-mails (primeiro acesso, redefinir senha) |
+| `MAIL_DRIVER` | | `resend` | `resend` ou `ses` |
+| `MAIL_FROM` | | `Suporte <no-reply@workflowfatec.com.br>` | Remetente dos e-mails |
+| `RESEND_API_KEY` | se `resend` | — | Chave do Resend |
+| `AWS_SES_REGION`, `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` | se `ses` | — | Credenciais do SES |
+| `STORAGE_DRIVER` | | `local` | Só `local` funciona hoje: com `s3` os anexos continuam indo para o disco ([#121](https://github.com/4dsm2026/backend_fatecProjeto/issues/121)) |
+| `LOCAL_STORAGE_DIR` | | `./uploads` | Pasta dos anexos quando `local` |
+| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | — | — | Reservadas para o driver S3, ainda não usadas pelo código |
 
-### Rodar
+Para gerar segredos fortes: `openssl rand -hex 32`. **Nunca faça commit do `.env`**: o hook `pre-commit` bloqueia.
 
-```bash
-pnpm dev
-```
+Sem uma chave de e-mail válida, o sistema funciona, mas os e-mails (redefinição de senha, avisos) não são entregues.
 
-Sobe em `http://localhost:3333`.
+## Scripts
 
----
-## 2. Frontend
+| Comando | O que faz |
+|---|---|
+| `pnpm dev` | API com recarga automática (lê o `.env`) |
+| `pnpm build` / `pnpm start` | Compila para `dist/` / roda a versão compilada |
+| `pnpm test` / `pnpm test:watch` | Testes (uma vez / observando) |
+| `pnpm typecheck` | Checagem de tipos do TypeScript |
+| `pnpm lint` | ESLint |
+| `pnpm prisma:generate` | Gera o Prisma Client (rode após mudar o `schema.prisma`) |
+| `pnpm prisma:migrate` | Aplica as migrações e cria uma nova se o schema mudou (`prisma migrate dev`) |
+| `pnpm prisma:seed` | Popula o banco com os dados de teste |
+| `pnpm prisma:studio` | Interface web para ver e editar o banco |
+| `pnpm backfill:outros` | Script pontual: atribui à Secretaria os chamados "Outra solicitação" criados sem setor (antes do roteamento por setor) |
 
-```bash
-git clone https://github.com/maysanazario/frontend_fatecProjeto.git
-cd frontend_fatecProjeto
-pnpm install
-```
+O CI roda `typecheck`, `lint` e `test` em todo PR para `develop` e `main`.
 
-Se aparecer `ERR_PNPM_IGNORED_BUILDS`, mesmo procedimento do backend (`pnpm approve-builds` + `pnpm install` de novo).
-
-### Variáveis de ambiente
-
-```bash
-cp .env.example .env.local
-```
-
-⚠️ **Tem que ser `.env.local`, não `.env`** — é a convenção do Next.js, e sem isso `NEXT_PUBLIC_API_BASE_URL` fica vazia (o fetch do login cai em `localhost:3000/auth/login`, que não existe, e dá 404 disfarçado de erro genérico).
-
-No `.env.local`:
-
-```dotenv
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3333
-JWT_ACCESS_SECRET=<mesmo valor do .env do backend>
-JWT_ISSUER=<mesmo valor do .env do backend>
-JWT_AUDIENCE=<mesmo valor do .env do backend>
-```
-
-⚠️ **Ponto que mais confunde:** o `middleware.ts` do frontend valida o JWT de novo no servidor (pra proteger as rotas `/admin` e `/aluno`). Se `JWT_ACCESS_SECRET` (e issuer/audience) não forem **idênticos** aos do backend, a verificação falha silenciosamente — o login parece funcionar (token é gerado, toast de sucesso aparece), mas a pessoa é redirecionada de volta pro `/login` sem nenhuma mensagem de erro.
-
-### Rodar
+## Testes
 
 ```bash
-pnpm dev
+pnpm test                                     # todos
+pnpm vitest run tests/produtos/03-chamado.test.ts   # um arquivo
+pnpm vitest run -t "Caixa de Sugestões"       # pelo nome do teste ou do grupo
 ```
 
-Sobe em `http://localhost:3000`.
+Os testes **não precisam de banco**: o Prisma é substituído por um mock (`src/lib/__mocks__/prisma.ts`) e as rotas são chamadas com `app.inject()`. Os auxiliares ficam em `tests/helpers/` (tokens, fábricas de dados, reset de mocks).
 
----
+- `tests/produtos/`: fluxos completos pela API (login, aluno, chamado, catálogo, autorização, sugestões…).
+- `tests/core/` e demais pastas: testes de controllers e services.
 
-## Ordem recomendada pra testar do zero
+## API
 
-1. Backend rodando (`pnpm dev` no terminal 1)
-2. Frontend rodando (`pnpm dev` no terminal 2)
-3. Acessar `http://localhost:3000/login`
-4. Testar aba "Funcionário" com `admin@example.com` / `wf-fatec2026` → deve cair em `/admin/home`
-5. Testar aba "Aluno (RA)" com RA `123456789` / `Fatec@2026` → espera-se erro 428 (obrigatoriedade de trocar senha), fluxo de "Primeiro acesso"
+A referência completa, com o formato de cada requisição e resposta, está no **Swagger** (`/docs`). Grupos de rotas:
 
-## Bug conhecido (ainda não corrigido em produção)
+| Prefixo | Assunto |
+|---|---|
+| `/auth` | Login (e-mail ou RA), refresh, logout, primeiro acesso, esqueci/redefinir senha |
+| `/usuarios` | Alunos e funcionários |
+| `/tickets` | Chamados, mensagens (`/tickets/:id/mensagens`) e estatísticas |
+| `/catalogo` | Categorias e serviços |
+| `/sugestoes` | Caixa de sugestões |
+| `/notifications` | Notificações do usuário |
+| `/admin` | Setores, papéis, funcionários por setor e modelos de e-mail |
+| `/tickets/:id/anexos`, `/anexos/:id/download` | Upload, lista e download de anexos (sempre autenticado) |
+| `/ws` | WebSocket: o cliente envia `{ "type": "auth", "token": "<access token>" }` logo após conectar |
 
-Na tela de login, os campos das abas "Funcionário" e "Aluno (RA)" compartilhavam o mesmo estado (`identifier`), e havia uma troca automática de aba enquanto a pessoa digitava um e-mail (detectava padrão de RA no meio da digitação). Corrigido localmente em `app/(public)/login/LoginContent.tsx`:
-- Removida a troca automática de aba em `handleIdentifierChange`.
-- Criada `handleModeChange`, que limpa o campo (`identifier`) ao trocar de aba manualmente.
+As rotas exigem `Authorization: Bearer <token>`, exceto as de autenticação (login, primeiro acesso, senha), `GET /catalogo` e `/health`. Os perfis são `USUARIO` (aluno), `BACKOFFICE`, `TECNICO` e `ADMINISTRADOR`.
 
-# Guia de Commits e Colaboração
+## Estrutura do projeto
 
-## 🎯 Convenção de Commits
-
-Seguimos o padrão **Conventional Commits** para manter o histórico organizado e facilitar a geração automática de changelogs.
-
-### Formato Padrão:
-
-```
-<tipo>[escopo opcional]: <descrição>
-
-[corpo opcional]
-
-[rodapé opcional]
-```
-
-### Regras Importantes:
-
-* ✅ Use **presente do indicativo** ("adiciona" não "adicionado")
-* ✅ Primeira letra **minúscula** na descrição
-* ✅ **Sem ponto final** na descrição
-* ✅ Máximo **50 caracteres** no título
-* ✅ Linha em branco entre título e corpo
-* ✅ Corpo com máximo **72 caracteres** por linha
-
----
-
-## 🛠️ Instalação e Execução
-
-### 1. Preparar Variáveis de Ambiente
-Navegue até a pasta do backend e crie o arquivo `.env` a partir do modelo `.env.example`:
-
-```bash
-cd backend_fatecProjeto
-cp .env.example .env
+```text
+src/
+├── server.ts          # ponto de entrada
+├── app.ts             # registra plugins e rotas, WebSocket
+├── env.ts             # validação das variáveis de ambiente
+├── core/<módulo>/     # um módulo por assunto (tickets, sugestoes, auth…):
+│   ├── *.routes.ts    #   rotas e permissões
+│   ├── *.controller.ts#   valida a entrada e responde
+│   └── *.service.ts   #   regras de negócio e acesso ao banco
+├── validators/        # schemas Zod de cada módulo
+├── plugins/           # autenticação, CORS, rate limit, Swagger…
+├── lib/               # Prisma Client e auditoria
+└── jobs/              # tarefas agendadas (limpeza de anexos)
+prisma/                # schema, migrações e seed
+tests/                 # testes (Vitest)
+analytics/report.py    # relatório de análise de chamados (Python, usa a API)
 ```
 
-#### ⚙️ Configurações de Ambiente (`.env`):
-Abra o arquivo `.env` recém-criado e configure as variáveis principais:
+## Problemas comuns
 
-* **`CORS_ORIGIN` e `APP_WEB_URL`**:
-  Devem conter a URL exata do servidor onde o seu frontend está sendo executado (exemplo: `http://localhost:3000`).
-  > 💡 **Dica:** Caso utilize portas ou origens adicionais (como `http://localhost:5173`), você pode especificar múltiplos endereços separando-os por vírgula (`http://localhost:3000,http://localhost:5173`).
+| Sintoma | Causa provável | Solução |
+|---|---|---|
+| `P1001: Can't reach database server` | Docker fechado ou porta errada | Abra o Docker Desktop, rode `docker compose up -d` e confira a porta **3307** no `DATABASE_URL` |
+| A API não sobe e lista variáveis inválidas | Falta variável obrigatória | Compare o `.env` com a tabela acima |
+| Login no frontend falha com "Failed to fetch" | CORS | Inclua `http://localhost:3000` em `CORS_ORIGIN` e reinicie a API |
+| Login parece funcionar, mas volta para `/login` | Segredo JWT diferente no frontend | `JWT_ACCESS_SECRET`, `JWT_ISSUER` e `JWT_AUDIENCE` precisam ser iguais nos dois `.env` |
+| `ERR_PNPM_IGNORED_BUILDS` | pnpm bloqueou scripts de instalação | `pnpm approve-builds` → `a` → Enter → `pnpm install` |
 
-* **`DATABASE_URL`**:
-  String de conexão com o banco de dados MySQL seguindo o padrão:
-  `DATABASE_URL="mysql://<USUARIO>:<SENHA>@localhost:<PORTA>/<NOME_DO_BANCO>"`
-  
-  > 📌 **Porta Externa Mapeada:** Por padrão no arquivo `docker-compose.yml`, o serviço expõe o MySQL na porta **`3307`** (para evitar conflito caso você já possua um MySQL rodando localmente na porta 3306).  
-  > **Exemplo padrão:** `DATABASE_URL="mysql://root:root@localhost:3307/workflow_fatec"`
+## Deploy
 
----
+- `Dockerfile`: imagem de produção (Node 20).
+- `.github/workflows/deploy.yml`: deploy na AWS ECS, disparado **manualmente** em *Actions → Deploy to AWS ECS*.
+- ⚠️ No ECS Fargate o disco do container é temporário: enquanto o driver S3 não existir, **os anexos se perdem a cada deploy ou reinício** ([#121](https://github.com/4dsm2026/backend_fatecProjeto/issues/121)).
+- Versões: cada merge em `main` gera uma release automática (veja [Releases](https://github.com/4dsm2026/backend_fatecProjeto/releases)).
 
-### 2. Subir o Banco de Dados (MySQL + Adminer via Docker)
+## Contribuindo
 
-Abra o aplicativo **Docker Desktop** na sua máquina e execute o comando abaixo para iniciar os contêineres do banco de dados e da ferramenta de administração:
-
-```bash
-docker compose up -d
-```
-
-> ⚠️ **Aviso de Portas (Ambiente Acadêmico / Redes Restritas):**
-> - **MySQL:** Roda na porta host `3307` (mapeada para `3306` dentro do contêiner).
-> - **Adminer (Interface web do banco):** Fica acessível por padrão em `http://localhost:8080` (Server: `db`, User: `root`, Pass: `root`, DB: `workflow_fatec`).
-> - Se a porta `8080` estiver em uso em computadores de laboratório, altere o mapeamento no `docker-compose.yml` (por exemplo, de `"8080:8080"` para `"8081:8080"`).
-
----
-
-### 3. Instalar Dependências e Executar Migrações do Banco
-
-Com o contêiner do banco ativo, execute a instalação dos pacotes e a preparação do schema com o Prisma:
-
-```bash
-# Instalação das dependências
-npm install
-
-# Geração do client Prisma e criação das tabelas no MySQL
-npm run prisma:generate
-npm run prisma:push
-
-# Inicialização de dados padrão no banco (categorias, setores, papéis e usuários)
-npm run seed
-```
-
-#### 🔑 Credenciais Padrão do Seed (`npm run seed`):
-Ao executar o seed, o banco é populado com contas iniciais para testes de desenvolvimento:
-
-- **Administrador (Painel / Aba Funcionário):**
-  - **E-mail:** `admin@example.com`
-  - **Senha:** `wf-fatec2026`
-- **Usuários de Teste (Alunos / Secretaria):**
-  - **Exemplos de E-mail:** `joao.silva@aluno.fatec.sp.gov.br`, `ana.costa@fatec.sp.gov.br`
-  - **Senha inicial:** `Fatec@2026` *(exige redefinição no 1º acesso)*
-
-*(Nota: As credenciais de teste são definidas em `prisma/seed.js` e podem ser alteradas no script conforme a necessidade do projeto).*
-
----
-
-### 4. Iniciar a API Backend
-
-```bash
-npm run dev
-```
-
-A API estará rodando em `http://localhost:3333`.
-* **Documentação Interativa (Swagger):** `http://localhost:3333/docs`
-* **Status do Servidor (Health check):** `http://localhost:3333/health`
-
----
-
-## ⚠️ Troubleshooting (Problemas Comuns)
-
-#### 1. Erro `P1001: Can't reach database server`
-* **Causa:** O contêiner MySQL do Docker não está rodando ou a porta no `.env` não é a mesma exposta pelo Docker (`3307`).
-* **Solução:** Verifique no Docker Desktop se os contêineres estão ativos e confirme se a `DATABASE_URL` no `.env` aponta para a porta configurada no `docker-compose.yml`.
-
-#### 2. Erro de Bloqueio de CORS ao fazer requisições
-* **Causa:** A origem da requisição do frontend (ex: `http://localhost:3000`) não está listada no `CORS_ORIGIN` do arquivo `.env` do backend.
-* **Solução:** Adicione a URL do frontend na variável `CORS_ORIGIN` no `.env` e reinicie o backend (`npm run dev`).
-
----
-
-## 📚 Documentação
-
-Para rodar a documentação do projeto (Docusaurus) localmente:
-
-```bash
-cd docs
-npm install
-npm run start
-```
+Siga o [guia de contribuição da organização](https://github.com/4dsm2026/.github/blob/main/CONTRIBUTING.md): issue → branch `<tipo>/issue-<número>-<descrição>` → PR para `develop`. O `pnpm install` ativa os hooks do git, que conferem a mensagem de commit e bloqueiam arquivos grandes e `.env`.
