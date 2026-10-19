@@ -5,6 +5,7 @@
   "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || exit 0",
     "dev": "dotenv -e .env -- tsx watch src/server.ts",
     "build": "tsc -p .",
     "start": "node dist/server.js",
