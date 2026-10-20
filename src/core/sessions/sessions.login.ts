@@ -16,6 +16,7 @@ import {
   setAuthCookies,
 } from "../auth/auth.controller";
 import { buildActivationRequiredLinks, buildSessionLinks } from "./sessions.links";
+import { FINALIDADE_PRIMEIRO_ACESSO } from "../auth/token-finalidade";
 
 const loginSelect = {
   id: true,
@@ -227,7 +228,12 @@ async function rejectPasswordChangeRequired(
   const rawToken = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(rawToken).digest("hex");
   await prisma.tokenResetSenha.create({
-    data: { usuarioId: user.id, tokenHash, expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24) },
+    data: {
+      usuarioId: user.id,
+      tokenHash,
+      finalidade: FINALIDADE_PRIMEIRO_ACESSO,
+      expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24),
+    },
   });
   req.log.info({ userId: user.id }, "🔁 precisaTrocarSenha ativo — exigir troca de senha");
   throw new ApiError(

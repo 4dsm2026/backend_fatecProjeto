@@ -224,6 +224,7 @@ describe("POST /sessions", () => {
     expect(prismaMock.tokenResetSenha.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         tokenHash: createHash("sha256").update(token ?? "").digest("hex"),
+        finalidade: "PRIMEIRO_ACESSO",
       }),
     });
     expect(body).not.toHaveProperty("token");

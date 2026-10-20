@@ -32,6 +32,12 @@ enum StatusChamado {
   ENCERRADO
 }
 
+/// Para que o token foi emitido. Um token só vale no fluxo para o qual foi criado.
+enum FinalidadeToken {
+  RESET_SENHA
+  PRIMEIRO_ACESSO
+}
+
 enum StatusSugestao {
   NAO_RESPONDIDO
   RESPONDIDO
@@ -222,13 +228,14 @@ model Sessao {
 }
 
 model TokenResetSenha {
-  id        String    @id @default(cuid())
-  usuarioId String
-  tokenHash String    @unique
-  expiraEm  DateTime
-  usadoEm   DateTime?
-  criadoEm  DateTime  @default(now())
-  usuario   Usuario   @relation("TokensDeUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  id         String          @id @default(cuid())
+  usuarioId  String
+  tokenHash  String          @unique
+  finalidade FinalidadeToken
+  expiraEm   DateTime
+  usadoEm    DateTime?
+  criadoEm   DateTime        @default(now())
+  usuario    Usuario         @relation("TokensDeUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@index([usuarioId])
   @@index([expiraEm])

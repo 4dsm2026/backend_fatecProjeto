@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../../security/password";
 import { getMailDriver } from "../../config/mail";
 import { zStrongPassword } from "../../utils/zod-helpers";
+import { FINALIDADE_PRIMEIRO_ACESSO, FINALIDADE_RESET_SENHA } from "./token-finalidade";
 
 const APP_WEB_URL = process.env.APP_WEB_URL!;
 
@@ -18,7 +19,7 @@ function gerarToken() {
 
 /**
  * Envia link de PRIMEIRO ACESSO.
- * Usa o TokenResetSenha (mesma tabela do reset normal).
+ * Usa a tabela TokenResetSenha, com finalidade PRIMEIRO_ACESSO (não vale como reset).
  */
 export async function enviarLinkPrimeiroAcesso(
   prisma: PrismaClient,
@@ -39,6 +40,7 @@ export async function enviarLinkPrimeiroAcesso(
     data: {
       usuarioId: usuario.id,
       tokenHash,
+      finalidade: FINALIDADE_PRIMEIRO_ACESSO,
       expiraEm,
     },
   });
@@ -90,6 +92,7 @@ export async function enviarLinkEsqueciSenha(
     data: {
       usuarioId: usuario.id,
       tokenHash,
+      finalidade: FINALIDADE_RESET_SENHA,
       expiraEm,
     },
   });
@@ -129,6 +132,7 @@ export async function consumirTokenSenha(
   const token = await prisma.tokenResetSenha.findFirst({
     where: {
       tokenHash,
+      finalidade: FINALIDADE_RESET_SENHA,
       usadoEm: null,
       expiraEm: { gt: new Date() },
     },

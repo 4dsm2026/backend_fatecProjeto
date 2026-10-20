@@ -147,6 +147,9 @@ describe('POST /auth/login', () => {
     const body = res.json()
     expect(body).toHaveProperty('code', 'PASSWORD_CHANGE_REQUIRED')
     expect(body).toHaveProperty('token') // reset token for first-access flow
+    expect(prismaMock.tokenResetSenha.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ finalidade: 'PRIMEIRO_ACESSO' }),
+    })
   })
 
   it('423 — conta bloqueada por muitas tentativas', async () => {

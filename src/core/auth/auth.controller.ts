@@ -29,6 +29,7 @@ import {
   enviarLinkEsqueciSenha,
   consumirTokenSenha,
 } from "../../core/auth/reset-senha.service";
+import { FINALIDADE_PRIMEIRO_ACESSO } from "./token-finalidade";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -243,7 +244,12 @@ export const login = async (req: FastifyRequest, res: FastifyReply): Promise<voi
       const rawToken = randomBytes(32).toString("hex");
       const tokenHash = createHash("sha256").update(rawToken).digest("hex");
       await prisma.tokenResetSenha.create({
-        data: { usuarioId: user.id, tokenHash, expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24) },
+        data: {
+          usuarioId: user.id,
+          tokenHash,
+          finalidade: FINALIDADE_PRIMEIRO_ACESSO,
+          expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24),
+        },
       });
       req.log.info({ userId: user.id }, "🔁 precisaTrocarSenha ativo — exigir troca de senha");
       await res.code(428).send({
@@ -292,7 +298,7 @@ export const firstAccess = async (req: FastifyRequest, res: FastifyReply) => {
   try {
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const tokenRow = await prisma.tokenResetSenha.findFirst({
-      where: { tokenHash, usadoEm: null, expiraEm: { gt: new Date() } },
+      where: { tokenHash, finalidade: FINALIDADE_PRIMEIRO_ACESSO, usadoEm: null, expiraEm: { gt: new Date() } },
       include: { usuario: true },
     });
 
