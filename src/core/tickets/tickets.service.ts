@@ -20,15 +20,22 @@ const pick = <T extends Record<string, unknown>>(obj: T): Partial<T> =>
 const toJsonInput = (value: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull =>
   value == null ? Prisma.DbNull : (value as Prisma.InputJsonValue);
 
+/** Usuário nas respostas de chamado: nunca a linha inteira (tem senhaHash, telefone...). */
+const USUARIO_PUBLICO = { select: { id: true, nome: true, emailPessoal: true } };
+
 const ticketInclude = (include?: TicketsListQuery['include']) => {
-  const base = {
-    cliente: false, contrato: false, servico: false, setor: true,
-    responsavel: false, criadoPor: false, historico: false,
+  const pedidos: string[] = Array.isArray(include) ? include : [include ?? ''];
+  const quer = (relacao: string) => pedidos.includes(relacao);
+
+  return {
+    cliente: quer('cliente'),
+    contrato: quer('contrato'),
+    servico: quer('servico'),
+    setor: true,
+    responsavel: quer('responsavel') ? USUARIO_PUBLICO : false,
+    criadoPor: quer('criadoPor') ? USUARIO_PUBLICO : false,
+    historico: quer('historico'),
   };
-  if (!include) return base;
-  const arr = Array.isArray(include) ? include : [include];
-    for (const k of arr) base[k] = true;
-  return base;
 };
 
 const archivedFilter = (arquivados: TicketsListQuery['arquivados']) => {
