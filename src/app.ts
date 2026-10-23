@@ -1,7 +1,7 @@
 // src/app.ts
 import fs from "node:fs";
 import path from "node:path";
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
@@ -30,6 +30,7 @@ import { verifyAccessToken } from "./utils/jwt";
 import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
 import { entryLinks, registerProblemHandler, toResource } from "./hateoas";
 import type { Role } from "./hateoas";
+import { redactUrl } from "./utils/redact-url";
 
 
 /* ====== Configuração de uploads ====== */
@@ -44,6 +45,17 @@ export async function buildApp() {
   const app = Fastify({
     logger: {
       level: env.NODE_ENV === "production" ? "info" : "debug",
+      // Mesmo conteúdo do serializador padrão do Fastify, mas sem o token que viaja na URL.
+      serializers: {
+        req: (req: FastifyRequest) => ({
+          method: req.method,
+          url: redactUrl(req.url),
+          version: req.headers?.["accept-version"],
+          host: req.host,
+          remoteAddress: req.ip,
+          remotePort: req.socket?.remotePort,
+        }),
+      },
       ...(env.NODE_ENV !== "production" && {
         transport: { target: "pino-pretty", options: { colorize: true } },
       }),
@@ -98,7 +110,7 @@ export async function buildApp() {
   // Arquivos são servidos exclusivamente via GET /anexos/:id (rota autenticada).
 
   app.addHook("onRequest", async (req) =>
-    req.log.debug({ method: req.method, url: req.url }, "REQ"),
+    req.log.debug({ method: req.method, url: redactUrl(req.url) }, "REQ"),
   );
 
   // ✅ Health check público
