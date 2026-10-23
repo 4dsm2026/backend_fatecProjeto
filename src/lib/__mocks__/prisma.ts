@@ -25,6 +25,7 @@ function buildMock() {
     },
     mensagem: {
       create: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
     },

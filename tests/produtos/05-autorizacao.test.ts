@@ -53,7 +53,7 @@ describe('IDOR — chamados de outro aluno', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/tickets/${IDS.ticket}`,
+      url: `/tickets/${IDS.ticket}/messages`,
       headers: bearerAuth(alunoIntrusoToken),
     })
 
@@ -65,7 +65,7 @@ describe('IDOR — chamados de outro aluno', () => {
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/tickets/${IDS.ticket}`,
+      url: `/tickets/${IDS.ticket}/messages`,
       headers: bearerAuth(alunoIntrusoToken),
       payload: { status: 'ENCERRADO' },
     })

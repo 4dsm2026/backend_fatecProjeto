@@ -90,12 +90,12 @@ describe('ticket-messages-test', () => {
         {
             label: 'quando query vem vazio, a função usa os valores padrão de paginação',
             query: {},
-            esperado: { skip: 0, take: 100, page: 1, pageSize: 100 },
+            esperado: { skip: 0, take: 20, page: 0, size: 20 },
         },
         {
-            label: 'quando query vem com page e pageSize customizados, a função usa esses valores',
-            query: { page: 2, pageSize: 10 },
-            esperado: { skip: 10, take: 10, page: 2, pageSize: 10 },
+            label: 'quando query vem com page e size customizados, a função usa esses valores',
+            query: { page: 2, size: 10 },
+            esperado: { skip: 20, take: 10, page: 2, size: 10 },
         },
     ])('$label', async ({ query, esperado }) => {
         prismaMock.mensagem.count.mockResolvedValue(3)
@@ -113,7 +113,7 @@ describe('ticket-messages-test', () => {
         const resultado = await listTicketMessages(prismaMock, 'chamado-1', query)
 
         expect(prismaMock.mensagem.findMany).toHaveBeenCalledWith({
-            where: { chamadoId: 'chamado-1' },
+            where: { chamadoId: 'chamado-1', deletadoEm: null },
             orderBy: { criadoEm: 'asc' },
             skip: esperado.skip,
             take: esperado.take,
@@ -125,7 +125,7 @@ describe('ticket-messages-test', () => {
         expect(resultado).toEqual({
             total: 3,
             page: esperado.page,
-            pageSize: esperado.pageSize,
+            size: esperado.size,
             mensagens: [
                 { id: 'msg-1', chamadoId: 'chamado-1', autorId: 'user-1', conteudo: 'Oi', autor: { id: 'user-1', nome: 'João', emailPessoal: 'joao@teste.com' } }
             ]
