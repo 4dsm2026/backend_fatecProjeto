@@ -91,6 +91,7 @@ function buildMock() {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     anexo: {
       create: vi.fn(),

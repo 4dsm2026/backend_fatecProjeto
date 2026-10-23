@@ -45,6 +45,10 @@ export const ResetSenhaSchema = z.object({
   newPassword: zStrongPassword,
 });
 
+/** `PUT /password-resets/:token`: o token sai do corpo e vai para o path. */
+export const RedefinirSenhaBodySchema = z.object({ novaSenha: zStrongPassword });
+export const PasswordResetParamsSchema = z.object({ token: z.string().min(1) });
+
 export const FirstAccessSchema = FirstAccessBodySchema;
 
 export const TrocarSenhaSchema = z.object({

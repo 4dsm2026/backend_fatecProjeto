@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../../security/password";
 import { getMailDriver } from "../../config/mail";
 import { zStrongPassword } from "../../utils/zod-helpers";
+import { ApiError } from "../../hateoas";
 import { FINALIDADE_PRIMEIRO_ACESSO, FINALIDADE_RESET_SENHA } from "./token-finalidade";
 
 const APP_WEB_URL = process.env.APP_WEB_URL!;
@@ -178,4 +179,59 @@ export async function consumirTokenSenha(
   });
 
   return user;
+}
+
+/**
+ * Redefine a senha a partir de um token de RESET_SENHA (`PUT /password-resets/:token`).
+ *
+ * Erros (D-R2): token inexistente, expirado, de outra finalidade ou de conta
+ * inativa/apagada = `404` (indistinguíveis de propósito); token já usado = `409`.
+ *
+ * O token é consumido com `updateMany ... usadoEm: null` DENTRO da transação e o
+ * resultado é conferido: duas requisições simultâneas com o mesmo token não
+ * passam as duas. Encerra TODAS as sessões do usuário. A senha já chega validada
+ * (zStrongPassword, aparada) pelo schema da rota.
+ */
+export async function redefinirSenhaPorToken(prisma: PrismaClient, tokenRaw: string, novaSenha: string) {
+  const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
+  const agora = new Date();
+
+  const token = await prisma.tokenResetSenha.findFirst({
+    where: { tokenHash, finalidade: FINALIDADE_RESET_SENHA },
+    include: {
+      usuario: {
+        select: { id: true, nome: true, emailPessoal: true, emailEducacional: true, ativo: true, deletadoEm: true },
+      },
+    },
+  });
+
+  if (!token || token.expiraEm <= agora || !token.usuario.ativo || token.usuario.deletadoEm) {
+    throw new ApiError("not-found", "Token inválido ou expirado");
+  }
+  if (token.usadoEm) {
+    throw new ApiError("conflict", "Token já utilizado");
+  }
+
+  const senhaHash = await hashPassword(novaSenha);
+
+  await prisma.$transaction(async (tx) => {
+    const consumido = await tx.tokenResetSenha.updateMany({
+      where: { id: token.id, usadoEm: null, expiraEm: { gt: agora } },
+      data: { usadoEm: agora },
+    });
+    if (consumido.count !== 1) {
+      throw new ApiError("conflict", "Token já utilizado");
+    }
+    await tx.usuario.update({
+      where: { id: token.usuarioId },
+      data: { senhaHash, precisaTrocarSenha: false, passwordUpdatedAt: agora },
+    });
+    await tx.sessao.updateMany({
+      where: { usuarioId: token.usuarioId, revogadaEm: null },
+      data: { revogadaEm: agora },
+    });
+  });
+
+  const { id, nome, emailPessoal, emailEducacional } = token.usuario;
+  return { id, nome, emailPessoal, emailEducacional };
 }

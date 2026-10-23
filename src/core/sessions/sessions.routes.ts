@@ -7,6 +7,7 @@ import {
   getCurrentUser,
   putCurrentUserPassword,
 } from "./sessions.controller";
+import { postPasswordReset, putPasswordReset } from "./password-resets";
 import { postSession } from "./sessions.login";
 import { postToken } from "./sessions.tokens";
 
@@ -292,5 +293,76 @@ export default async function sessionsRoutes(app: FastifyInstance) {
       },
     },
     postToken,
+  );
+
+  app.post(
+    "/password-resets",
+    {
+      schema: {
+        tags: ["Sessions"],
+        summary: "Pedir a redefinição de senha (esqueci minha senha)",
+        description:
+          "Endpoint público. Envia um link de redefinição (válido por 1 hora) para o e-mail informado, " +
+          "**se** existir uma conta ativa com ele. A resposta é sempre `202` com a mesma mensagem, exista a conta " +
+          "ou não, e o envio roda desacoplado: falhas de e-mail ou de banco não mudam a resposta.",
+        security: [],
+        body: {
+          type: "object",
+          required: ["email"],
+          properties: { email: { type: "string", format: "email" } },
+        },
+        response: {
+          202: {
+            description: "Pedido recebido (não revela se a conta existe).",
+            type: "object",
+            required: ["message", "_links"],
+            properties: {
+              message: { type: "string" },
+              _links: { type: "object", additionalProperties: LinkSchema },
+            },
+          },
+          400: problem("E-mail inválido"),
+        },
+      },
+    },
+    postPasswordReset,
+  );
+
+  app.put(
+    "/password-resets/:token",
+    {
+      schema: {
+        tags: ["Sessions"],
+        summary: "Redefinir a senha com o token recebido por e-mail",
+        description:
+          "Endpoint público. O token vai no caminho. A nova senha usa a política `zStrongPassword`. Em caso de " +
+          "sucesso encerra TODAS as sessões do usuário, avisa por e-mail e responde `204` sem corpo: **não** " +
+          "cria sessão (o login é `POST /sessions`). Um token de primeiro acesso não vale aqui.",
+        security: [],
+        params: {
+          type: "object",
+          required: ["token"],
+          properties: { token: { type: "string", description: "Token do link enviado por e-mail." } },
+        },
+        body: {
+          type: "object",
+          required: ["novaSenha"],
+          properties: {
+            novaSenha: {
+              type: "string",
+              minLength: 8,
+              description: "Nova senha: 8+ caracteres, maiúscula, minúscula, número e símbolo.",
+            },
+          },
+        },
+        response: {
+          204: { description: "Senha redefinida (sem corpo).", type: "null" },
+          400: problem("Nova senha fora da política `zStrongPassword`"),
+          404: problem("Token inexistente, expirado, de outra finalidade ou de conta inativa/apagada"),
+          409: problem("Token já utilizado"),
+        },
+      },
+    },
+    putPasswordReset,
   );
 }
