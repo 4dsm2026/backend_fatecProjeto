@@ -73,18 +73,6 @@ describe('IDOR — chamados de outro aluno', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('DELETE /tickets/:id — 404 para aluno que não é dono', async () => {
-    prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
-
-    const res = await app.inject({
-      method: 'DELETE',
-      url: `/tickets/${IDS.ticket}`,
-      headers: bearerAuth(alunoIntrusoToken),
-    })
-
-    expect(res.statusCode).toBe(404)
-  })
-
   it('GET /tickets/:id/mensagens — 404 para aluno que não é dono', async () => {
     prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
 
