@@ -8,63 +8,8 @@ import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 const EXAMPLE_TICKET_ID = "cmj1234567890123456789012";
 const EXAMPLE_USER_ID = "cmjabcdefghij0123456789ab";
 const EXAMPLE_PROTOCOLO = "TCK-A1B2C3";
-const EXAMPLE_RAW_DB_ERROR = "Connection lost: The server closed the connection.";
 
 // ===================== Fragmentos reutilizáveis de schema =====================
-
-// Corpo devolvido por formatZodError (src/utils/zod-helpers.ts) quando o
-// preHandler rejeita o body/params/query por falha de schema Zod.
-const ValidationErrorSchema = {
-  type: "object",
-  title: "ErroDeValidacaoDeSchema",
-  required: ["message", "issues"],
-  properties: {
-    message: { type: "string", example: "Validação falhou" },
-    issues: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          path: { type: "string", example: "titulo" },
-          message: { type: "string", example: "Mínimo de 3 caracteres" },
-          code: { type: "string", example: "too_small" },
-        },
-      },
-    },
-  },
-} as const;
-
-// Corpo exato enviado por src/plugins/auth-verify.ts quando o token de acesso
-// está ausente, malformado, inválido ou expirado.
-const UnauthorizedErrorSchema = {
-  type: "object",
-  title: "ErroNaoAutorizado",
-  properties: {
-    error: { type: "string", example: "Não autorizado" },
-  },
-} as const;
-
-// Corpo enviado por requireAuthUser nos controllers quando o token passa na
-// verificação de assinatura mas não tem a claim `sub` (praticamente inatingível).
-const SelfCheckUnauthenticatedSchema = {
-  type: "object",
-  title: "ErroNaoAutenticado",
-  properties: {
-    error: { type: "string", example: "Não autenticado" },
-  },
-} as const;
-
-// 401 combinado — auth-verify + checagem própria do handler.
-const Unauthorized401WithSelfCheck = {
-  description:
-    "Token ausente, malformado, inválido ou expirado — verificado pelo " +
-    "preHandler `app.authenticate` (`{ error: \"Não autorizado\" }`, o caso " +
-    "comum) — OU token sintaticamente válido mas sem a claim `sub` no " +
-    "payload — checagem redundante feita pelo próprio handler " +
-    "(`{ error: \"Não autenticado\" }`, praticamente inatingível em uso " +
-    "normal, já que todo token emitido por este backend sempre inclui `sub`).",
-  oneOf: [UnauthorizedErrorSchema, SelfCheckUnauthenticatedSchema],
-} as const;
 
 // Rate limit global (100 req/min por IP) — @fastify/rate-limit.
 const RateLimitHeaders = {
@@ -106,31 +51,29 @@ const RateLimit429Response = {
   },
 } as const;
 
-// 404 genérico para chamado não encontrado (ou sem acesso para USUARIO).
-const NotFoundChamadoResponse = {
-  description:
-    "Chamado não encontrado. Retornado tanto quando o ID não existe no banco " +
-    "(ou foi soft-deletado) quanto quando um aluno (papel `USUARIO`) tenta " +
-    "acessar um chamado de outro usuário — a mesma resposta 404 é usada em " +
-    "ambos os cenários para não vazar a existência do recurso (anti-IDOR). " +
-    "Também retornado quando o Prisma lança `P2025` (registro requerido " +
-    "não encontrado) em operações de update/delete.",
+// Erro no formato RFC 7807 (`application/problem+json`) — o handler global
+// (src/hateoas/problem.ts) responde assim em TODAS as rotas.
+const ProblemSchema = {
   type: "object",
+  required: ["type", "title", "status", "instance"],
   properties: {
-    error: { type: "string", example: "Chamado não encontrado" },
-  },
-} as const;
-
-// 403 para rotas restritas por authorize() — ex.: GET /tickets/stats.
-const ForbiddenResponse = {
-  description:
-    "Acesso negado por papel insuficiente. O preHandler `app.authorize([...])` " +
-    "rejeitou a requisição porque o `papel` do usuário autenticado não está " +
-    "na lista de papéis permitidos para esta rota. Corpo exato definido em " +
-    "src/plugins/auth-verify.ts.",
-  type: "object",
-  properties: {
-    error: { type: "string", example: "Acesso negado" },
+    type: { type: "string", example: "/errors/not-found" },
+    title: { type: "string", example: "Chamado não encontrado" },
+    status: { type: "integer", example: 404 },
+    detail: { type: "string" },
+    instance: { type: "string", example: `/tickets/${EXAMPLE_TICKET_ID}` },
+    errors: {
+      type: "array",
+      description: "Só nos erros de validação (400): um item por campo inválido.",
+      items: {
+        type: "object",
+        required: ["field", "message"],
+        properties: {
+          field: { type: "string", example: "body.titulo" },
+          message: { type: "string", example: "Mínimo de 3 caracteres" },
+        },
+      },
+    },
   },
 } as const;
 
@@ -326,19 +269,10 @@ function statsRouteOptions(app: FastifyInstance) {
             _links: HalLinksSchema,
           },
         },
-        401: Unauthorized401WithSelfCheck,
-        403: ForbiddenResponse,
+        401: { description: "Token ausente, malformado, inválido ou expirado.", ...ProblemSchema },
+        403: { description: "Papel sem permissão: só a equipe (`ADMINISTRADOR`, `BACKOFFICE`, `TECNICO`) acessa.", ...ProblemSchema },
         429: RateLimit429Response,
-        500: {
-          description:
-            "Erro inesperado ao computar estatísticas. `error` é a mensagem crua " +
-            "da exceção (via `errMsg()`), não sanitizada — pode conter detalhes " +
-            "internos do banco de dados.",
-          type: "object",
-          properties: {
-            error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
-          },
-        },
+        500: { description: "Erro inesperado ao calcular as estatísticas. O corpo é genérico: a mensagem interna não é exposta.", ...ProblemSchema },
       },
     },
   };
@@ -502,20 +436,11 @@ export async function ticketsRoutes(app: FastifyInstance) {
             description:
               "Query string inválida — ex.: `page` negativo, `size` > 100, " +
               "`status` com valor não reconhecido, `nivel` inválido, etc.",
-            ...ValidationErrorSchema,
+            ...ProblemSchema,
           },
-          401: Unauthorized401WithSelfCheck,
+          401: { description: "Token ausente, malformado, inválido ou expirado.", ...ProblemSchema },
           429: RateLimit429Response,
-          500: {
-            description:
-              "Erro inesperado ao listar tickets. Diferente dos demais 500 de " +
-              "tickets: aqui a mensagem é FIXA (`\"Erro interno ao listar tickets\"`), " +
-              "não a mensagem crua da exceção.",
-            type: "object",
-            properties: {
-              error: { type: "string", example: "Erro interno ao listar tickets" },
-            },
-          },
+          500: { description: "Erro inesperado ao listar os chamados. O corpo é genérico: a mensagem interna não é exposta.", ...ProblemSchema },
         },
       },
     },
@@ -629,20 +554,11 @@ export async function ticketsRoutes(app: FastifyInstance) {
               "- Campo obrigatório em `camposEspecificos` ausente para o " +
               "`catalogoServicoId`/`servicoId` informado (validação por `superRefine`).\n" +
               "- Tipo de dado inválido em qualquer campo.",
-            ...ValidationErrorSchema,
+            ...ProblemSchema,
           },
-          401: Unauthorized401WithSelfCheck,
+          401: { description: "Token ausente, malformado, inválido ou expirado.", ...ProblemSchema },
           429: RateLimit429Response,
-          500: {
-            description:
-              "Erro inesperado ao criar o chamado. Pode incluir falha na geração " +
-              "do protocolo único (após 5 tentativas) ou erro de banco. `error` é " +
-              "a mensagem crua da exceção (via `errMsg()`), não sanitizada.",
-            type: "object",
-            properties: {
-              error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
-            },
-          },
+          500: { description: "Erro inesperado ao criar o chamado (por exemplo, falha ao gerar o protocolo único). O corpo é genérico.", ...ProblemSchema },
         },
       },
     },
@@ -759,20 +675,17 @@ export async function ticketsRoutes(app: FastifyInstance) {
           },
           400: {
             description: "Parâmetro `id` ausente ou vazio.",
-            ...ValidationErrorSchema,
+            ...ProblemSchema,
           },
-          401: Unauthorized401WithSelfCheck,
-          404: NotFoundChamadoResponse,
-          429: RateLimit429Response,
-          500: {
+          401: { description: "Token ausente, malformado, inválido ou expirado.", ...ProblemSchema },
+          404: {
             description:
-              "Erro inesperado ao buscar o chamado. `error` é a mensagem crua " +
-              "da exceção (via `errMsg()`), não sanitizada.",
-            type: "object",
-            properties: {
-              error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
-            },
+              "Chamado não encontrado. A mesma resposta vale para ID inexistente, chamado " +
+              "apagado e chamado de outro aluno (anti-IDOR: não revela que o recurso existe).",
+            ...ProblemSchema,
           },
+          429: RateLimit429Response,
+          500: { description: "Erro inesperado ao buscar o chamado. O corpo é genérico: a mensagem interna não é exposta.", ...ProblemSchema },
         },
       },
     },
@@ -870,32 +783,30 @@ export async function ticketsRoutes(app: FastifyInstance) {
               "- `slaHoras` ou `slaDias` não inteiro ou negativo.\n" +
               "- `observacaoInterna` com mais de 4000 caracteres.\n" +
               "- Parâmetro `id` ausente ou vazio.",
-            ...ValidationErrorSchema,
+            ...ProblemSchema,
           },
-          401: Unauthorized401WithSelfCheck,
+          401: { description: "Token ausente, malformado, inválido ou expirado.", ...ProblemSchema },
           403: {
-            description: "Sem permissão para a ação (não é da equipe, ou só o administrador arquiva).",
-            type: "object",
-            additionalProperties: true,
+            description:
+              "Sem permissão: aluno editando dados do chamado ou iniciando o atendimento, " +
+              "ou quem não é administrador tentando arquivar/desarquivar.",
+            ...ProblemSchema,
           },
           409: {
             description:
               "O estado do chamado não permite a ação: transição inválida, prazo de 30 dias " +
-              "para reabrir vencido, ou chamado arquivado.",
-            type: "object",
-            additionalProperties: true,
+              "para reabrir vencido, chamado arquivado (somente leitura), ou arquivar/desarquivar " +
+              "quando já está nesse estado.",
+            ...ProblemSchema,
           },
-          404: NotFoundChamadoResponse,
-          429: RateLimit429Response,
-          500: {
+          404: {
             description:
-              "Erro inesperado ao atualizar o chamado. `error` é a mensagem crua " +
-              "da exceção (via `errMsg()`), não sanitizada.",
-            type: "object",
-            properties: {
-              error: { type: "string", example: EXAMPLE_RAW_DB_ERROR },
-            },
+              "Chamado não encontrado. A mesma resposta vale para ID inexistente, chamado " +
+              "apagado e chamado de outro aluno (anti-IDOR: não revela que o recurso existe).",
+            ...ProblemSchema,
           },
+          429: RateLimit429Response,
+          500: { description: "Erro inesperado ao atualizar o chamado. O corpo é genérico: a mensagem interna não é exposta.", ...ProblemSchema },
         },
       },
     },
