@@ -60,18 +60,18 @@ describe('IDOR — chamados de outro aluno', () => {
     expect(res.statusCode).toBe(404)
   })
 
-  it('PATCH /tickets/:id — 404 para aluno que não é dono', async () => {
+    it('PATCH /tickets/:id — 404 para aluno que não é dono', async () => {
     prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/tickets/${IDS.ticket}/messages`,
+      url: `/tickets/${IDS.ticket}`,
       headers: bearerAuth(alunoIntrusoToken),
       payload: { status: 'ENCERRADO' },
     })
 
     expect(res.statusCode).toBe(404)
-  })
+  })  
 
   it('GET /tickets/:id/mensagens — 404 para aluno que não é dono', async () => {
     prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
