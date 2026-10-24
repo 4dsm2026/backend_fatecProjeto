@@ -349,6 +349,8 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
         slaDias:     data.slaDias,
       }),
       vencimentoSla: data.vencimentoSla ? new Date(data.vencimentoSla) : undefined,
+      encerradoEm,
+      arquivadoEm,
     },
   });
 
