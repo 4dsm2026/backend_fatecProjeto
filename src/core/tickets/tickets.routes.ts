@@ -133,7 +133,7 @@ const TicketBaseSchema = {
   },
 } as const;
 
-/** Opções da rota de estatísticas: servem a `/ticket-stats` e ao alias legado `/tickets/stats`. */
+/** Opções da rota de estatísticas (`GET /ticket-stats`). */
 function statsRouteOptions(app: FastifyInstance) {
   return {
     preHandler: app.authorize(["ADMINISTRADOR", "BACKOFFICE", "TECNICO"]),
@@ -285,8 +285,7 @@ export async function ticketsRoutes(app: FastifyInstance) {
   // gerar a documentação — a validação real continua 100% via Zod (preHandler).
   useDocsOnlySchemas(app);
 
-  // Alias legado de GET /ticket-stats (o front ainda chama). Remover no 13.9.
-  app.get("/stats", statsRouteOptions(app), stats);
+
 
   // GET /tickets
   app.get(

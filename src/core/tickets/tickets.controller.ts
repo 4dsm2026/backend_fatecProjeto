@@ -115,7 +115,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
   );
 }
 
-/* ============ GET /tickets/stats ============ */
+/* ============ GET /ticket-stats ============ */
 export async function stats(req: FastifyRequest, res: FastifyReply) {
   requireViewer(req);
   const { query } = parseOrThrow(StatsQuerySchema, { query: req.query });

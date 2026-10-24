@@ -201,39 +201,15 @@ describe('GET /tickets — Listar Chamados', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('GET /tickets/stats — Estatísticas', () => {
-  it('200 — retorna contagens por status', async () => {
-    // statsTickets calls count × 5 (one per status), findMany × 1, groupBy × 4
-    prismaMock.chamado.count
-      .mockResolvedValue(1) // default for all status counts
-    prismaMock.chamado.findMany.mockResolvedValue([]) // encerrados
-    prismaMock.chamado.groupBy.mockResolvedValue([])  // porSetor, porResponsavel, nivelGroups, prioGroups
-
+describe('GET /tickets/stats — endereço antigo, removido', () => {
+  it('não existe mais (as estatísticas moram em /ticket-stats)', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/tickets/stats',
       headers: bearerAuth(adminToken),
     })
 
-    expect(res.statusCode).toBe(200)
-    const body = res.json()
-    expect(body).toHaveProperty('total')
-    expect(body).toHaveProperty('porStatus')
-    expect(body.porStatus).toHaveProperty('ABERTO')
-  })
-
-  it('401 — sem autenticação', async () => {
-    const res = await app.inject({ method: 'GET', url: '/tickets/stats' })
-    expect(res.statusCode).toBe(401)
-  })
-
-  it('403 — aluno (USUARIO) não acessa estatísticas globais', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/tickets/stats',
-      headers: bearerAuth(userToken),
-    })
-    expect(res.statusCode).toBe(403)
+    expect([404, 405]).toContain(res.statusCode)
   })
 })
 
