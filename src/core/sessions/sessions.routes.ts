@@ -7,6 +7,7 @@ import {
   getCurrentUser,
   putCurrentUserPassword,
 } from "./sessions.controller";
+import { putAccountActivation } from "./account-activations";
 import { postPasswordReset, putPasswordReset } from "./password-resets";
 import { postSession } from "./sessions.login";
 import { postToken } from "./sessions.tokens";
@@ -364,5 +365,46 @@ export default async function sessionsRoutes(app: FastifyInstance) {
       },
     },
     putPasswordReset,
+  );
+
+  app.put(
+    "/account-activations/:token",
+    {
+      schema: {
+        tags: ["Sessions"],
+        summary: "Concluir o primeiro acesso (definir a senha)",
+        description:
+          "Endpoint público. O token vem no link `activate` do `403 password-change-required` do `POST /sessions` " +
+          "e vai no caminho. Define a nova senha (política `zStrongPassword`) e, opcionalmente, o e-mail pessoal. " +
+          "Responde `204` sem corpo e **sem sessão**: o login é `POST /sessions`. Concluir invalida os outros " +
+          "tokens de primeiro acesso pendentes do usuário. Um token de reset de senha não vale aqui.",
+        security: [],
+        params: {
+          type: "object",
+          required: ["token"],
+          properties: { token: { type: "string", description: "Token do link `activate`." } },
+        },
+        body: {
+          type: "object",
+          required: ["novaSenha"],
+          properties: {
+            novaSenha: {
+              type: "string",
+              minLength: 8,
+              description: "Nova senha: 8+ caracteres, maiúscula, minúscula, número e símbolo.",
+            },
+            emailPessoal: { type: "string", format: "email", description: "Opcional: novo e-mail pessoal da conta." },
+          },
+        },
+        response: {
+          204: { description: "Conta ativada (sem corpo).", type: "null" },
+          400: problem("Senha fora da política ou e-mail inválido"),
+          403: problem("Usuário inativo"),
+          404: problem("Token inexistente, expirado, de outra finalidade, de conta apagada ou que não precisa mais trocar a senha"),
+          409: problem("Token já utilizado, ou e-mail pessoal já em uso por outra conta"),
+        },
+      },
+    },
+    putAccountActivation,
   );
 }

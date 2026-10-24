@@ -40,6 +40,13 @@ export const ResetSenhaSchema = z.object({
 export const RedefinirSenhaBodySchema = z.object({ novaSenha: zStrongPassword });
 export const PasswordResetParamsSchema = z.object({ token: z.string().min(1) });
 
+/** `PUT /account-activations/:token`: o token vai no caminho; senha e e-mail (opcional) no corpo. */
+export const AtivarContaBodySchema = z.object({
+  novaSenha: zStrongPassword,
+  emailPessoal: zEmail.optional(),
+});
+export const AccountActivationParamsSchema = z.object({ token: z.string().min(1) });
+
 export const FirstAccessSchema = FirstAccessBodySchema;
 
 export const TrocarSenhaSchema = z.object({
