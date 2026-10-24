@@ -59,15 +59,16 @@ function instalarRepositorio() {
   })
   prismaMock.tokenResetSenha.updateMany.mockImplementation(async (args: any) => {
     const w = args.where
-    const r = rows.find(
+    const alvos = rows.filter(
       (x) =>
-        x.id === w.id &&
+        (w.id === undefined || x.id === w.id) &&
+        (w.usuarioId === undefined || x.usuarioId === w.usuarioId) &&
+        (w.finalidade === undefined || x.finalidade === w.finalidade) &&
         (w.usadoEm === undefined || x.usadoEm === w.usadoEm) &&
         (w.expiraEm?.gt === undefined || x.expiraEm > w.expiraEm.gt),
     )
-    if (!r) return { count: 0 }
-    Object.assign(r, args.data)
-    return { count: 1 }
+    for (const r of alvos) Object.assign(r, args.data)
+    return { count: alvos.length }
   })
 }
 
@@ -262,6 +263,23 @@ describe('PUT /password-resets/:token', () => {
     const res = await redefinir(TOKEN, { novaSenha: SENHA }, { authorization: 'Bearer lixo' })
 
     expect(res.statusCode).toBe(204)
+  })
+
+  it('INVALIDA os outros tokens de reset pendentes do usuário (e só eles)', async () => {
+    rows.push(
+      { id: 't-reset-2', usuarioId: IDS.user, tokenHash: sha256('segundo-pedido-0123456789'), finalidade: 'RESET_SENHA', expiraEm: daqui(3_600_000), usadoEm: null },
+      { id: 't-reset-alheio', usuarioId: 'user-id-999', tokenHash: sha256('de-outro-usuario-0123456789'), finalidade: 'RESET_SENHA', expiraEm: daqui(3_600_000), usadoEm: null },
+    )
+
+    expect((await redefinir(TOKEN)).statusCode).toBe(204)
+
+    const usado = (id: string) => rows.find((r) => r.id === id)?.usadoEm
+    expect(usado('t-reset')).toBeInstanceOf(Date)
+    expect(usado('t-reset-2')).toBeInstanceOf(Date) // o segundo link do mesmo usuário morre junto
+    expect(usado('t-reset-alheio')).toBeNull() // outro usuário, intacto
+    expect(usado('t-primeiro')).toBeNull() // outra finalidade, intacto
+    // e o segundo link, de fato, deixou de valer
+    expectProblem(await redefinir('segundo-pedido-0123456789', { novaSenha: 'OutraSenha2$' }), 409)
   })
 
   it('REPLAY: o mesmo token usado de novo dá 409 e a senha NÃO é trocada outra vez', async () => {

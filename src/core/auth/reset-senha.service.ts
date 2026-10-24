@@ -189,7 +189,8 @@ export async function consumirTokenSenha(
  *
  * O token é consumido com `updateMany ... usadoEm: null` DENTRO da transação e o
  * resultado é conferido: duas requisições simultâneas com o mesmo token não
- * passam as duas. Encerra TODAS as sessões do usuário. A senha já chega validada
+ * passam as duas. Os OUTROS tokens de reset pendentes do usuário também são
+ * invalidados. Encerra TODAS as sessões do usuário. A senha já chega validada
  * (zStrongPassword, aparada) pelo schema da rota.
  */
 export async function redefinirSenhaPorToken(prisma: PrismaClient, tokenRaw: string, novaSenha: string) {
@@ -222,6 +223,11 @@ export async function redefinirSenhaPorToken(prisma: PrismaClient, tokenRaw: str
     if (consumido.count !== 1) {
       throw new ApiError("conflict", "Token já utilizado");
     }
+    // Quem pediu o link mais de uma vez tem vários tokens válidos: usar um encerra todos.
+    await tx.tokenResetSenha.updateMany({
+      where: { usuarioId: token.usuarioId, finalidade: FINALIDADE_RESET_SENHA, usadoEm: null },
+      data: { usadoEm: agora },
+    });
     await tx.usuario.update({
       where: { id: token.usuarioId },
       data: { senhaHash, precisaTrocarSenha: false, passwordUpdatedAt: agora },
