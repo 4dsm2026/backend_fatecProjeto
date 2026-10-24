@@ -257,6 +257,85 @@ describe('GET /tickets/:id/messages/:messageId — Uma mensagem', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe('PATCH /tickets/:id/messages — Marcar como lidas (D7)', () => {
+  const marcar = (token: string, payload: object = { lida: true }) =>
+    app.inject({ method: 'PATCH', url: MENSAGENS, headers: bearerAuth(token), payload })
+
+  it('200 — marca as mensagens dos outros como lidas e informa quantas', async () => {
+    prismaMock.chamado.findFirst.mockResolvedValue(makeTicket())
+    prismaMock.mensagem.updateMany.mockResolvedValue({ count: 3 })
+
+    const res = await marcar(userToken)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ updatedCount: 3 })
+    expect(res.json()._links.collection).toMatchObject({ href: MENSAGENS })
+    const { where, data } = prismaMock.mensagem.updateMany.mock.calls[0][0]
+    expect(where).toMatchObject({ chamadoId: IDS.ticket, lidaEm: null, autorId: { not: IDS.user } })
+    expect(data.lidaEm).toBeInstanceOf(Date)
+  })
+
+  it('200 — vale também em chamado encerrado (ler não é interagir)', async () => {
+    prismaMock.chamado.findFirst.mockResolvedValue(makeTicket({ status: 'ENCERRADO', encerradoEm: new Date() }))
+    prismaMock.mensagem.updateMany.mockResolvedValue({ count: 0 })
+
+    const res = await marcar(adminToken)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ updatedCount: 0 })
+  })
+
+  it('400 — só aceita lida: true', async () => {
+    const res = await marcar(userToken, { lida: false })
+
+    expectProblem(res, 400)
+    expect(prismaMock.mensagem.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('404 — aluno que não é dono do chamado', async () => {
+    prismaMock.chamado.findFirst.mockResolvedValue(makeTicket())
+    const intruso = makeUserToken({ sub: 'outro-aluno-id', role: 'USUARIO' })
+
+    const res = await marcar(intruso)
+
+    expectProblem(res, 404)
+    expect(prismaMock.mensagem.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('401 — sem autenticação', async () => {
+    const res = await app.inject({ method: 'PATCH', url: MENSAGENS, payload: { lida: true } })
+
+    expectProblem(res, 401)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('GET /tickets/:id/messages — link mark-read', () => {
+  const listar = () => app.inject({ method: 'GET', url: MENSAGENS, headers: bearerAuth(userToken) })
+
+  it('200 — o link aparece quando há mensagens não lidas', async () => {
+    prismaMock.chamado.findFirst.mockResolvedValue(makeTicket())
+    prismaMock.mensagem.findMany.mockResolvedValue([makeMensagem()])
+    // 1ª contagem: total da página; 2ª: não lidas
+    prismaMock.mensagem.count.mockResolvedValueOnce(3).mockResolvedValueOnce(2)
+
+    const res = await listar()
+
+    expect(res.json()._links['mark-read']).toMatchObject({ href: MENSAGENS, method: 'PATCH' })
+  })
+
+  it('200 — o link some quando não há nada para marcar', async () => {
+    prismaMock.chamado.findFirst.mockResolvedValue(makeTicket())
+    prismaMock.mensagem.findMany.mockResolvedValue([makeMensagem()])
+    prismaMock.mensagem.count.mockResolvedValueOnce(3).mockResolvedValueOnce(0)
+
+    const res = await listar()
+
+    expect(res.json()._links['mark-read']).toBeUndefined()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe('Rotas antigas (/mensagens) — removidas', () => {
   it.each(['GET', 'POST'] as const)('%s /tickets/:id/mensagens não existe mais', async (method) => {
     const res = await app.inject({

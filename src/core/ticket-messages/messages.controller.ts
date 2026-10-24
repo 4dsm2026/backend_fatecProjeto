@@ -2,10 +2,13 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import {
   ApiError,
+  buildLinks,
+  link,
   parseOrThrow,
   path,
   pickFilters,
   toCollection,
+  toResource,
   viewerFrom,
 } from "../../hateoas";
 import type { Viewer } from "../../hateoas";
@@ -17,11 +20,14 @@ import {
   CreateMessageSchema,
   GetMessageSchema,
   ListMessagesSchema,
+  MarkReadSchema,
 } from "./messages.types";
 import {
+  countUnreadMessages,
   createTicketMessage,
   getTicketMessage,
   listTicketMessages,
+  markMessagesAsRead,
 } from "./messages.service";
 import { toMessageResource } from "./messages.links";
 
@@ -80,7 +86,10 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
 
   await assertCanSeeTicket(prisma, params.id, viewer);
 
-  const result = await listTicketMessages(prisma, params.id, query);
+  const [result, naoLidas] = await Promise.all([
+    listTicketMessages(prisma, params.id, query),
+    countUnreadMessages(prisma, params.id, viewer.id),
+  ]);
 
   return res.send(
     toCollection({
@@ -91,6 +100,12 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
       size: result.size,
       total: result.total,
       filters: pickFilters(req.query, ["orderDir"]),
+      // O link só existe quando há o que marcar.
+      links: buildLinks({
+        "mark-read":
+          naoLidas > 0 &&
+          link(path`/tickets/${params.id}/messages`, "PATCH", { title: "Marcar mensagens como lidas" }),
+      }),
     }),
   );
 }
@@ -107,4 +122,26 @@ export async function getOne(req: FastifyRequest, res: FastifyReply) {
   if (!message) throw new ApiError("not-found", "Mensagem não encontrada");
 
   return res.send(toMessageResource(message, params.id));
+}
+
+/* PATCH /tickets/:id/messages  { lida: true } */
+export async function markRead(req: FastifyRequest, res: FastifyReply) {
+  const { params } = parseOrThrow(MarkReadSchema, { params: req.params, body: req.body });
+  const viewer = requireViewer(req);
+  const prisma = req.server.prisma;
+
+  // Ler não é interagir: vale também em chamado resolvido, encerrado ou arquivado.
+  await assertCanSeeTicket(prisma, params.id, viewer);
+
+  const result = await markMessagesAsRead(prisma, params.id, viewer.id);
+
+  return res.send(
+    toResource(
+      result,
+      buildLinks({
+        collection: link(path`/tickets/${params.id}/messages`),
+        ticket: link(path`/tickets/${params.id}`),
+      }),
+    ),
+  );
 }

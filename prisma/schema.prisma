@@ -372,9 +372,10 @@ model Mensagem {
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
   deletadoEm   DateTime?
+  lidaEm       DateTime?
   chamado      Chamado   @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
   autor        Usuario   @relation(fields: [autorId], references: [id])
-
+  
   notificacoes Notificacao[] @relation("NotificacoesDaMensagem")
 
   @@index([chamadoId])

@@ -22,6 +22,13 @@ export const ListMessagesQuerySchema = PaginationQuerySchema.extend({
   orderDir: z.enum(["asc", "desc"]).default("asc"),
 });
 
+/** Body do PATCH em lote: só existe "marcar como lidas" (lida: true), igual às notificações. */
+export const MarkReadBodySchema = z.object({
+  lida: z.literal(true, {
+    errorMap: () => ({ message: "só é possível marcar como lidas (lida: true)" }),
+  }),
+});
+
 export type CreateMessageBody = z.infer<typeof CreateMessageBodySchema>;
 export type ListMessagesQuery = z.infer<typeof ListMessagesQuerySchema>;
 
@@ -36,4 +43,8 @@ export const ListMessagesSchema = z.object({
 });
 export const GetMessageSchema = z.object({
   params: ParamsWithMessageIdSchema,
+});
+export const MarkReadSchema = z.object({
+  params: ParamsWithTicketIdSchema,
+  body: MarkReadBodySchema,
 });

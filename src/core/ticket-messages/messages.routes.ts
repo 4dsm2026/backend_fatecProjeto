@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { create, getOne, list } from "./messages.controller";
+import { create, getOne, list, markRead } from "./messages.controller";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 
 // ===================== Constantes reutilizáveis =====================
@@ -60,6 +60,12 @@ const MensagemSchema = {
     conteudo: { type: "string", example: "Olá, gostaria de informar que o problema persiste." },
     criadoEm: { type: "string", format: "date-time" },
     atualizadoEm: { type: "string", format: "date-time" },
+    lidaEm: {
+      type: "string",
+      format: "date-time",
+      nullable: true,
+      description: "Quando a mensagem foi marcada como lida (`null` = ainda não lida).",
+    },
     autor: {
       type: "object",
       description: "Dados públicos do autor da mensagem.",
@@ -160,7 +166,8 @@ export async function ticketMessagesRoutes(app: FastifyInstance) {
         summary: "Listar as mensagens de um chamado (paginado)",
         description:
           "Coleção HAL das mensagens do chamado, em `_embedded.messages`, com `page` e links " +
-          "de paginação (`self`, `first`, `last`, `prev`, `next`). A primeira página é a `0`.\n\n" +
+          "de paginação (`self`, `first`, `last`, `prev`, `next`). A primeira página é a `0`. " +
+          "O link `mark-read` só aparece quando há mensagens que o usuário ainda não leu.\n\n" +
           "Por padrão vem da mais antiga para a mais nova (`orderDir=asc`). O `orderDir` é " +
           "repetido nos links de paginação.\n\n" +
           "**Anti-IDOR:** aluno que não é dono do chamado recebe `404`.",
@@ -244,5 +251,59 @@ export async function ticketMessagesRoutes(app: FastifyInstance) {
       },
     },
     getOne,
+  );
+
+  // PATCH /tickets/:id/messages
+  app.patch(
+    "/:id/messages",
+    {
+      schema: {
+        tags: ["Mensagens de Chamados"],
+        summary: "Marcar as mensagens de um chamado como lidas",
+        description:
+          "Marca como lidas (`lidaEm = agora`) as mensagens do chamado que **outras pessoas** " +
+          "escreveram e que ainda não foram lidas. As mensagens do próprio usuário não mudam.\n\n" +
+          "Só existe `{ \"lida\": true }`: não há \"desmarcar\" em lote, igual às notificações.\n\n" +
+          "Ler não é interagir: vale também em chamado resolvido, encerrado ou arquivado.\n\n" +
+          "**Anti-IDOR:** aluno que não é dono do chamado recebe `404`.",
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: TicketIdParam },
+        },
+        body: {
+          type: "object",
+          required: ["lida"],
+          properties: {
+            lida: {
+              type: "boolean",
+              enum: [true],
+              description: "Só `true` é aceito.",
+              example: true,
+            },
+          },
+        },
+        response: {
+          200: {
+            description: "Quantas mensagens foram marcadas como lidas (pode ser `0`).",
+            type: "object",
+            additionalProperties: true,
+            properties: {
+              updatedCount: { type: "integer", example: 3 },
+              _links: HalLinksSchema,
+            },
+          },
+          400: { description: "Corpo diferente de `{ \"lida\": true }`.", ...ProblemSchema },
+          401: { description: "Token ausente, malformado, inválido ou expirado.", ...ProblemSchema },
+          404: {
+            description: "Chamado de outro aluno (aluno não vê chamado alheio).",
+            ...ProblemSchema,
+          },
+          429: RateLimit429Response,
+          500: { description: "Erro inesperado. O corpo é genérico.", ...ProblemSchema },
+        },
+      },
+    },
+    markRead,
   );
 }

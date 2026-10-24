@@ -126,3 +126,30 @@ export async function getTicketMessage(prisma: Ctx, chamadoId: string, id: strin
     include: AUTOR_PUBLICO,
   });
 }
+
+/** Mensagens do chamado que o usuário ainda não leu: as que outras pessoas escreveram. */
+const unreadWhere = (chamadoId: string, userId: string) => ({
+  chamadoId,
+  deletadoEm: null,
+  lidaEm: null,
+  autorId: { not: userId },
+});
+
+/**
+ * Quantas mensagens do chamado o usuário ainda não leu
+ */
+export async function countUnreadMessages(prisma: Ctx, chamadoId: string, userId: string) {
+  return prisma.mensagem.count({ where: unreadWhere(chamadoId, userId) });
+}
+
+/**
+ * Marca como lidas as mensagens do chamado escritas por outras pessoas
+ */
+export async function markMessagesAsRead(prisma: Ctx, chamadoId: string, userId: string) {
+  const result = await prisma.mensagem.updateMany({
+    where: unreadWhere(chamadoId, userId),
+    data: { lidaEm: new Date() },
+  });
+
+  return { updatedCount: result.count };
+}
