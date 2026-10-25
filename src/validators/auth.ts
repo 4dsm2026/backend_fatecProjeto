@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zEmail, zStringTrim, zPapelOptional, zStrongPassword } from "../utils/zod-helpers";
+import { zEmail, zStringTrim, zStrongPassword } from "../utils/zod-helpers";
 
 export const zRA = zStringTrim
   .min(3, "RA muito curto")
@@ -19,15 +19,6 @@ export const LoginSchema = z
 
 export const RefreshSchema = z.object({
   refreshToken: z.string().min(20),
-});
-
-export const RegisterSchema = z.object({
-  email: zEmail,
-  password: zStringTrim.min(8),
-  role: zPapelOptional,
-  name: zStringTrim.min(2, "Nome muito curto"),
-  educationalEmail: zEmail.optional(),
-  ra: zRA.optional(),
 });
 
 export const FirstAccessBodySchema = z.object({

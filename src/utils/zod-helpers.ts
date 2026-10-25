@@ -67,14 +67,6 @@ export const zPapel = z
   .refine(isPapelValue, "Papel inválido")
   .transform((v) => v as PapelValue);
 
-/** Papel opcional com default USUARIO */
-export const zPapelOptional = z
-  .string()
-  .trim()
-  .optional()
-  .transform((v) => (v ? normalizePapel(v) : "USUARIO"))
-  .transform((v) => (isPapelValue(v) ? v : "USUARIO"));
-
 /** Helper pra montar schema de rota (body/query/params) com parse + tipagem */
 export function buildRouteValidator<
   B extends ZodTypeAny | undefined,

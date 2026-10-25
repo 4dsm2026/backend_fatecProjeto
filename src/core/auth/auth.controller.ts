@@ -2,29 +2,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { buildRouteValidator } from "../../utils/zod-helpers";
-import {
-  LoginSchema,
-  RegisterSchema,
-  RefreshSchema,
-  FirstAccessSchema,
-  EsqueciSenhaSchema,
-  ResetSenhaSchema,
-  TrocarSenhaSchema,
-} from "../../validators/auth";
+import { LoginSchema, RefreshSchema, FirstAccessSchema, EsqueciSenhaSchema, ResetSenhaSchema, TrocarSenhaSchema } from "../../validators/auth";
 import { hashPassword, verifyPassword } from "../../security/password";
 import { verifyDummyPassword } from "../../security/dummy-verify";
 import { userPublicSelect } from "./user-public";
 import { enviarAvisoSenhaAlterada, type MotivoSenhaAlterada } from "./senha-alterada.service";
 import { generateAccessToken } from "../../utils/jwt";
 import { registrarAuditoria } from "../../lib/auditoria";
-import {
-  generateRefreshToken as genRT,
-  createSession,
-  createSessionWithClient,
-  verifyAndGetSession,
-  rotateSession,
-  REFRESH_TOKEN_TTL_MS,
-} from "../../security/refresh";
+import { generateRefreshToken as genRT, createSession, verifyAndGetSession, rotateSession, REFRESH_TOKEN_TTL_MS } from "../../security/refresh";
 import {
   enviarLinkEsqueciSenha,
   consumirTokenSenha,
@@ -140,7 +125,6 @@ export const resetLoginAttempts = async (
     data: { email, usuarioId: userId, sucesso: true, ip, userAgent, motivo: "login_sucesso" },
   });
 };
-
 
 /* ===================== LOGIN ===================== */
 const loginValidator = buildRouteValidator({ body: LoginSchema });
@@ -423,46 +407,6 @@ export const resetPassword = async (req: FastifyRequest, res: FastifyReply) => {
   }
 };
 
-/* ===================== REGISTER ===================== */
-const registerValidator = buildRouteValidator({ body: RegisterSchema });
-
-export const register = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
-  const parsed = registerValidator.parse(req);
-  if ("error" in parsed) { await res.code(400).send(parsed.error); return; }
-  const prisma = req.server.prisma;
-  const { email, password, role, name, educationalEmail, ra } = parsed.data!.body! as {
-    email: string; password: string; role?: any; name: string; educationalEmail?: string; ra?: string;
-  };
-  try {
-    const result = await prisma.$transaction(async (tx: any) => {
-      const existsEmail = await tx.usuario.findUnique({ where: { emailPessoal: email }, select: { id: true } });
-      if (existsEmail) { const err: any = new Error("Email já está em uso"); err.statusCode = 409; throw err; }
-      if (ra) {
-        const existsRa = await tx.usuario.findUnique({ where: { ra }, select: { id: true } });
-        if (existsRa) { const err: any = new Error("RA já está em uso"); err.statusCode = 409; throw err; }
-      }
-      const senhaHash = await hashPassword(password);
-      const user = await tx.usuario.create({
-        data: { nome: name, emailPessoal: email, emailEducacional: educationalEmail ?? null, ra: ra ?? null, senhaHash, papel: role, ativo: true, precisaTrocarSenha: !!ra, passwordUpdatedAt: new Date() },
-        select: { id: true, nome: true, emailPessoal: true, emailEducacional: true, ra: true, papel: true, ativo: true, precisaTrocarSenha: true, criadoEm: true, atualizadoEm: true },
-      });
-      const { token: refreshToken } = genRT();
-      const sessao = await createSessionWithClient(tx, { usuarioId: user.id, refreshToken, ip: req.ip, userAgent: String(req.headers["user-agent"] || ""), expiraEm: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) });
-      const accessToken = generateAccessToken({ sub: user.id, email: user.emailPessoal ?? "", role: user.papel, sid: sessao.id });
-      return { user, accessToken, refreshToken };
-    });
-    setAuthCookies(res, result.accessToken, result.refreshToken);
-    await res.send(result);
-  } catch (e: any) {
-    req.log.error({ e }, "💥 Erro no registro");
-    if (e?.statusCode === 409 || e?.code === "P2002") {
-      const msg = String(e?.message || "").toLowerCase().includes("ra") ? "RA já está em uso" : "Email já está em uso";
-      await res.code(409).send({ error: msg }); return;
-    }
-    await res.code(500).send({ error: "Erro ao criar o usuário", details: errMsg(e) });
-  }
-};
-
 /* ===================== REFRESH ===================== */
 const refreshValidator = buildRouteValidator({ body: RefreshSchema });
 
@@ -573,28 +517,6 @@ export const trocarSenha = async (req: FastifyRequest, res: FastifyReply): Promi
     await res.send({ message: "Senha alterada com sucesso" });
   } catch (e) {
     req.log.error({ e }, "💥 Erro ao trocar senha");
-    await res.code(500).send({ error: errMsg(e) });
-  }
-};
-
-/* ===================== GET /usuarios (consulta simples) ===================== */
-export const getUser = async (req: FastifyRequest, res: FastifyReply): Promise<void> => {
-  const prisma = req.server.prisma;
-  const { ra, email, id, name, educationalEmail } = (req.query ?? {}) as {
-    ra?: string; email?: string; id?: string; name?: string; educationalEmail?: string;
-  };
-  const where: any = {};
-  if (id) where.id = id;
-  if (ra) where.ra = ra;
-  if (email) where.emailPessoal = email;
-  if (educationalEmail) where.emailEducacional = educationalEmail;
-  if (name) where.nome = { contains: name };
-  try {
-    const users = await prisma.usuario.findMany({ where, select: userPublicSelect });
-    if (!users.length) { await res.code(404).send({ error: "Usuário não encontrado" }); return; }
-    await res.send(users);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro em /usuarios");
     await res.code(500).send({ error: errMsg(e) });
   }
 };

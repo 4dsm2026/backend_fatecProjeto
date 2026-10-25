@@ -225,61 +225,6 @@ describe('GET /auth/me', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('POST /auth/register', () => {
-  it('200 — cria novo usuário e devolve tokens', async () => {
-    const createdUser = {
-      id: 'new-user-999',
-      nome: 'Novo Usuário',
-      emailPessoal: 'novo@example.com',
-      emailEducacional: null,
-      ra: null,
-      papel: 'USUARIO',
-      ativo: true,
-      precisaTrocarSenha: false,
-      criadoEm: new Date(),
-      atualizadoEm: new Date(),
-    }
-    // Inside $transaction: findUnique returns null (email free), create returns user
-    prismaMock.usuario.findUnique.mockResolvedValueOnce(null)
-    prismaMock.usuario.create.mockResolvedValueOnce(createdUser)
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Novo Usuário',
-        email: 'novo@example.com',
-        password: 'Test@1234',
-        role: 'USUARIO',
-      },
-    })
-
-    expect(res.statusCode).toBe(200)
-    const body = res.json()
-    expect(body).toHaveProperty('accessToken')
-    expect(body.user).toMatchObject({ emailPessoal: 'novo@example.com' })
-  })
-
-  it('409 — e-mail já em uso', async () => {
-    prismaMock.usuario.findUnique.mockResolvedValueOnce({ id: 'existing-id' })
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Duplicado',
-        email: 'joao@example.com',
-        password: 'Test@1234',
-        role: 'USUARIO',
-      },
-    })
-
-    expect(res.statusCode).toBe(409)
-    expect(res.json()).toHaveProperty('error', 'Email já está em uso')
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
 describe('POST /auth/logout', () => {
   it('200 — logout bem-sucedido', async () => {
     prismaMock.sessao.findFirst.mockResolvedValueOnce({ id: 'session-001' })
