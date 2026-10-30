@@ -1,17 +1,9 @@
-import type { FastifyInstance } from "fastify";
 import { PrismaClient } from "@prisma/client";
 import { toSkipTake } from "../../hateoas";
+import { appGlobals } from "../../types/app-globals";
 import type { ListMessagesQuery } from "./messages.types";
 
 type Ctx = PrismaClient;
-
-type NotifyUsers = (userIds: string[], data: object, prisma: PrismaClient) => Promise<void>;
-
-/** O que o app.ts publica em `globalThis`: o broadcast do WebSocket e a instância do Fastify. */
-type AppGlobals = typeof globalThis & {
-  broadcastWS?: (data: unknown) => void;
-  fastifyAppInstance?: FastifyInstance & { notifyUsers?: NotifyUsers };
-};
 
 /** Autor nas respostas de mensagem: só os dados públicos. */
 const AUTOR_PUBLICO = {
@@ -59,7 +51,7 @@ export async function createTicketMessage(
     vinculos.forEach(v => { if (v.usuarioId !== autorId) userIds.add(v.usuarioId); });
   }
 
-  const globals = globalThis as AppGlobals;
+  const globals = appGlobals();
 
   // 🔥 1. Broadcast WebSocket (para atualizar os chats de todos conectados).
   // Exceção ao REST: o canal em tempo real não tem `_links`; o payload da mensagem é o mesmo de antes.
@@ -86,7 +78,6 @@ export async function createTicketMessage(
           protocolo: chamado?.protocolo,
         },
       },
-      prisma
     );
   }
 

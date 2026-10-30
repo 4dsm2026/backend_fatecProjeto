@@ -31,6 +31,10 @@ import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
 import { entryLinks, registerProblemHandler, toResource } from "./hateoas";
 import type { Role } from "./hateoas";
 import { redactUrl } from "./utils/redact-url";
+import type { RawData, WebSocket } from "ws";
+import type { Prisma } from "@prisma/client";
+import { appGlobals } from "./types/app-globals";
+import type { NotifyPayload } from "./types/app-globals";
 
 
 /* ====== Configuração de uploads ====== */
@@ -161,12 +165,49 @@ export async function buildApp() {
   // o JWT na query string (que vaza em logs de acesso/proxy).
   // O token via ?token= ainda é aceito como fallback de compatibilidade.
   // ---------------------------------------------------------
-  const connections = new Map<string, import("ws").WebSocket>();
+  const connections = new Map<string, WebSocket>();
   const AUTH_TIMEOUT_MS = 10_000;
 
-  app.get("/ws", { websocket: true }, (connection, _req) => {
-    const socket = (connection as any).socket ?? (connection as any);
+  /** Frame que o cliente manda pelo WebSocket. Os campos chegam sem garantia de tipo. */
+  type WsFrame = {
+    type?: unknown;
+    token?: unknown;
+    chamadoId?: unknown;
+    mensagem?: unknown;
+    autorId?: unknown;
+    autor?: unknown;
+  };
 
+  /** `null` se não for JSON; um frame vazio se for JSON que não seja um objeto. */
+  function parseWsFrame(raw: RawData): WsFrame | null {
+    try {
+      const parsed: unknown = JSON.parse(raw.toString());
+      return typeof parsed === "object" && parsed !== null ? (parsed as WsFrame) : {};
+    } catch {
+      return null;
+    }
+  }
+
+  /** Repassa a todos os conectados uma nova mensagem enviada por um cliente já autenticado. */
+  function relayNovaMensagem(frame: WsFrame): void {
+    const { chamadoId, mensagem, autorId, autor } = frame;
+    const payload = JSON.stringify({
+      type: "nova_mensagem",
+      chamadoId,
+      mensagem: {
+        id: Date.now().toString(),
+        conteudo: mensagem,
+        criadoEm: new Date().toISOString(),
+        autorId,
+        autor,
+      },
+    });
+    for (const [, client] of connections) {
+      if (client.readyState === client.OPEN) client.send(payload);
+    }
+  }
+
+  app.get("/ws", { websocket: true }, (socket: WebSocket) => {
     let userId: string | null = null;
     let authTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -182,6 +223,24 @@ export async function buildApp() {
       }
     }
 
+    function stopAuthTimer(): void {
+      if (authTimer) {
+        clearTimeout(authTimer);
+        authTimer = null;
+      }
+    }
+
+    // Handshake: enquanto não autenticado, só o frame { type: "auth" } vale.
+    function handshake(frame: WsFrame): void {
+      if (frame.type === "auth" && authenticate(frame.token)) {
+        stopAuthTimer();
+        socket.send(JSON.stringify({ type: "auth_ok" }));
+        return;
+      }
+      socket.send(JSON.stringify({ error: "Não autenticado" }));
+      socket.close();
+    }
+
     // Autenticação exclusivamente pelo 1º frame { type: "auth", token } — o
     // token nunca vai na URL (evita vazamento em logs). Fecha se não chegar.
     authTimer = setTimeout(() => {
@@ -191,52 +250,24 @@ export async function buildApp() {
       }
     }, AUTH_TIMEOUT_MS);
 
-    socket.on("message", async (rawMsg: string) => {
-      let data: any;
-      try {
-        data = JSON.parse(rawMsg);
-      } catch {
-        return;
-      }
+    socket.on("message", (rawMsg: RawData) => {
+      const frame = parseWsFrame(rawMsg);
+      if (!frame) return;
 
-      // Handshake: enquanto não autenticado, só o frame { type: "auth" } vale.
       if (!userId) {
-        if (data?.type === "auth" && authenticate(data.token)) {
-          if (authTimer) { clearTimeout(authTimer); authTimer = null; }
-          socket.send(JSON.stringify({ type: "auth_ok" }));
-        } else {
-          socket.send(JSON.stringify({ error: "Não autenticado" }));
-          socket.close();
-        }
+        handshake(frame);
         return;
       }
 
       try {
-        if (data.type === "nova_mensagem") {
-          const { chamadoId, mensagem, autorId, autor } = data;
-          for (const [, client] of connections) {
-            if (client.readyState === client.OPEN) {
-              client.send(JSON.stringify({
-                type: "nova_mensagem",
-                chamadoId,
-                mensagem: {
-                  id: Date.now().toString(),
-                  conteudo: mensagem,
-                  criadoEm: new Date().toISOString(),
-                  autorId,
-                  autor,
-                },
-              }));
-            }
-          }
-        }
+        if (frame.type === "nova_mensagem") relayNovaMensagem(frame);
       } catch (err) {
         app.log.error({ err }, "Erro ao processar WS message");
       }
     });
 
     socket.on("close", () => {
-      if (authTimer) { clearTimeout(authTimer); authTimer = null; }
+      stopAuthTimer();
       if (userId) {
         connections.delete(userId);
         app.log.info(`WS desconectado: userId=${userId}`);
@@ -248,7 +279,7 @@ export async function buildApp() {
     });
   });
 
-  (globalThis as any).broadcastWS = (data: any) => {
+  appGlobals().broadcastWS = (data: unknown) => {
     for (const [, socket] of connections) {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
     }
@@ -265,7 +296,7 @@ export async function buildApp() {
     return new Set(optIn.map((u: { id: string }) => u.id));
   }
 
-  app.decorate("notifyUsers", async (userIds: string[], data: any) => {
+  app.decorate("notifyUsers", async (userIds: string[], data: NotifyPayload) => {
     const alvos = await getInAppOptInUserIds(userIds);
 
     for (const userId of userIds) {
@@ -281,15 +312,15 @@ export async function buildApp() {
           mensagem: data.mensagem ?? "Você tem uma atualização no chamado",
           tipo: data.tipo ?? "SISTEMA",
           canal: data.canal ?? "IN_APP",
-          meta: data.meta ?? {},
+          meta: (data.meta ?? {}) as Prisma.InputJsonObject,
         },
       });
     }
   });
 
-  // Referência global usada por messages.service — necessária por limitação de arquitetura
-  // TODO: refatorar para injeção de dependência via plugin Fastify
-  (global as any).fastifyAppInstance = app;
+  // Referência global usada por messages.service. É uma limitação conhecida da arquitetura:
+  // o ideal seria injetar a instância por um plugin do Fastify, sem passar por `globalThis`.
+  appGlobals().fastifyAppInstance = app;
 
   scheduleCleanupAnexos(app.prisma, UPLOADS_DIR);
 
