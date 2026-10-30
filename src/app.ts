@@ -172,10 +172,6 @@ export async function buildApp() {
   type WsFrame = {
     type?: unknown;
     token?: unknown;
-    chamadoId?: unknown;
-    mensagem?: unknown;
-    autorId?: unknown;
-    autor?: unknown;
   };
 
   /** `null` se não for JSON; um frame vazio se for JSON que não seja um objeto. */
@@ -185,25 +181,6 @@ export async function buildApp() {
       return typeof parsed === "object" && parsed !== null ? (parsed as WsFrame) : {};
     } catch {
       return null;
-    }
-  }
-
-  /** Repassa a todos os conectados uma nova mensagem enviada por um cliente já autenticado. */
-  function relayNovaMensagem(frame: WsFrame): void {
-    const { chamadoId, mensagem, autorId, autor } = frame;
-    const payload = JSON.stringify({
-      type: "nova_mensagem",
-      chamadoId,
-      mensagem: {
-        id: Date.now().toString(),
-        conteudo: mensagem,
-        criadoEm: new Date().toISOString(),
-        autorId,
-        autor,
-      },
-    });
-    for (const [, client] of connections) {
-      if (client.readyState === client.OPEN) client.send(payload);
     }
   }
 
@@ -254,16 +231,11 @@ export async function buildApp() {
       const frame = parseWsFrame(rawMsg);
       if (!frame) return;
 
-      if (!userId) {
-        handshake(frame);
-        return;
-      }
-
-      try {
-        if (frame.type === "nova_mensagem") relayNovaMensagem(frame);
-      } catch (err) {
-        app.log.error({ err }, "Erro ao processar WS message");
-      }
+      // Depois do handshake o cliente não envia nada que o servidor aceite:
+      // `nova_mensagem` nasce só no POST /tickets/:id/messages e é emitida pelo
+      // servidor (broadcastWS). Repassar frames de clientes permitia forjar
+      // mensagens de outra pessoa.
+      if (!userId) handshake(frame);
     });
 
     socket.on("close", () => {
