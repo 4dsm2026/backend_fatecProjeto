@@ -1,5 +1,5 @@
-import type { Links, Role, Viewer } from "../../hateoas";
-import { buildLinks, isStaff, link, path } from "../../hateoas";
+import type { Role, Viewer } from "../../hateoas";
+import { isStaff } from "../../hateoas";
 
 
 /** Mesmos valores do enum `StatusChamado` do Prisma (aqui sem depender do Prisma). */

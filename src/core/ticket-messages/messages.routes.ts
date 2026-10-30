@@ -87,7 +87,7 @@ const TicketIdParam = {
 } as const;
 
 export async function ticketMessagesRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", app.authenticate as any);
+  app.addHook("preHandler", app.authenticate);
 
   // Faz com que o `schema` das rotas abaixo sirva só para o @fastify/swagger
   // gerar a documentação — a validação real continua 100% via Zod.

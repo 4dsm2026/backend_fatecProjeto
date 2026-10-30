@@ -40,7 +40,7 @@ const makeMensagem = (overrides: Record<string, unknown> = {}) => ({
 })
 
 /** Todo erro da API é application/problem+json (RFC 7807) com o status no corpo. */
-const expectProblem = (res: { statusCode: number; headers: Record<string, unknown>; json: () => any }, status: number) => {
+function expectProblem(res: { statusCode: number; headers: Record<string, unknown>; json: () => any }, status: number) {
   expect(res.statusCode).toBe(status)
   expect(String(res.headers['content-type'])).toContain('application/problem+json')
   expect(res.json()).toMatchObject({ status })

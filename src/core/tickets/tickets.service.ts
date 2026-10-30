@@ -44,39 +44,49 @@ const archivedFilter = (arquivados: TicketsListQuery['arquivados']) => {
   return { arquivadoEm: null };
 };
 
-const buildWhere = (q: TicketsListQuery) => {
-  const {
-    search, status, nivel, prioridade,
-    clienteId, contratoId, setorId, servicoId, responsavelId, organizacaoId,
-    criadoDe, criadoAte, criadoPorId,
-  } = q;
+const equalityFilters = ({
+  criadoPorId, organizacaoId, clienteId, contratoId, setorId, servicoId, responsavelId,
+}: TicketsListQuery) => ({
+  ...(criadoPorId   ? { criadoPorId }   : {}),
+  ...(organizacaoId ? { organizacaoId } : {}),
+  ...(clienteId     ? { clienteId }     : {}),
+  ...(contratoId    ? { contratoId }    : {}),
+  ...(setorId       ? { setorId }       : {}),
+  ...(servicoId     ? { servicoId }     : {}),
+  ...(responsavelId ? { responsavelId } : {}),
+});
 
-  return {
-    deletadoEm: null,
-    ...archivedFilter(q.arquivados),
-    ...(criadoPorId   ? { criadoPorId }   : {}),
-    ...(criadoPorId   ? { criadoPorId }   : {}),
-    ...(organizacaoId ? { organizacaoId } : {}),
-    ...(clienteId     ? { clienteId }     : {}),
-    ...(contratoId    ? { contratoId }    : {}),
-    ...(setorId       ? { setorId }       : {}),
-    ...(servicoId     ? { servicoId }     : {}),
-    ...(responsavelId ? { responsavelId } : {}),
-    ...(status    ? { status:    Array.isArray(status)    ? { in: status }    : status }    : {}),
-    ...(nivel     ? { nivel:     Array.isArray(nivel)     ? { in: nivel }     : nivel }     : {}),
-    ...(prioridade ? { prioridade: Array.isArray(prioridade) ? { in: prioridade } : prioridade } : {}),
-    ...(criadoDe || criadoAte
-      ? { criadoEm: { ...(criadoDe ? { gte: new Date(criadoDe) } : {}), ...(criadoAte ? { lte: new Date(criadoAte) } : {}) } }
-      : {}),
-    ...(search
-      ? { OR: [
-          { titulo:    { contains: search } },
-          { descricao: { contains: search } },
-          { protocolo: { contains: search } },
-        ] }
-      : {}),
-  };
-};
+/** Um valor vira igualdade; uma lista vira `IN`. */
+const inOrEqual = <T>(value: T | T[]) => (Array.isArray(value) ? { in: value } : value);
+
+const enumFilters = ({ status, nivel, prioridade }: TicketsListQuery) => ({
+  ...(status     ? { status:     inOrEqual(status) }     : {}),
+  ...(nivel      ? { nivel:      inOrEqual(nivel) }      : {}),
+  ...(prioridade ? { prioridade: inOrEqual(prioridade) } : {}),
+});
+
+const createdBetween = ({ criadoDe, criadoAte }: TicketsListQuery) =>
+  criadoDe || criadoAte
+    ? { criadoEm: { ...(criadoDe ? { gte: new Date(criadoDe) } : {}), ...(criadoAte ? { lte: new Date(criadoAte) } : {}) } }
+    : {};
+
+const searchFilter = (search: TicketsListQuery['search']) =>
+  search
+    ? { OR: [
+        { titulo:    { contains: search } },
+        { descricao: { contains: search } },
+        { protocolo: { contains: search } },
+      ] }
+    : {};
+
+const buildWhere = (q: TicketsListQuery) => ({
+  deletadoEm: null,
+  ...archivedFilter(q.arquivados),
+  ...equalityFilters(q),
+  ...enumFilters(q),
+  ...createdBetween(q),
+  ...searchFilter(q.search),
+});
 
 async function getUsuariosDoSetor(prisma: Ctx, setorId: string): Promise<string[]> {
   const vinculos = await prisma.usuarioSetor.findMany({
