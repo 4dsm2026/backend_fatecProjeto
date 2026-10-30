@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { create, getOne, list, patch, stats } from "./tickets.controller.js";
 import { ticketMessagesRoutes } from "../ticket-messages/messages.routes.js";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
+import { HalLinksSchema, PageInfoSchema } from "../../hateoas";
 
 // ===================== Constantes reutilizáveis =====================
 
@@ -76,15 +77,6 @@ const ProblemSchema = {
     },
   },
 } as const;
-
-/** Formato do `_links` (HAL): cada `rel` tem um link ou uma lista de links. */
-const HalLinksSchema = {
-  type: "object",
-  additionalProperties: true,
-  description:
-    "Links HAL: cada chave (`self`, `reply`, `transition`...) tem um link ou uma lista " +
-    "de links no formato `{ href, method, name? }`.",
-};
 
 // Schema parcial reutilizável de um chamado (campos retornados pela maioria das operações).
 const TicketBaseSchema = {
@@ -414,20 +406,7 @@ export async function ticketsRoutes(app: FastifyInstance) {
                   },
                 },
               },
-              page: {
-                type: "object",
-                description: "Dados da paginação (a primeira página é a 0).",
-                properties: {
-                  size: { type: "integer", description: "Itens por página.", example: 20 },
-                  number: { type: "integer", description: "Página atual.", example: 0 },
-                  totalElements: {
-                    type: "integer",
-                    description: "Total de chamados que correspondem aos filtros.",
-                    example: 87,
-                  },
-                  totalPages: { type: "integer", description: "Total de páginas.", example: 5 },
-                },
-              },
+              page: PageInfoSchema,
               _links: HalLinksSchema,
             },
           },

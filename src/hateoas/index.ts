@@ -5,3 +5,4 @@ export * from "./pagination";
 export * from "./problem";
 export * from "./entry";
 export * from "./request";
+export * from "./openapi";

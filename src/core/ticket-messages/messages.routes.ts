@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { create, getOne, list, markRead } from "./messages.controller";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
+import { HalLinksSchema, PageInfoSchema } from "../../hateoas";
 
 // ===================== Constantes reutilizáveis =====================
 
@@ -39,15 +40,6 @@ const RateLimit429Response = {
   description: "Limite de requisições excedido: 100 por minuto, por IP (@fastify/rate-limit).",
   type: "object",
   additionalProperties: true,
-} as const;
-
-/** Formato do `_links` (HAL): cada `rel` tem um link ou uma lista de links. */
-const HalLinksSchema = {
-  type: "object",
-  additionalProperties: true,
-  description:
-    "Links HAL: `self` (a mensagem), `collection` (a conversa) e `ticket` (o chamado), " +
-    "no formato `{ href, method }`.",
 } as const;
 
 const MensagemSchema = {
@@ -196,15 +188,7 @@ export async function ticketMessagesRoutes(app: FastifyInstance) {
                   messages: { type: "array", items: MensagemSchema },
                 },
               },
-              page: {
-                type: "object",
-                properties: {
-                  size: { type: "integer", example: 20 },
-                  number: { type: "integer", example: 0 },
-                  totalElements: { type: "integer", example: 42 },
-                  totalPages: { type: "integer", example: 3 },
-                },
-              },
+              page: PageInfoSchema,
               _links: HalLinksSchema,
             },
           },

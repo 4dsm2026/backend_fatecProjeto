@@ -4,6 +4,7 @@ import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { FastifyInstance } from "fastify";
 import { env } from "../env";
+import { LinkSchema, PageInfoSchema } from "../hateoas";
 
 export default fp(async function swaggerPlugin(app: FastifyInstance) {
   const servers =
@@ -32,6 +33,12 @@ export default fp(async function swaggerPlugin(app: FastifyInstance) {
             bearerFormat: "JWT",
           },
         },
+        // `as never`: as constantes são `as const` (arrays somente-leitura), que o tipo do
+        // @fastify/swagger não aceita; o formato é conferido na geração do documento.
+        schemas: {
+          Link: LinkSchema,
+          PageInfo: PageInfoSchema,
+        } as never,
       },
       security: [{ bearerAuth: [] }],
       tags: [
