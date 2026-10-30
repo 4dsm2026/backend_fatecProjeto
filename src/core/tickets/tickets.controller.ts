@@ -181,37 +181,3 @@ export async function patch(req: FastifyRequest, res: FastifyReply) {
   const ticket = await updateTicket(prisma, params.id, body, { feitoPorId: viewer.id });
   return res.send(toTicketResource(ticket, viewer));
 }
-
-
-
-/* ============ DELETE /tickets/:id (soft) ============ */
-/*
-
-export async function removeSoft(req: FastifyRequest, res: FastifyReply) {
-  const parsed = idValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
-
-  const prisma     = req.server.prisma;
-  const authUser   = await requireAuthUser(req, res);
-  if (!authUser) return;
-  const feitoPorId = authUser.sub;
-
-  try {
-    const id = parsed.data!.params!.id;
-
-    if (await denyMissingTicketAccess(prisma, id, authUser, res)) return;
-
-    const ticket = await softDeleteTicket(
-      prisma,
-      id,
-      { feitoPorId },
-    );
-    await res.send(ticket);
-  } catch (e: any) {
-    if (e?.code === "P2025")
-      return sendNotFound(res, "Chamado");
-    req.log.error({ e }, "💥 Erro ao remover (soft) ticket");
-    await res.code(500).send({ error: errMsg(e) });
-  }
-}
-*/

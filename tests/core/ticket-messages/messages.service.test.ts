@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, afterEach } from 'vitest'
+import { vi, describe, it, expect } from 'vitest'
 vi.mock('../../../src/lib/prisma')
 import { prismaMock } from '../../../src/lib/__mocks__/prisma'
 import { createTicketMessage, listTicketMessages } from '../../../src/core/ticket-messages/messages.service'
@@ -133,13 +133,6 @@ describe('ticket-messages-test', () => {
     })
 })
 
-
-/*
-        afterEach(() => {
-            delete (global as any).fastifyAppInstance
-            delete (globalThis as any).broadcastWS
-        })
-*/
 
 
 // pnpm vitest tests/core/ticket-messages/messages.service.test.ts

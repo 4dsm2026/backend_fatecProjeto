@@ -411,22 +411,6 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
   return updated;
 }
 
-export async function softDeleteTicket(prisma: Ctx, id: string, opts: { feitoPorId?: string }) {
-  const found = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } });
-  if (!found) throw Object.assign(new Error('Chamado não encontrado'), { code: 'P2025' });
-
-  const deleted = await prisma.chamado.update({
-    where: { id },
-    data: { deletadoEm: new Date() },
-  });
-
-  prisma.auditoria.create({
-    data: { feitoPorId: opts.feitoPorId ?? null, acao: 'DELETE_SOFT_CHAMADO', alvo: id, meta: { protocolo: found.protocolo } },
-  }).catch(() => {});
-
-  return deleted;
-}
-
 /* ========================= stats ========================= */
 
 export async function statsTickets(

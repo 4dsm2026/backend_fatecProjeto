@@ -56,8 +56,7 @@ export function pickFilters(query: unknown, allowed: readonly string[]): Record<
   const filters: Record<string, QueryValue> = {};
   for (const key of allowed) {
     const value = source[key];
-    if (isScalar(value)) filters[key] = value;
-    else if (Array.isArray(value) && value.every(isScalar)) filters[key] = value;
+    if (isScalar(value) || (Array.isArray(value) && value.every(isScalar))) filters[key] = value;
   }
   return filters;
 }
