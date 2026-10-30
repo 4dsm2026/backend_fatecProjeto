@@ -119,7 +119,7 @@ export async function getTicketMessage(prisma: Ctx, chamadoId: string, id: strin
 }
 
 /** Mensagens do chamado que o usuário ainda não leu: as que outras pessoas escreveram. */
-const unreadWhere = (chamadoId: string, userId: string) => ({
+const unreadWhere = (chamadoId: string | { in: string[] }, userId: string) => ({
   chamadoId,
   deletadoEm: null,
   lidaEm: null,
@@ -131,6 +131,22 @@ const unreadWhere = (chamadoId: string, userId: string) => ({
  */
 export async function countUnreadMessages(prisma: Ctx, chamadoId: string, userId: string) {
   return prisma.mensagem.count({ where: unreadWhere(chamadoId, userId) });
+}
+
+/**
+ * Quantas mensagens não lidas cada chamado tem para o usuário, numa consulta só.
+ * Chamado sem mensagem não lida não aparece no mapa (conte como 0).
+ */
+export async function countUnreadByTicket(prisma: Ctx, chamadoIds: string[], userId: string) {
+  if (chamadoIds.length === 0) return new Map<string, number>();
+
+  const grupos = await prisma.mensagem.groupBy({
+    by: ["chamadoId"],
+    where: unreadWhere({ in: chamadoIds }, userId),
+    _count: { _all: true },
+  });
+
+  return new Map(grupos.map((g) => [g.chamadoId, g._count._all]));
 }
 
 /**

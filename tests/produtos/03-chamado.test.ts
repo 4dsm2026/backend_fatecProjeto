@@ -194,6 +194,53 @@ describe('GET /tickets — Listar Chamados', () => {
     expect(res.statusCode).toBe(200)
   })
 
+  it('200 — include=naoLidas traz mensagensNaoLidas por chamado, com uma consulta só', async () => {
+    prismaMock.chamado.count.mockResolvedValueOnce(2)
+    prismaMock.chamado.findMany.mockResolvedValueOnce([makeTicket({ id: 'ticket-001' }), makeTicket({ id: 'ticket-002' })])
+    prismaMock.mensagem.groupBy.mockResolvedValueOnce([{ chamadoId: 'ticket-001', _count: { _all: 3 } }])
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/tickets?include=naoLidas',
+      headers: bearerAuth(adminToken),
+    })
+
+    expect(res.statusCode).toBe(200)
+    const [primeiro, segundo] = res.json()._embedded.tickets
+    expect(primeiro.mensagensNaoLidas).toBe(3)
+    expect(segundo.mensagensNaoLidas).toBe(0)
+
+    // uma consulta para a página inteira, só com as mensagens de outras pessoas ainda não lidas
+    expect(prismaMock.mensagem.groupBy).toHaveBeenCalledTimes(1)
+    expect(prismaMock.mensagem.groupBy.mock.calls[0][0].where).toEqual({
+      chamadoId: { in: ['ticket-001', 'ticket-002'] },
+      deletadoEm: null,
+      lidaEm: null,
+      autorId: { not: 'admin-id-001' },
+    })
+  })
+
+  it('200 — sem include=naoLidas não consulta mensagens e não traz o campo', async () => {
+    prismaMock.chamado.count.mockResolvedValueOnce(1)
+    prismaMock.chamado.findMany.mockResolvedValueOnce([makeTicket()])
+
+    const res = await app.inject({ method: 'GET', url: '/tickets', headers: bearerAuth(adminToken) })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()._embedded.tickets[0]).not.toHaveProperty('mensagensNaoLidas')
+    expect(prismaMock.mensagem.groupBy).not.toHaveBeenCalled()
+  })
+
+  it('200 — include=naoLidas com a página vazia não consulta mensagens', async () => {
+    prismaMock.chamado.count.mockResolvedValueOnce(0)
+    prismaMock.chamado.findMany.mockResolvedValueOnce([])
+
+    const res = await app.inject({ method: 'GET', url: '/tickets?include=naoLidas', headers: bearerAuth(adminToken) })
+
+    expect(res.statusCode).toBe(200)
+    expect(prismaMock.mensagem.groupBy).not.toHaveBeenCalled()
+  })
+
   it('401 — sem autenticação', async () => {
     const res = await app.inject({ method: 'GET', url: '/tickets' })
     expect(res.statusCode).toBe(401)

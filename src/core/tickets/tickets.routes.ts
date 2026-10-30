@@ -381,7 +381,9 @@ export async function ticketsRoutes(app: FastifyInstance) {
               type: "string",
               description:
                 "Relações a incluir. Valores aceitos: `cliente`, `contrato`, `servico`, " +
-                "`setor`, `responsavel`, `criadoPor`, `historico`. Separar por vírgula ou " +
+                "`setor`, `responsavel`, `criadoPor`, `historico`, `naoLidas` (cada chamado ganha " +
+                "`mensagensNaoLidas`: as mensagens de outras pessoas que você ainda não leu). " +
+                "Separar por vírgula ou " +
                 "enviar múltiplos parâmetros `include=X&include=Y`.",
               example: "setor,criadoPor",
             },

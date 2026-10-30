@@ -100,7 +100,7 @@ export async function list(req: FastifyRequest, res: FastifyReply) {
     ...query,
     criadoPorId: viewer.role === "USUARIO" ? viewer.id : query.criadoPorId,
   };
-  const result = await listTickets(req.server.prisma, filters);
+  const result = await listTickets(req.server.prisma, filters, viewer.id);
 
   return res.send(
     toCollection({

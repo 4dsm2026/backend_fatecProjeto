@@ -19,7 +19,7 @@ export type TicketsListQuery = {
   orderDir?: 'asc' | 'desc'
   arquivados?: 'excluir' | 'incluir' | 'somente'
   criadoPorId?: string
-  include?: ('cliente' | 'contrato' | 'servico' | 'setor' | 'responsavel' | 'criadoPor' | 'historico')[]
+  include?: ('naoLidas' | 'cliente' | 'contrato' | 'servico' | 'setor' | 'responsavel' | 'criadoPor' | 'historico')[]
 }
 
 export type TicketCreateInput = {

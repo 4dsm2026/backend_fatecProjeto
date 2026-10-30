@@ -5,6 +5,7 @@ import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './t
 import { notifyMany } from '../notifications/notify';
 import { toSkipTake } from '../../hateoas';
 import { isReopen } from './ticket-rules'
+import { countUnreadByTicket } from '../ticket-messages/messages.service'
 
 type Ctx = PrismaClient;
 
@@ -301,7 +302,11 @@ export async function getTicketById(prisma: Ctx, id: string, include?: TicketsLi
   });
 }
 
-export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
+/**
+ * `viewerId` só é usado com `include=naoLidas`: cada chamado ganha `mensagensNaoLidas`
+ * (as que outras pessoas escreveram e o usuário ainda não leu).
+ */
+export async function listTickets(prisma: Ctx, q: TicketsListQuery, viewerId?: string) {
   const page  = q.page ?? 0;
   const size  = Math.min(q.size ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
   const where = buildWhere(q);
@@ -316,7 +321,11 @@ export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
     }),
   ]);
 
-  return { total, page, size, items };
+  if (!viewerId || !q.include?.includes('naoLidas')) return { total, page, size, items };
+
+  const naoLidas = await countUnreadByTicket(prisma, items.map((t) => t.id), viewerId);
+  const comContagem = items.map((t) => ({ ...t, mensagensNaoLidas: naoLidas.get(t.id) ?? 0 }));
+  return { total, page, size, items: comContagem };
 }
 
 export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateInput, opts: { feitoPorId?: string }) {

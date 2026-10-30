@@ -28,6 +28,7 @@ function buildMock() {
       findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
+      groupBy: vi.fn(),
       updateMany: vi.fn(),
     },
     setor: {

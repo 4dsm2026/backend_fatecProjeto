@@ -6,6 +6,7 @@ export const NivelChamadoValues = ['N1', 'N2', 'N3'] as const
 export const PrioridadeChamadoValues = ['BAIXA', 'MEDIA', 'ALTA', 'URGENTE'] as const
 
 const IncludeKeysEnum = z.enum([
+  'naoLidas',
   'cliente',
   'contrato',
   'servico',
