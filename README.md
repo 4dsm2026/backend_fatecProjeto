@@ -318,6 +318,9 @@ npm run dev
 A API estará rodando em `http://localhost:3333`.
 * **Documentação Interativa (Swagger):** `http://localhost:3333/docs`
 * **Status do Servidor (Health check):** `http://localhost:3333/health`
+* **Raiz da API (REST nível 3, HAL):** `http://localhost:3333/api` — exige login e devolve os links de entrada conforme o papel; as respostas trazem `_links` com o que o usuário pode fazer.
+* **Convenções da API:** pasta `docs/docs/api-rest/` (`CONVENCOES-API.md`, `GUIA-CONVERTER-MODULO.md`, `PLANO-DE-TRABALHO.md`). Leia antes de criar ou mudar rotas.
+* **Rodar a documentação:** `cd docs && npm install && npm start`.
 
 ---
 
