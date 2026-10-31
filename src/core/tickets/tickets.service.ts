@@ -5,6 +5,7 @@ import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './t
 import { notifyMany } from '../notifications/notify';
 import { toSkipTake } from '../../hateoas';
 import { isReopen } from './ticket-rules'
+import { bestEffort } from '../../utils/best-effort'
 import { countUnreadByTicket } from '../ticket-messages/messages.service'
 
 type Ctx = PrismaClient;
@@ -242,13 +243,13 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
     setorId: ticket.setorId,
   });
 
-  notifyMany(prisma, Array.from(alvos), {
+  await bestEffort('notificar-chamado-criado', notifyMany(prisma, Array.from(alvos), {
     titulo: 'Chamado criado',
     mensagem: `Chamado ${protocolo} criado.`,
     tipo: 'CHAMADO_CRIADO',
     chamadoId: ticket.id,
     organizacaoId: ticket.organizacaoId ?? null,
-  }).catch(() => {});
+  }));
 
   return prisma.chamado.findFirst({
     where: { id: ticket.id },
@@ -373,15 +374,15 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
     },
   });
 
-    if (data.arquivado !== undefined) {
-    prisma.auditoria.create({
+  if (data.arquivado !== undefined) {
+    await bestEffort('auditoria-arquivar-chamado', prisma.auditoria.create({
       data: {
         feitoPorId: feitoPorId ?? null,
         acao: data.arquivado ? 'ARQUIVAR_CHAMADO' : 'DESARQUIVAR_CHAMADO',
         alvo: id,
         meta: { protocolo: before.protocolo },
       },
-    }).catch(() => {});
+    }));
   }
 
   if (isStatusChange) {
@@ -407,24 +408,24 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
       setorId: alvoInfo?.setorId ?? null,
     });
 
-    notifyMany(prisma, Array.from(alvos), {
+    await bestEffort('notificar-status-alterado', notifyMany(prisma, Array.from(alvos), {
       titulo: 'Status atualizado',
       mensagem: `Chamado ${alvoInfo?.protocolo ?? id} mudou para ${data.status}.`,
       tipo: 'STATUS_ALTERADO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,
-    }).catch(() => {});
+    }));
   }
 
   if (data.responsavelId !== undefined && data.responsavelId !== oldResponsavelId && data.responsavelId) {
     const alvoInfo = await prisma.chamado.findUnique({ where: { id }, select: { protocolo: true, organizacaoId: true } });
-    notifyMany(prisma, [data.responsavelId], {
+    await bestEffort('notificar-chamado-atribuido', notifyMany(prisma, [data.responsavelId], {
       titulo: 'Chamado atribuído',
       mensagem: `Você foi atribuído ao chamado ${alvoInfo?.protocolo ?? id}.`,
       tipo: 'CHAMADO_ATRIBUIDO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,
-    }).catch(() => {});
+    }));
   }
 
   return updated;

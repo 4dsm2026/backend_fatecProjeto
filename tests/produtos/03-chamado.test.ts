@@ -37,6 +37,8 @@ afterAll(async () => {
 beforeEach(() => {
   resetMocks()
   prismaMock.notificacao.create.mockResolvedValue({})
+  // notifyMany consulta quem aceita notificação; sem este mock ele quebrava (e o erro ficava escondido).
+  prismaMock.usuario.findMany.mockResolvedValue([])
   prismaMock.usuarioSetor.findMany.mockResolvedValue([])
   prismaMock.historicoStatusChamado.create.mockResolvedValue({})
   prismaMock.setor.findFirst.mockResolvedValue(null)
