@@ -306,6 +306,13 @@ describe('PUT /account-activations/:token', () => {
     expect(prismaMock.tokenResetSenha.findFirst).not.toHaveBeenCalled()
   })
 
+  it('apara espaços nas pontas: o hash é do valor APARADO (o mesmo que o login vai usar)', async () => {
+    const res = await ativar(TOKEN, { novaSenha: `  ${SENHA}  ` })
+
+    expect(res.statusCode).toBe(204)
+    expect(passwordModule.hashPassword).toHaveBeenCalledWith(SENHA)
+  })
+
   it('400 — e-mail pessoal inválido', async () => {
     const body = expectProblem(await ativar(TOKEN, { novaSenha: SENHA, emailPessoal: 'isto-nao-e-email' }), 400)
 

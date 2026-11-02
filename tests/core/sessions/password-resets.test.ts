@@ -374,6 +374,13 @@ describe('PUT /password-resets/:token', () => {
     nadaMudou()
   })
 
+  it('apara espaços nas pontas: o hash é do valor APARADO (o mesmo que o login vai usar)', async () => {
+    const res = await redefinir(TOKEN, { novaSenha: `  ${SENHA}  ` })
+
+    expect(res.statusCode).toBe(204)
+    expect(passwordModule.hashPassword).toHaveBeenCalledWith(SENHA)
+  })
+
   it('400 — sem corpo', async () => {
     const res = await app.inject({ method: 'PUT', url: `/password-resets/${TOKEN}` })
 

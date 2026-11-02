@@ -294,6 +294,7 @@ describe('PUT /users/me/password', () => {
 
     expectProblem(res, 400)
     expect(prismaMock.usuario.findUnique).not.toHaveBeenCalled()
+    expect(mockSend).not.toHaveBeenCalled()
   })
 
   it('422 — senha atual incorreta', async () => {
@@ -399,10 +400,11 @@ describe('PUT /users/me/password', () => {
     expect(prismaMock.sessao.updateMany).not.toHaveBeenCalled()
   })
 
-  it('401 — sem token', async () => {
+  it('401 — sem token: nenhum e-mail', async () => {
     const res = await call(undefined, { senhaAtual: 'Atual123!', novaSenha: 'NovaSenha1!' })
 
     expectProblem(res, 401)
+    expect(mockSend).not.toHaveBeenCalled()
     expect(res.headers['www-authenticate']).toBe('Bearer')
   })
 })

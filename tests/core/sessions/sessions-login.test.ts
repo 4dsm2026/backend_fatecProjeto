@@ -168,6 +168,18 @@ describe("POST /sessions", () => {
     expectNoSessionCreated();
   });
 
+  it("401 — senha errada: EXATAMENTE uma verificação de hash (mesmo custo da conta inexistente)", async () => {
+    vi.mocked(passwordModule.verifyPassword).mockResolvedValueOnce(false);
+    prismaMock.usuario.findUnique.mockResolvedValueOnce(makeLoginUser());
+    prismaMock.usuario.update.mockResolvedValueOnce(makeLoginUser({ loginAttempts: 1 }));
+
+    const res = await app.inject({ method: "POST", url: "/sessions", payload: emailPayload });
+
+    expectProblem(res, 401);
+    expect(vi.mocked(passwordModule.verifyPassword)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(verifyDummyPassword)).not.toHaveBeenCalled();
+  });
+
   it("401 — a quinta senha incorreta continua sem criar sessão", async () => {
     vi.mocked(passwordModule.verifyPassword).mockResolvedValueOnce(false);
     prismaMock.usuario.findUnique.mockResolvedValueOnce(makeLoginUser());
