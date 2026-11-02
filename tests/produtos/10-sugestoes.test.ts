@@ -39,7 +39,7 @@ beforeEach(() => {
   resetMocks()
 })
 
-describe('/sugestoes — Caixa de Sugestões', () => {
+describe('/suggestions — Caixa de Sugestões', () => {
 
   it('201 — cria uma nova sugestão com sucesso', async () => {
     // PREPARAR (Arrange): Criamos uma sugestão falsa contendo o emailContato obrigatório
@@ -60,7 +60,7 @@ describe('/sugestoes — Caixa de Sugestões', () => {
     // AGIR (Act): O Fastify atira os dados contra a rota enviando o e-mail no payload
     const res = await app.inject({
       method: 'POST',
-      url: '/sugestoes', 
+      url: '/suggestions',
       headers: bearerAuth(userToken), 
       payload: {
         conteudo: 'Testando a urna direto pelo motor, sem navegador!',
@@ -70,12 +70,12 @@ describe('/sugestoes — Caixa de Sugestões', () => {
 
     // VERIFICAR (Assert): Conferimos se o motor respondeu com sucesso e devolveu o ID
     expect(res.statusCode).toBe(201)
-    expect(res.headers.location).toBe('/sugestoes/sug_123')
+    expect(res.headers.location).toBe('/suggestions/sug_123')
     expect(res.json()).toMatchObject({
       id: 'sug_123',
       _links: {
-        self: { href: '/sugestoes/sug_123', method: 'GET' },
-        collection: { href: '/sugestoes', method: 'GET' },
+        self: { href: '/suggestions/sug_123', method: 'GET' },
+        collection: { href: '/suggestions', method: 'GET' },
       },
     })
   })
@@ -96,7 +96,7 @@ describe('/sugestoes — Caixa de Sugestões', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/sugestoes?page=0&size=10',
+      url: '/suggestions?page=0&size=10',
       headers: bearerAuth(userToken),
     })
 
@@ -106,14 +106,14 @@ describe('/sugestoes — Caixa de Sugestões', () => {
         suggestions: [{
           id: 'sug_123',
           _links: {
-            self: { href: '/sugestoes/sug_123', method: 'GET' },
-            collection: { href: '/sugestoes', method: 'GET' },
+            self: { href: '/suggestions/sug_123', method: 'GET' },
+            collection: { href: '/suggestions', method: 'GET' },
           },
         }],
       },
       page: { size: 10, number: 0, totalElements: 1, totalPages: 1 },
       _links: {
-        create: { href: '/sugestoes', method: 'POST' },
+        create: { href: '/suggestions', method: 'POST' },
       },
     })
 
@@ -141,13 +141,13 @@ describe('/sugestoes — Caixa de Sugestões', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/sugestoes/sug_123',
+      url: '/suggestions/sug_123',
       headers: bearerAuth(staffToken),
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json()._links.respond).toEqual({
-      href: '/sugestoes/sug_123',
+    expect(res.json()._links.answer).toEqual({
+      href: '/suggestions/sug_123',
       method: 'PATCH',
     })
   })
@@ -169,12 +169,12 @@ describe('/sugestoes — Caixa de Sugestões', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/sugestoes/sug_123',
+      url: '/suggestions/sug_123',
       headers: bearerAuth(staffToken),
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json()._links).not.toHaveProperty('respond')
+    expect(res.json()._links).not.toHaveProperty('answer')
   })
 
 })

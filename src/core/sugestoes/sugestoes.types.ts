@@ -12,6 +12,5 @@ export type SugestoesListQuery = {
 }
 
 export type SugestaoResponderInput = {
-  resposta?: string
-  status?: StatusSugestao
+  resposta: string
 }

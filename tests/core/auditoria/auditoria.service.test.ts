@@ -10,10 +10,10 @@ describe("AuditoriaService", () => {
     const created = { id: "log-1", acao: "CHAMADO_FECHADO", feitoPorId: "admin-1" };
     prismaMock.auditoria.create.mockResolvedValue(created as never);
 
-    const result = await new AuditoriaService().registrar({
-      acao: "CHAMADO_FECHADO",
-      feitoPorId: "admin-1",
-    });
+    const result = await new AuditoriaService().registrar(
+      { acao: "CHAMADO_FECHADO" },
+      "admin-1",
+    );
 
     expect(prismaMock.auditoria.create).toHaveBeenCalledWith({
       data: {

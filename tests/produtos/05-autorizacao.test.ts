@@ -2,7 +2,7 @@
  * Segurança: controle de acesso (IDOR / escalonamento de privilégio)
  * Cobre as regras adicionadas para papel USUARIO (aluno):
  *  - não acessa chamados de outros alunos (GET/PATCH/DELETE/mensagens)
- *  - não altera papel/ativo de ninguém via PATCH /usuarios/:id
+ *  - não altera papel/ativo de ninguém via PATCH /users/:id
  *  - não edita o cadastro de outro usuário
  */
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
@@ -192,11 +192,11 @@ describe('IDOR — marcar notificação de outro usuário como lida', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
+describe('Escalonamento de privilégio — PATCH /users/:id', () => {
   it('403 quando aluno tenta se promover a ADMINISTRADOR', async () => {
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoDonoToken),
       payload: { papel: 'ADMINISTRADOR' },
     })
@@ -209,7 +209,7 @@ describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
   it('403 quando aluno tenta alterar "ativo"', async () => {
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoDonoToken),
       payload: { ativo: false },
     })
@@ -221,7 +221,7 @@ describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
   it('403 quando aluno tenta editar o cadastro de outro usuário', async () => {
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoIntrusoToken),
       payload: { nome: 'Nome Alterado' },
     })
@@ -238,7 +238,7 @@ describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoDonoToken),
       payload: { nome: 'João Atualizado', telefoneCelular: '11999998888' },
     })
@@ -255,7 +255,7 @@ describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(adminToken),
       payload: { papel: 'TECNICO' },
     })

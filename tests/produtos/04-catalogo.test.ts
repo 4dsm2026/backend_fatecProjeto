@@ -34,21 +34,21 @@ afterAll(async () => {
 beforeEach(resetMocks)
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('GET /catalogo', () => {
+describe('GET /catalog', () => {
   it('200 — retorna categorias com serviços ativos', async () => {
     const cat = makeCategoria()
     prismaMock.categoria.findMany.mockResolvedValueOnce([cat])
 
     const res = await app.inject({
       method: 'GET',
-      url: '/catalogo',
+      url: '/catalog',
     })
 
     expect(res.statusCode).toBe(200)
     const body = res.json()
     expect(body).toHaveProperty('categorias')
     expect(body._links).toEqual({
-      self: { href: '/catalogo', method: 'GET' },
+      self: { href: '/catalog', method: 'GET' },
     })
     expect(body.categorias).toHaveLength(1)
     expect(body.categorias[0]).toMatchObject({
@@ -64,13 +64,13 @@ describe('GET /catalogo', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/catalogo',
+      url: '/catalog',
     })
 
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({
       categorias: [],
-      _links: { self: { href: '/catalogo', method: 'GET' } },
+      _links: { self: { href: '/catalog', method: 'GET' } },
     })
   })
 
@@ -82,7 +82,7 @@ describe('GET /catalogo', () => {
     ]
     prismaMock.categoria.findMany.mockResolvedValueOnce(cats)
 
-    const res = await app.inject({ method: 'GET', url: '/catalogo' })
+    const res = await app.inject({ method: 'GET', url: '/catalog' })
 
     expect(res.statusCode).toBe(200)
     const body = res.json()
@@ -95,10 +95,10 @@ describe('GET /catalogo', () => {
 
     const resWithAuth = await app.inject({
       method: 'GET',
-      url: '/catalogo',
+      url: '/catalog',
       headers: bearerAuth(adminToken),
     })
-    const resWithoutAuth = await app.inject({ method: 'GET', url: '/catalogo' })
+    const resWithoutAuth = await app.inject({ method: 'GET', url: '/catalog' })
 
     expect(resWithAuth.statusCode).toBe(200)
     expect(resWithoutAuth.statusCode).toBe(200)
@@ -107,14 +107,14 @@ describe('GET /catalogo', () => {
   it('devolve erros inesperados no formato RFC 7807 sem expor a mensagem interna', async () => {
     prismaMock.categoria.findMany.mockRejectedValueOnce(new Error('database password leaked'))
 
-    const res = await app.inject({ method: 'GET', url: '/catalogo' })
+    const res = await app.inject({ method: 'GET', url: '/catalog' })
 
     expect(res.statusCode).toBe(500)
     expect(res.headers['content-type']).toContain('application/problem+json')
     expect(res.json()).toMatchObject({
       type: '/errors/internal',
       status: 500,
-      instance: '/catalogo',
+      instance: '/catalog',
     })
     expect(res.json()).not.toHaveProperty('detail', 'database password leaked')
   })

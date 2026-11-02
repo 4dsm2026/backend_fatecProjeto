@@ -11,21 +11,22 @@ const userSuggestion = { id: "sug-1", status: "NAO_RESPONDIDO" as const };
 describe("suggestion HATEOAS links", () => {
   it("offers only reading links to the owner role", () => {
     expect(buildSuggestionLinks(userSuggestion, user)).toEqual({
-      self: { href: "/sugestoes/sug-1", method: "GET" },
-      collection: { href: "/sugestoes", method: "GET" },
+      self: { href: "/suggestions/sug-1", method: "GET" },
+      collection: { href: "/suggestions", method: "GET" },
     });
   });
 
   it("offers the response action to staff only while the suggestion is open", () => {
     expect(buildSuggestionLinks(userSuggestion, staff)).toMatchObject({
-      respond: { href: "/sugestoes/sug-1", method: "PATCH" },
+      answer: { href: "/suggestions/sug-1", method: "PATCH" },
     });
-    expect(buildSuggestionLinks({ id: "sug-1", status: "RESPONDIDO" }, staff)).not.toHaveProperty("respond");
+    expect(buildSuggestionLinks({ id: "sug-1", status: "RESPONDIDO" }, staff)).not.toHaveProperty("answer");
+    expect(buildSuggestionLinks({ ...userSuggestion, resposta: "Resposta" }, staff)).not.toHaveProperty("answer");
   });
 
   it("offers creation only to an authenticated viewer", () => {
     expect(buildSuggestionCollectionLinks(user)).toEqual({
-      create: { href: "/sugestoes", method: "POST" },
+      create: { href: "/suggestions", method: "POST" },
     });
     expect(buildSuggestionCollectionLinks()).toEqual({});
   });

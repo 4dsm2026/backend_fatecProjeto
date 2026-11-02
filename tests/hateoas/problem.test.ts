@@ -17,6 +17,8 @@ describe("ApiError", () => {
     ["not-found", 404],
     ["conflict", 409],
     ["unprocessable", 422],
+    ["payload-too-large", 413],
+    ["unsupported-media-type", 415],
     ["too-many-requests", 429],
     ["internal", 500],
   ])("%s vira status %i", (kind, status) => {
@@ -94,13 +96,20 @@ describe("normalizeError", () => {
     [404, "not-found"],
     [409, "conflict"],
     [422, "unprocessable"],
+    [413, "payload-too-large"],
+    [415, "unsupported-media-type"],
     [429, "too-many-requests"],
   ])("statusCode %i vira %s", (statusCode, kind) => {
     expect(normalizeError({ statusCode, message: "x" }).kind).toBe(kind);
   });
 
-  it("statusCode sem mapeamento (413) cai em 500", () => {
-    expect(normalizeError({ statusCode: 413, message: "too large" }).status).toBe(500);
+  it("statusCode 413 e 415 são erros RFC 7807 e não expõem detalhe bruto", () => {
+    const tooLarge = normalizeError({ statusCode: 413, message: "path interno" });
+    const unsupported = normalizeError({ statusCode: 415, message: "header interno" });
+    expect(tooLarge).toMatchObject({ kind: "payload-too-large", status: 413 });
+    expect(tooLarge.detail).toBeUndefined();
+    expect(unsupported).toMatchObject({ kind: "unsupported-media-type", status: 415 });
+    expect(unsupported.detail).toBeUndefined();
   });
 
   it("erro desconhecido vira 500 sem vazar a mensagem", () => {
@@ -146,6 +155,9 @@ describe("registerProblemHandler (com Fastify de verdade)", () => {
     app.get("/api-error", async () => {
       throw new ApiError("not-found", "Chamado não encontrado", "Não existe chamado com esse id");
     });
+    app.get("/unprocessable", async () => {
+      throw new ApiError("unprocessable", "Regra de negócio violada");
+    });
     app.get("/boom", async () => {
       throw new Error("senha do banco: abc123");
     });
@@ -177,6 +189,17 @@ describe("registerProblemHandler (com Fastify de verdade)", () => {
       status: 404,
       detail: "Não existe chamado com esse id",
       instance: "/api-error",
+    });
+  });
+
+  it("preserva 422 de regra de negócio no corpo RFC 7807", async () => {
+    const res = await criarApp().inject({ method: "GET", url: "/unprocessable" });
+    expect(res.statusCode).toBe(422);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    expect(res.json()).toMatchObject({
+      type: "/errors/unprocessable",
+      status: 422,
+      instance: "/unprocessable",
     });
   });
 

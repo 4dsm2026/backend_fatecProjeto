@@ -21,5 +21,4 @@ export interface RegistrarAuditoriaDTO {
   acao: string;
   alvo?: string;
   meta?: unknown;
-  feitoPorId?: string | null;
 }

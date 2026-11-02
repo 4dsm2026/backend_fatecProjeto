@@ -6,11 +6,10 @@ const AUDIT_LOGS = "/admin/audit-logs";
 
 export function buildAuditLogLinks(log: AuditoriaRecord, viewer?: Viewer): Links {
   return buildLinks({
+    self: link(path`/admin/audit-logs/${log.id}`),
     collection: isAdmin(viewer) && link(AUDIT_LOGS),
-    actor: isAdmin(viewer)
-      ? log.feitoPorId
-        ? link(path`/usuarios/${log.feitoPorId}`)
-        : false
+    actor: isAdmin(viewer) && log.feitoPorId
+      ? link(path`/users/${log.feitoPorId}`)
       : false,
   });
 }

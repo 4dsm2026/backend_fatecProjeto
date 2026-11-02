@@ -1,145 +1,151 @@
-import fs from 'node:fs';
-import type { FastifyReply, FastifyRequest } from 'fastify';
-import { buildRouteValidator } from '../../utils/zod-helpers';
-import { DownloadAnexoSchema, ListAnexosSchema, UploadAnexoSchema } from './anexos.types';
-import { listAnexosByTicketId, createAnexo, getAnexoForDownload } from './anexos.service';
-import { alunoSemAcessoAoChamado } from '../tickets/tickets.service';
-import { generateDownloadToken } from '../../utils/jwt';
+import fs from "node:fs";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { ApiError, parseOrThrow, toCollection, toResource, viewerFrom } from "../../hateoas";
+import { path } from "../../hateoas";
+import { alunoSemAcessoAoChamado } from "../tickets/tickets.service";
+import {
+  getAnexoForDownload,
+  getAnexoMetadata,
+  createAnexo,
+  listAnexosByTicketId,
+} from "./anexos.service";
+import { buildAnexoLinks } from "./anexos.hateoas";
+import {
+  AnexoIdParamsSchema,
+  ListAnexosQuerySchema,
+  TicketIdParamsSchema,
+} from "./anexos.types";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-const listValidator = buildRouteValidator({
-    params: ListAnexosSchema.shape.params 
-});
-const uploadValidator = buildRouteValidator({
-    params: UploadAnexoSchema.shape.params 
-});
-const downloadValidator = buildRouteValidator({
-    params: DownloadAnexoSchema.shape.params
-});
-
-async function requireAuthUser(req: FastifyRequest, res: FastifyReply) {
-    const authUser = req.user as { sub: string; role: string } | undefined;
-    if (!authUser) {
-        await res.code(401).send({ error: "Não autenticado" });
-        return null;
-    }
-
-    return authUser;
+function requireViewer(req: FastifyRequest) {
+  const viewer = viewerFrom(req);
+  if (!viewer) throw new ApiError("unauthorized", "Não autenticado");
+  return viewer;
 }
 
-async function denyMissingTicketAccess(
-    prisma: any,
-    chamadoId: string,
-    authUser: { sub: string; role: string } | undefined,
-    res: FastifyReply,
-) {
-    if (await alunoSemAcessoAoChamado(prisma, chamadoId, authUser)) {
-        await res.code(404).send({ error: "Chamado não encontrado" });
-        return true;
-    }
-
-    return false;
+async function ensureTicketAccess(req: FastifyRequest, ticketId: string) {
+  const viewer = requireViewer(req);
+  const inaccessible = await alunoSemAcessoAoChamado(req.server.prisma, ticketId, {
+    sub: viewer.id,
+    role: viewer.role,
+  });
+  if (inaccessible) throw new ApiError("not-found", "Chamado não encontrado");
+  return viewer;
 }
 
-
-/* GET /tickets/:id/anexos */
-export async function list(req: FastifyRequest, res: FastifyReply) {
-    const parsed = listValidator.parse(req); 
-    if ('error' in parsed) return res.code(400).send(parsed.error);
-
-    const prisma = req.server.prisma;
-    const authUser = await requireAuthUser(req, res);
-    if (!authUser) return;
-    const { id: chamadoId } = parsed.data!.params!;
-
-    try {
-        if (await denyMissingTicketAccess(prisma, chamadoId, authUser, res)) return;
-
-        const anexos = await listAnexosByTicketId(prisma, chamadoId);
-        return res.send(anexos);
-    } catch (e: any) {
-        req.log.error({ e }, "Erro ao listar anexos");
-        const code = e?.code === 'P2025' ? 404 : 500;
-        const message = e?.code === 'P2025' ? "Chamado não encontrado" : errMsg(e);
-        return res.code(code).send({ error: message });
-    }
+function buildContentDisposition(fileName: string): string {
+  const safeName = Array.from(fileName, (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return character === "\\" || character === "/" || codePoint < 0x20 || codePoint === 0x7f
+      ? "_"
+      : character;
+  }).join("").trim() || "attachment";
+  const fallback = safeName
+    .replace(/[^\x20-\x7E]/g, "_")
+    .replace(/["\\]/g, "_");
+  const encoded = encodeURIComponent(safeName).replace(/[!'()*]/g, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
-/* POST /tickets/:id/anexos */
-export async function upload(req: FastifyRequest, res: FastifyReply) {
-     const parsed = uploadValidator.parse(req); 
-     if ('error' in parsed) return res.code(400).send(parsed.error);
+type AttachmentResource = {
+  id: string;
+  chamadoId: string;
+  nomeArquivo: string;
+  mimeType: string;
+  tamanhoBytes: number;
+  enviadoEm: Date;
+  enviadoPor: { id: string; nome: string };
+};
 
-    const prisma = req.server.prisma;
-    const authUser = await requireAuthUser(req, res);
-    if (!authUser) return;
-    const userId = authUser.sub;
-
-    const { id: chamadoId } = parsed.data!.params!;
-
-    try {
-        if (await denyMissingTicketAccess(prisma, chamadoId, authUser, res)) return;
-
-        const anexo = await createAnexo(prisma, req, chamadoId, userId);
-        return res.code(201).send(anexo);
-    } catch (e: any) {
-        req.log.error({ e }, "Erro ao fazer upload de anexo");
-         const code = e?.statusCode || 500;
-        return res.code(code).send({ error: errMsg(e) });
-    }
+function attachmentResource(anexo: AttachmentResource, downloadAllowed: boolean) {
+  const { chamadoId } = anexo;
+  const metadata = {
+    id: anexo.id,
+    nomeArquivo: anexo.nomeArquivo,
+    mimeType: anexo.mimeType,
+    tamanhoBytes: anexo.tamanhoBytes,
+    enviadoEm: anexo.enviadoEm,
+    enviadoPor: anexo.enviadoPor,
+  };
+  return toResource(metadata, buildAnexoLinks(anexo, chamadoId, downloadAllowed));
 }
 
-/* GET /anexos/:anexoId/download */
-export async function download(req: FastifyRequest, res: FastifyReply) {
-    const parsed = downloadValidator.parse(req); 
-    if ('error' in parsed) return res.code(400).send(parsed.error);
+export async function list(req: FastifyRequest, reply: FastifyReply) {
+  const { params } = parseOrThrow(TicketIdParamsSchema, { params: req.params });
+  const { query } = parseOrThrow(ListAnexosQuerySchema, { query: req.query });
+  const viewer = await ensureTicketAccess(req, params.id);
+  const result = await listAnexosByTicketId(
+    req.server.prisma,
+    params.id,
+    query.page,
+    query.size,
+    viewer,
+  );
 
-    const prisma = req.server.prisma;
-    const authUser = await requireAuthUser(req, res);
-    if (!authUser) return;
-    const userId = authUser.sub;
-
-    const { anexoId } = parsed.data!.params!;
-
-    const userRole = req.user?.role as string | undefined;
-
-    try {
-        const { filePath, fileName, mimeType } = await getAnexoForDownload(prisma, anexoId, userId, userRole);
-
-        res.header('Content-Disposition', `attachment; filename="${fileName}"`);
-        res.header('Content-Type', mimeType);
-
-        const stream = fs.createReadStream(filePath);
-        return res.send(stream);
-
-    } catch (e: any) {
-        req.log.error({ e }, "Erro ao baixar anexo");
-        const code = e?.statusCode || 500;
-        return res.code(code).send({ error: errMsg(e) });
-    }
+  return reply.send(
+    toCollection({
+      rel: "attachments",
+      basePath: path`/tickets/${params.id}/attachments`,
+      items: result.items.map((anexo) => {
+        const { chamadoId, downloadAllowed } = anexo;
+        const metadata = {
+          id: anexo.id,
+          nomeArquivo: anexo.nomeArquivo,
+          mimeType: anexo.mimeType,
+          tamanhoBytes: anexo.tamanhoBytes,
+          enviadoEm: anexo.enviadoEm,
+          enviadoPor: anexo.enviadoPor,
+        };
+        return toResource(metadata, buildAnexoLinks(anexo, chamadoId, downloadAllowed));
+      }),
+      page: query.page,
+      size: query.size,
+      total: result.total,
+      links: { ticket: { href: path`/tickets/${params.id}`, method: "GET" } },
+      filters: {},
+    }),
+  );
 }
 
-/* POST /anexos/:anexoId/download-token */
-export async function generateDownloadTokenRoute(req: FastifyRequest, res: FastifyReply): Promise<any> {
-    const authUser = await requireAuthUser(req, res);
-    if (!authUser) return;
-    const userId = authUser.sub;
+export async function upload(req: FastifyRequest, reply: FastifyReply) {
+  const { params } = parseOrThrow(TicketIdParamsSchema, { params: req.params });
+  const viewer = await ensureTicketAccess(req, params.id);
+  const anexo = await createAnexo(req.server.prisma, req, params.id, viewer);
+  const resource = attachmentResource(anexo, true);
 
-    const anexoId = (req.params as any)?.anexoId as string | undefined;
-    if (!anexoId) return res.code(400).send({ error: 'Parâmetro anexoId ausente' });
+  return reply
+    .header("Location", path`/attachments/${anexo.id}`)
+    .code(201)
+    .send(resource);
+}
 
-    const prisma = req.server.prisma;
+export async function getOne(req: FastifyRequest, reply: FastifyReply) {
+  const { params } = parseOrThrow(AnexoIdParamsSchema, { params: req.params });
+  const viewer = requireViewer(req);
+  const anexo = await getAnexoMetadata(
+    req.server.prisma,
+    params.anexoId,
+    viewer.id,
+    viewer.role,
+  );
+  return reply.send(attachmentResource(anexo, anexo.downloadAllowed));
+}
 
-    try {
-        const userRole = req.user?.role as string | undefined;
-        await getAnexoForDownload(prisma, anexoId, userId, userRole);
+export async function download(req: FastifyRequest, reply: FastifyReply) {
+  const { params } = parseOrThrow(AnexoIdParamsSchema, { params: req.params });
+  const viewer = requireViewer(req);
+  const { filePath, fileName, mimeType } = await getAnexoForDownload(
+    req.server.prisma,
+    params.anexoId,
+    viewer.id,
+    viewer.role,
+  );
 
-        const token: string = generateDownloadToken({ sub: userId, anexoId }, { expiresIn: '5m' });
-        return res.send({ token, expiresIn: 300 });
-    } catch (e: any) {
-        req.log.error({ e }, "Erro ao gerar token de download");
-        const code = e?.statusCode || 500;
-        return res.code(code).send({ error: e?.message ?? String(e) });
-    }
+  reply.header("Content-Disposition", buildContentDisposition(fileName));
+  const safeMimeType = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(mimeType)
+    ? mimeType
+    : "application/octet-stream";
+  reply.header("Content-Type", safeMimeType);
+  return reply.send(fs.createReadStream(filePath));
 }

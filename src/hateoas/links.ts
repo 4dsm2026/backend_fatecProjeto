@@ -1,6 +1,6 @@
 import type { HttpMethod, Link, Links, Role, Viewer } from "./types";
 
-const STAFF_ROLES: readonly Role[] = ["BACKOFFICE", "TECNICO", "ADMINISTRADOR"];
+export const STAFF_ROLES: readonly Role[] = ["BACKOFFICE", "TECNICO", "ADMINISTRADOR"];
 
 /** Equipe de atendimento: BACKOFFICE, TECNICO ou ADMINISTRADOR. Sem viewer, retorna false. */
 export function isStaff(viewer?: Viewer | null): boolean {

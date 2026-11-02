@@ -7,6 +7,8 @@ export type ErrorKind =
   | "not-found"
   | "conflict"
   | "unprocessable"
+  | "payload-too-large"
+  | "unsupported-media-type"
   | "too-many-requests"
   | "internal";
 
@@ -17,6 +19,8 @@ const STATUS_BY_KIND: Record<ErrorKind, number> = {
   "not-found": 404,
   conflict: 409,
   unprocessable: 422,
+  "payload-too-large": 413,
+  "unsupported-media-type": 415,
   "too-many-requests": 429,
   internal: 500,
 };
@@ -28,6 +32,8 @@ const KIND_BY_STATUS: Partial<Record<number, ErrorKind>> = {
   404: "not-found",
   409: "conflict",
   422: "unprocessable",
+  413: "payload-too-large",
+  415: "unsupported-media-type",
   429: "too-many-requests",
 };
 
@@ -38,6 +44,8 @@ const DEFAULT_TITLE: Record<ErrorKind, string> = {
   "not-found": "Recurso não encontrado",
   conflict: "Conflito",
   unprocessable: "Não foi possível processar",
+  "payload-too-large": "Arquivo muito grande",
+  "unsupported-media-type": "Tipo de mídia não suportado",
   "too-many-requests": "Muitas requisições",
   internal: "Erro interno do servidor",
 };
@@ -147,7 +155,10 @@ export function normalizeError(error: unknown): ApiError {
 
   const kind = typeof error.statusCode === "number" ? KIND_BY_STATUS[error.statusCode] : undefined;
   if (kind) {
-    const detail = typeof error.message === "string" ? error.message : undefined;
+    let detail: string | undefined;
+    if (kind !== "payload-too-large" && kind !== "unsupported-media-type" && typeof error.message === "string") {
+      detail = error.message;
+    }
     return new ApiError(kind, DEFAULT_TITLE[kind], detail);
   }
 

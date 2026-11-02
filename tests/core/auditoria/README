@@ -13,7 +13,7 @@ Os filtros opcionais `userId`, `from` e `to` são combináveis; a paginação us
         "acao": "LOGIN_SUCESSO",
         "_links": {
           "collection": { "href": "/admin/audit-logs", "method": "GET" },
-          "actor": { "href": "/usuarios/user-1", "method": "GET" }
+          "actor": { "href": "/users/user-1", "method": "GET" }
         }
       }
     ]

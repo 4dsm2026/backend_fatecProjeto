@@ -10,6 +10,8 @@ import { bearerAuth, makeAdminToken, makeUserToken } from "../../helpers/auth";
 import { resetMocks } from "../../helpers/reset";
 
 let app: FastifyInstance;
+const mockAuditFindUnique = vi.fn();
+Object.assign(prismaMock.auditoria, { findUnique: mockAuditFindUnique });
 
 beforeAll(async () => {
   app = await buildApp();
@@ -49,8 +51,9 @@ describe("GET /admin/audit-logs", () => {
           {
             id: "log-1",
             _links: {
+              self: { href: "/admin/audit-logs/log-1", method: "GET" },
               collection: { href: "/admin/audit-logs", method: "GET" },
-              actor: { href: "/usuarios/user-1", method: "GET" },
+              actor: { href: "/users/user-1", method: "GET" },
             },
           },
         ],
@@ -82,7 +85,7 @@ describe("POST /admin/audit-logs", () => {
       acao: "MANUAL",
       alvo: null,
       meta: null,
-      feitoPorId: "admin-1",
+      feitoPorId: "admin-id-001",
       feitoEm: new Date("2026-01-02T00:00:00.000Z"),
     } as never);
 
@@ -90,16 +93,49 @@ describe("POST /admin/audit-logs", () => {
       method: "POST",
       url: "/admin/audit-logs",
       headers: bearerAuth(makeAdminToken()),
-      payload: { acao: "MANUAL" },
+      payload: { acao: "MANUAL", feitoPorId: "spoofed-user" },
     });
 
     expect(response.statusCode).toBe(201);
+    expect(response.headers.location).toBe("/admin/audit-logs/log-2");
+    expect(prismaMock.auditoria.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ feitoPorId: "admin-id-001" }),
+    }));
     expect(response.json()).toMatchObject({
       id: "log-2",
       _links: {
+        self: { href: "/admin/audit-logs/log-2", method: "GET" },
         collection: { href: "/admin/audit-logs", method: "GET" },
-        actor: { href: "/usuarios/admin-1", method: "GET" },
+        actor: { href: "/users/admin-id-001", method: "GET" },
       },
+    });
+  });
+
+  describe("GET /admin/audit-logs/:id", () => {
+    it("returns an individual record and its valid actor link", async () => {
+      mockAuditFindUnique.mockResolvedValueOnce({
+        id: "log-3",
+        acao: "LOGIN",
+        alvo: null,
+        meta: null,
+        feitoPorId: "user-1",
+        feitoEm: new Date("2026-01-03T00:00:00.000Z"),
+        feitoPor: { id: "user-1", nome: "Usuário", ra: null },
+      } as never);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/admin/audit-logs/log-3",
+        headers: bearerAuth(makeAdminToken()),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()._links).toMatchObject({
+        self: { href: "/admin/audit-logs/log-3", method: "GET" },
+        collection: { href: "/admin/audit-logs", method: "GET" },
+        actor: { href: "/users/user-1", method: "GET" },
+      });
+      expect(app.hasRoute({ method: "GET", url: "/users/:id" })).toBe(true);
     });
   });
 });

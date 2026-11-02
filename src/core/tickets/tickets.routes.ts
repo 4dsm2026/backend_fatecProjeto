@@ -504,7 +504,7 @@ export async function ticketsRoutes(app: FastifyInstance) {
             precisaAcaoDoAluno: { type: "boolean", description: "Indica se o chamado precisa de ação do aluno." },
             anexos: {
               type: "array", nullable: true,
-              description: "Metadados de anexos (não é o upload em si — ver POST /tickets/:id/anexos).",
+              description: "Metadados de anexos (não é o upload em si — ver POST /tickets/:id/attachments).",
               items: {
                 type: "object",
                 properties: {

@@ -107,7 +107,7 @@ export const UnauthorizedErrorSchema = {
 
 // Corpo do 401 alternativo: NÃO vem de auth-verify.ts, é um padrão repetido
 // manualmente por vários handlers (ex.: auth.controller.ts:me/trocarSenha,
-// anexos.controller.ts:download/upload/generateDownloadTokenRoute) que fazem
+// anexos.controller.ts:download/upload) que fazem
 // sua própria checagem `if (!req.user?.sub)` — teoricamente só dispararia se
 // um token passasse na verificação de assinatura/expiração mas não tivesse a
 // claim `sub` no payload, o que não deveria acontecer com tokens emitidos por

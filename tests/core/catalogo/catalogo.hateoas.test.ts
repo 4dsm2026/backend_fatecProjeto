@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildCatalogLinks } from "../../../src/core/catalogo/catalogo.hateoas";
 
 describe("buildCatalogLinks", () => {
-  it("offers the existing public catalog endpoint as its only action", () => {
+  it("offers the public catalog endpoint in the English URL convention", () => {
     expect(buildCatalogLinks()).toEqual({
-      self: { href: "/catalogo", method: "GET" },
+      self: { href: "/catalog", method: "GET" },
     });
   });
 });

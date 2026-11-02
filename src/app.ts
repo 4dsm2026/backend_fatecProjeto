@@ -51,14 +51,17 @@ export async function buildApp() {
       level: env.NODE_ENV === "production" ? "info" : "debug",
       // Mesmo conteúdo do serializador padrão do Fastify, mas sem o token que viaja na URL.
       serializers: {
-        req: (req: FastifyRequest) => ({
-          method: req.method,
-          url: redactUrl(req.url),
-          version: req.headers?.["accept-version"],
-          host: req.host,
-          remoteAddress: req.ip,
-          remotePort: req.socket?.remotePort,
-        }),
+        req: (req: FastifyRequest) => {
+          const version = req.headers?.["accept-version"];
+          return {
+            method: req.method,
+            url: redactUrl(req.url),
+            version: Array.isArray(version) ? version[0] : version,
+            host: req.host,
+            remoteAddress: req.ip,
+            remotePort: req.socket?.remotePort,
+          };
+        },
       },
       ...(env.NODE_ENV !== "production" && {
         transport: { target: "pino-pretty", options: { colorize: true } },
@@ -111,7 +114,7 @@ export async function buildApp() {
   registerProblemHandler(app);
 
   // NOTA: /downloads/ foi removido intencionalmente.
-  // Arquivos são servidos exclusivamente via GET /anexos/:id (rota autenticada).
+  // Arquivos são servidos exclusivamente via GET /attachments/:id/content.
 
   app.addHook("onRequest", async (req) =>
     req.log.debug({ method: req.method, url: redactUrl(req.url) }, "REQ"),
@@ -146,17 +149,17 @@ export async function buildApp() {
 
   app.register(authRoutes, { prefix: "/auth" });
   app.register(sessionsRoutes);
-  app.register(usersRoutes, { prefix: "/usuarios" });
+  app.register(usersRoutes, { prefix: "/users" });
   app.register(ticketsRoutes, { prefix: "/tickets" });
   app.register(ticketStatsRoutes, { prefix: "/ticket-stats" });
-  app.register(catalogoRoutes, { prefix: "/catalogo" });
+  app.register(catalogoRoutes, { prefix: "/catalog" });
   app.register(setoresRoutes, { prefix: "/admin" });
   app.register(papeisRoutes, { prefix: "/admin" });
   app.register(usuarioSetorRoutes, { prefix: "/admin" });
   app.register(comunicacoesRoutes, { prefix: "/admin" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(anexoRoutes, { prefix: "/" });
-  app.register(sugestoesRoutes, { prefix: "/sugestoes" });
+  app.register(sugestoesRoutes, { prefix: "/suggestions" });
   app.register(auditoriaRoutes);
 
   // ---------------------------------------------------------

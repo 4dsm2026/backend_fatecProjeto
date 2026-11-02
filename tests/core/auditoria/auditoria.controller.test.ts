@@ -27,8 +27,9 @@ describe("AuditoriaController", () => {
           {
             ...logs[0],
             _links: {
+              self: { href: "/admin/audit-logs/log-1", method: "GET" },
               collection: { href: "/admin/audit-logs", method: "GET" },
-              actor: { href: "/usuarios/user-1", method: "GET" },
+              actor: { href: "/users/user-1", method: "GET" },
             },
           },
         ],
@@ -48,15 +49,23 @@ describe("AuditoriaController", () => {
     const service = { registrar: vi.fn().mockResolvedValue(log) };
     const controller = new AuditoriaController(service as never);
     const request = { body: { acao: "LOGIN_SUCESSO" }, user: admin } as never;
-    const reply = { code: vi.fn().mockReturnThis(), send: vi.fn() } as never;
+    const reply = {
+      header: vi.fn().mockReturnThis(),
+      code: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+    } as never;
 
     await controller.registrar(request, reply);
 
-    expect(service.registrar).toHaveBeenCalledWith(request.body);
+    expect(service.registrar).toHaveBeenCalledWith(request.body, "admin-1");
+    expect(reply.header).toHaveBeenCalledWith("Location", "/admin/audit-logs/log-1");
     expect(reply.code).toHaveBeenCalledWith(201);
     expect(reply.send).toHaveBeenCalledWith({
       ...log,
-      _links: { collection: { href: "/admin/audit-logs", method: "GET" } },
+      _links: {
+        self: { href: "/admin/audit-logs/log-1", method: "GET" },
+        collection: { href: "/admin/audit-logs", method: "GET" },
+      },
     });
   });
 

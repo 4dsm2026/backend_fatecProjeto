@@ -1,14 +1,10 @@
 import { PrismaClient } from '@prisma/client'
-import { ApiError } from '../../hateoas'
-import { toSkipTake } from '../../hateoas'
+import { ApiError, fieldErrorsFromZod, isStaff, toSkipTake } from '../../hateoas'
+import type { Role } from '../../hateoas'
+import { SugestaoRespostaSchema } from '../../validators/sugestoes'
 import { SugestaoCreateInput, SugestaoResponderInput, SugestoesListQuery } from './sugestoes.types'
 
 type Ctx = PrismaClient
-
-const STAFF_ROLES = ['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO']
-export function isStaffRole(role?: string) {
-  return !!role && STAFF_ROLES.includes(role)
-}
 
 export async function createSugestao(
   prisma: Ctx,
@@ -34,11 +30,11 @@ export async function createSugestao(
 export async function listSugestoes(
   prisma: Ctx,
   query: SugestoesListQuery,
-  opts: { usuarioId: string; role?: string },
+  opts: { usuarioId: string; role: Role },
 ) {
   const { page, size } = query
   const { skip, take } = toSkipTake(query)
-  const staff = isStaffRole(opts.role)
+  const staff = isStaff({ id: opts.usuarioId, role: opts.role })
 
   const where = {
     ...(staff ? {} : { usuarioId: opts.usuarioId }),
@@ -64,7 +60,7 @@ export async function listSugestoes(
 export async function getSugestaoById(
   prisma: Ctx,
   id: string,
-  opts: { usuarioId: string; role?: string },
+  opts: { usuarioId: string; role: Role },
 ) {
   const sugestao = await prisma.sugestao.findUnique({
     where: { id },
@@ -75,7 +71,7 @@ export async function getSugestaoById(
   })
 
   if (!sugestao) return null
-  if (!isStaffRole(opts.role) && sugestao.usuarioId !== opts.usuarioId) return null
+  if (!isStaff({ id: opts.usuarioId, role: opts.role }) && sugestao.usuarioId !== opts.usuarioId) return null
 
   return sugestao
 }
@@ -84,37 +80,54 @@ export async function responderSugestao(
   prisma: Ctx,
   id: string,
   data: SugestaoResponderInput,
-  opts: { staffId: string },
+  opts: { staffId: string; role: Role },
 ) {
+  if (!isStaff({ id: opts.staffId, role: opts.role })) {
+    throw new ApiError("forbidden", "Somente a equipe pode responder sugestões");
+  }
+  const parsedResponse = SugestaoRespostaSchema.safeParse(data.resposta);
+  if (!parsedResponse.success) {
+    throw new ApiError(
+      "bad-request",
+      "Resposta inválida",
+      undefined,
+      fieldErrorsFromZod(parsedResponse.error.issues),
+    );
+  }
+
   const atual = await prisma.sugestao.findUnique({
     where: { id },
-    select: { status: true, resposta: true },
-  })
-  if (!atual) throw new ApiError('not-found', 'Sugestão não encontrada')
-
-  if (atual.status === 'RESPONDIDO') {
+    select: { id: true, status: true, resposta: true },
+  });
+  if (!atual) throw new ApiError("not-found", "Sugestão não encontrada");
+  if (atual.status === "RESPONDIDO" || atual.resposta) {
     throw new ApiError(
       'conflict',
       'Sugestão já respondida',
-      'Resposta e status não podem mais ser alterados',
+      'A resposta não pode ser alterada após ser registrada',
     )
   }
 
-  if (data.resposta !== undefined && atual.resposta) {
-    throw new ApiError(
-      'conflict',
-      'A resposta já foi salva',
-      'A resposta não pode ser editada',
-    )
-  }
-
-  return prisma.sugestao.update({
-    where: { id },
+  const updated = await prisma.sugestao.updateMany({
+    where: { id, status: "NAO_RESPONDIDO", resposta: null },
     data: {
-      ...(data.resposta !== undefined ? { resposta: data.resposta } : {}),
-      ...(data.status !== undefined ? { status: data.status } : {}),
+      resposta: parsedResponse.data,
+      status: "RESPONDIDO",
       respondidoPorId: opts.staffId,
       respondidoEm: new Date(),
     },
-  })
+  });
+  if (updated.count !== 1) {
+    throw new ApiError("conflict", "Sugestão já respondida");
+  }
+
+  const suggestion = await prisma.sugestao.findUnique({
+    where: { id },
+    include: {
+      usuario: { select: { id: true, nome: true, ra: true } },
+      respondidoPor: { select: { id: true, nome: true } },
+    },
+  });
+  if (!suggestion) throw new ApiError("not-found", "Sugestão não encontrada");
+  return suggestion;
 }

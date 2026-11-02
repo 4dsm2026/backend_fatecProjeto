@@ -3,6 +3,11 @@ import { PaginationQuerySchema } from '../hateoas'
 
 export const SUGESTAO_CONTEUDO_MAX = 1000
 export const SUGESTAO_RESPOSTA_MAX = 1000
+export const SugestaoRespostaSchema = z
+  .string()
+  .trim()
+  .min(1, 'A resposta não pode ficar vazia')
+  .max(SUGESTAO_RESPOSTA_MAX, `A resposta deve ter no máximo ${SUGESTAO_RESPOSTA_MAX} caracteres`)
 
 const SugestaoBodySchema = z.object({
   emailContato: z
@@ -32,17 +37,7 @@ export const ParamsWithIdSchema = z.object({
 
 export const SugestaoResponderSchema = z.object({
   params: z.object({ id: z.string().min(1) }),
-  body: z
-    .object({
-      resposta: z
-        .string()
-        .trim()
-        .min(1, 'A resposta não pode ficar vazia')
-        .max(SUGESTAO_RESPOSTA_MAX, `A resposta deve ter no máximo ${SUGESTAO_RESPOSTA_MAX} caracteres`)
-        .optional(),
-      status: z.enum(['NAO_RESPONDIDO', 'RESPONDIDO']).optional(),
-    })
-    .refine((d) => d.resposta !== undefined || d.status !== undefined, {
-      message: 'Informe ao menos a resposta ou o status',
-    }),
-})
+  body: z.object({
+    resposta: SugestaoRespostaSchema,
+  }),
+});

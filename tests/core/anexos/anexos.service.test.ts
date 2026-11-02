@@ -1,524 +1,406 @@
-import { vi, describe, it, expect, afterEach } from 'vitest'
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { FastifyRequest } from "fastify";
+import type { PrismaClient } from "@prisma/client";
 
 const {
-    mockPrisma,
+  mockPrisma,
+  mockMkdir,
+  mockWriteFile,
+  mockUnlink,
+  mockAccess,
 } = vi.hoisted(() => ({
-    mockPrisma: {
-        chamado: {
-            findUniqueOrThrow: vi.fn(),
-            findUnique: vi.fn(),
-        },
-        anexo: {
-            findMany: vi.fn(),
-            create: vi.fn(),
-            findUnique: vi.fn(),
-        },
-        usuarioSetor: {
-            findFirst: vi.fn(),
-        },
+  mockPrisma: {
+    chamado: { findFirst: vi.fn() },
+    anexo: {
+      count: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      findUnique: vi.fn(),
     },
-}))
+    usuarioSetor: { findFirst: vi.fn() },
+  },
+  mockMkdir: vi.fn(),
+  mockWriteFile: vi.fn(),
+  mockUnlink: vi.fn(),
+  mockAccess: vi.fn(),
+}));
 
-vi.mock('../../../src/core/notifications/notify', () => ({
-    notifyMany: vi.fn().mockResolvedValue(undefined),
-}))
+vi.mock("../../../src/core/notifications/notify", () => ({
+  notifyMany: vi.fn().mockResolvedValue(undefined),
+}));
 
-vi.mock('fs/promises', () => ({
-    default: {
-        mkdir: vi.fn(),
-        writeFile: vi.fn(),
-        access: vi.fn(),
-    },
-}))
+vi.mock("node:fs/promises", () => ({
+  default: {
+    mkdir: mockMkdir,
+    writeFile: mockWriteFile,
+    unlink: mockUnlink,
+    access: mockAccess,
+  },
+}));
 
-import * as AnexosService from '../../../src/core/anexos/anexos.service'
+import * as AnexosService from "../../../src/core/anexos/anexos.service";
 
 afterEach(() => {
-    vi.resetAllMocks()
-})
-
-describe('AnexosService', () => {
-
-    describe('listAnexosByTicketId()', () => {
-
-        it('deve listar os anexos do chamado com sucesso', async () => {
-            const chamadoId = 'chamado-001'
-
-            const mockAnexos = [
-                {
-                    id: 'anexo-001',
-                    nomeArquivo: 'documento.pdf',
-                    mimeType: 'application/pdf',
-                    tamanhoBytes: 1024,
-                    enviadoEm: new Date(),
-                    enviadoPor: {
-                        id: 'user-001',
-                        nome: 'Guilherme',
-                    },
-                },
-            ]
-
-            mockPrisma.chamado.findUniqueOrThrow.mockResolvedValueOnce({
-                id: chamadoId,
-            })
-
-            mockPrisma.anexo.findMany.mockResolvedValueOnce(mockAnexos)
-
-            const resultado = await AnexosService.listAnexosByTicketId(
-                mockPrisma as any,
-                chamadoId,
-            )
-
-            expect(resultado).toEqual(mockAnexos)
-
-            expect(
-                mockPrisma.chamado.findUniqueOrThrow,
-            ).toHaveBeenCalledWith({
-                where: { id: chamadoId },
-            })
-
-            expect(mockPrisma.anexo.findMany).toHaveBeenCalled()
-        })
-
-        it('deve lançar erro quando o chamado não existir', async () => {
-            const chamadoId = 'chamado-inexistente'
-            const erro = new Error('Chamado não encontrado')
-
-            mockPrisma.chamado.findUniqueOrThrow.mockRejectedValueOnce(erro)
-
-            await expect(
-                AnexosService.listAnexosByTicketId(
-                    mockPrisma as any,
-                    chamadoId,
-                ),
-            ).rejects.toThrow('Chamado não encontrado')
-
-            expect(
-                mockPrisma.anexo.findMany,
-            ).not.toHaveBeenCalled()
-        })
-
-        it('deve tratar erro ao buscar os anexos', async () => {
-            const chamadoId = 'chamado-001'
-            const erro = new Error('Erro ao consultar anexos')
-
-            mockPrisma.chamado.findUniqueOrThrow.mockResolvedValueOnce({
-                id: chamadoId,
-            })
-
-            mockPrisma.anexo.findMany.mockRejectedValueOnce(erro)
-
-            await expect(
-                AnexosService.listAnexosByTicketId(
-                    mockPrisma as any,
-                    chamadoId,
-                ),
-            ).rejects.toThrow('Erro ao consultar anexos')
-        })
-    })
-
-    describe('createAnexo()', () => {
-
-        it('deve criar um anexo com sucesso', async () => {
-            const { notifyMany } = await import(
-                '../../../src/core/notifications/notify'
-            )
-
-            vi.mocked(notifyMany).mockResolvedValue(undefined)
-
-            const chamadoId = 'chamado-001'
-            const userId = 'user-001'
-
-            const mockReq = {
-                file: vi.fn().mockResolvedValue({
-                    filename: 'documento.pdf',
-                    mimetype: 'application/pdf',
-                    toBuffer: vi.fn().mockResolvedValue(
-                        Buffer.from('conteudo do arquivo'),
-                    ),
-                }),
-            } as any
-
-            const mockChamado = {
-                id: chamadoId,
-                protocolo: 'CH-001',
-                criadoPorId: 'user-002',
-                responsavelId: 'user-003',
-                organizacaoId: 'org-001',
-            }
-
-            const mockAnexo = {
-                id: 'anexo-001',
-                nomeArquivo: 'documento.pdf',
-                mimeType: 'application/pdf',
-                tamanhoBytes: 19,
-                enviadoEm: new Date(),
-                enviadoPor: {
-                    id: userId,
-                    nome: 'Guilherme',
-                },
-            }
-
-            mockPrisma.chamado.findUnique.mockResolvedValueOnce(
-                mockChamado,
-            )
-
-            mockPrisma.anexo.create.mockResolvedValueOnce(
-                mockAnexo,
-            )
-
-            const resultado = await AnexosService.createAnexo(
-                mockPrisma as any,
-                mockReq,
-                chamadoId,
-                userId,
-            )
-
-            expect(resultado).toEqual(mockAnexo)
-
-            expect(
-                mockPrisma.chamado.findUnique,
-            ).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { id: chamadoId },
-                }),
-            )
-
-            expect(mockPrisma.anexo.create).toHaveBeenCalled()
-        })
-
-        it('deve lançar erro quando nenhum arquivo for enviado', async () => {
-            const mockReq = {
-                file: vi.fn().mockResolvedValue(null),
-            } as any
-
-            await expect(
-                AnexosService.createAnexo(
-                    mockPrisma as any,
-                    mockReq,
-                    'chamado-001',
-                    'user-001',
-                ),
-            ).rejects.toMatchObject({
-                message: 'Nenhum arquivo enviado.',
-                statusCode: 400,
-            })
-
-            expect(
-                mockPrisma.chamado.findUnique,
-            ).not.toHaveBeenCalled()
-        })
-
-        it('deve lançar erro quando o tipo do arquivo não for permitido', async () => {
-            const mockReq = {
-                file: vi.fn().mockResolvedValue({
-                    filename: 'arquivo.exe',
-                    mimetype: 'application/x-msdownload',
-                    toBuffer: vi.fn(),
-                }),
-            } as any
-
-            await expect(
-                AnexosService.createAnexo(
-                    mockPrisma as any,
-                    mockReq,
-                    'chamado-001',
-                    'user-001',
-                ),
-            ).rejects.toMatchObject({
-                statusCode: 415,
-            })
-
-            expect(mockReq.file).toHaveBeenCalled()
-
-            expect(
-                mockPrisma.chamado.findUnique,
-            ).not.toHaveBeenCalled()
-        })
-
-        it('deve lançar erro quando o chamado não existir', async () => {
-            const mockReq = {
-                file: vi.fn().mockResolvedValue({
-                    filename: 'documento.pdf',
-                    mimetype: 'application/pdf',
-                    toBuffer: vi.fn().mockResolvedValue(
-                        Buffer.from('conteudo'),
-                    ),
-                }),
-            } as any
-
-            mockPrisma.chamado.findUnique.mockResolvedValueOnce(null)
-
-            await expect(
-                AnexosService.createAnexo(
-                    mockPrisma as any,
-                    mockReq,
-                    'chamado-inexistente',
-                    'user-001',
-                ),
-            ).rejects.toMatchObject({
-                message: 'Chamado não encontrado',
-                statusCode: 404,
-            })
-
-            expect(
-                mockPrisma.anexo.create,
-            ).not.toHaveBeenCalled()
-        })
-
-        it('deve lançar erro quando o arquivo ultrapassar 10 MB', async () => {
-            const mockReq = {
-                file: vi.fn().mockResolvedValue({
-                    filename: 'arquivo.pdf',
-                    mimetype: 'application/pdf',
-                    toBuffer: vi.fn().mockResolvedValue(
-                        Buffer.alloc(10 * 1024 * 1024 + 1),
-                    ),
-                }),
-            } as any
-
-            mockPrisma.chamado.findUnique.mockResolvedValueOnce({
-                id: 'chamado-001',
-                protocolo: 'CH-001',
-                criadoPorId: 'user-002',
-                responsavelId: 'user-003',
-                organizacaoId: 'org-001',
-            })
-
-            await expect(
-                AnexosService.createAnexo(
-                    mockPrisma as any,
-                    mockReq,
-                    'chamado-001',
-                    'user-001',
-                ),
-            ).rejects.toMatchObject({
-                statusCode: 413,
-            })
-
-            expect(
-                mockPrisma.anexo.create,
-            ).not.toHaveBeenCalled()
-        })
-
-        it('deve tratar erro ao criar o anexo', async () => {
-            const mockReq = {
-                file: vi.fn().mockResolvedValue({
-                    filename: 'documento.pdf',
-                    mimetype: 'application/pdf',
-                    toBuffer: vi.fn().mockResolvedValue(
-                        Buffer.from('conteudo'),
-                    ),
-                }),
-            } as any
-
-            mockPrisma.chamado.findUnique.mockResolvedValueOnce({
-                id: 'chamado-001',
-                protocolo: 'CH-001',
-                criadoPorId: 'user-002',
-                responsavelId: 'user-003',
-                organizacaoId: 'org-001',
-            })
-
-            const erro = new Error('Erro ao salvar anexo')
-
-            mockPrisma.anexo.create.mockRejectedValueOnce(erro)
-
-            await expect(
-                AnexosService.createAnexo(
-                    mockPrisma as any,
-                    mockReq,
-                    'chamado-001',
-                    'user-001',
-                ),
-            ).rejects.toThrow('Erro ao salvar anexo')
-        })
-    })
-
-    describe('getAnexoForDownload()', () => {
-
-        it('deve retornar os dados do arquivo com sucesso', async () => {
-            const anexoId = 'anexo-001'
-            const userId = 'user-001'
-
-            const mockAnexo = {
-                id: anexoId,
-                caminhoArquivo: 'arquivo.pdf',
-                nomeArquivo: 'documento.pdf',
-                mimeType: 'application/pdf',
-                enviadoPorId: userId,
-                chamado: {
-                    criadoPorId: 'user-002',
-                    responsavelId: 'user-003',
-                    setorId: null,
-                },
-            }
-
-            mockPrisma.anexo.findUnique.mockResolvedValueOnce(
-                mockAnexo,
-            )
-
-            const resultado =
-                await AnexosService.getAnexoForDownload(
-                    mockPrisma as any,
-                    anexoId,
-                    userId,
-                )
-
-            expect(resultado).toEqual(
-                expect.objectContaining({
-                    fileName: 'documento.pdf',
-                    mimeType: 'application/pdf',
-                }),
-            )
-
-            expect(
-                mockPrisma.anexo.findUnique,
-            ).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { id: anexoId },
-                }),
-            )
-        })
-
-        it('deve lançar erro quando o anexo não existir', async () => {
-            mockPrisma.anexo.findUnique.mockResolvedValueOnce(null)
-
-            await expect(
-                AnexosService.getAnexoForDownload(
-                    mockPrisma as any,
-                    'anexo-inexistente',
-                    'user-001',
-                ),
-            ).rejects.toMatchObject({
-                statusCode: 404,
-            })
-
-            expect(
-                mockPrisma.usuarioSetor.findFirst,
-            ).not.toHaveBeenCalled()
-        })
-
-        it('deve lançar erro quando o usuário não tiver permissão', async () => {
-            mockPrisma.anexo.findUnique.mockResolvedValueOnce({
-                id: 'anexo-001',
-                caminhoArquivo: 'arquivo.pdf',
-                nomeArquivo: 'documento.pdf',
-                mimeType: 'application/pdf',
-                enviadoPorId: 'user-002',
-                chamado: {
-                    criadoPorId: 'user-003',
-                    responsavelId: 'user-004',
-                    setorId: null,
-                },
-            })
-
-            await expect(
-                AnexosService.getAnexoForDownload(
-                    mockPrisma as any,
-                    'anexo-001',
-                    'user-001',
-                ),
-            ).rejects.toMatchObject({
-                statusCode: 403,
-            })
-
-            expect(
-                mockPrisma.usuarioSetor.findFirst,
-            ).not.toHaveBeenCalled()
-        })
-
-        it('deve permitir acesso para administrador ou backoffice', async () => {
-            const mockAnexo = {
-                id: 'anexo-001',
-                caminhoArquivo: 'arquivo.pdf',
-                nomeArquivo: 'documento.pdf',
-                mimeType: 'application/pdf',
-                enviadoPorId: 'user-002',
-                chamado: {
-                    criadoPorId: 'user-003',
-                    responsavelId: 'user-004',
-                    setorId: null,
-                },
-            }
-
-            mockPrisma.anexo.findUnique.mockResolvedValueOnce(
-                mockAnexo,
-            )
-
-            const resultado =
-                await AnexosService.getAnexoForDownload(
-                    mockPrisma as any,
-                    'anexo-001',
-                    'admin-001',
-                    'ADMINISTRADOR',
-                )
-
-            expect(resultado).toEqual(
-                expect.objectContaining({
-                    fileName: 'documento.pdf',
-                    mimeType: 'application/pdf',
-                }),
-            )
-
-            expect(
-                mockPrisma.usuarioSetor.findFirst,
-            ).not.toHaveBeenCalled()
-        })
-
-        it('deve lançar erro quando o arquivo físico não existir', async () => {
-            mockPrisma.anexo.findUnique.mockResolvedValueOnce({
-                id: 'anexo-001',
-                caminhoArquivo: 'arquivo-inexistente.pdf',
-                nomeArquivo: 'documento.pdf',
-                mimeType: 'application/pdf',
-                enviadoPorId: 'user-001',
-                chamado: {
-                    criadoPorId: 'user-001',
-                    responsavelId: 'user-002',
-                    setorId: null,
-                },
-            })
-
-            const fs = await import('fs/promises')
-
-            vi.mocked(fs.default.access).mockRejectedValueOnce(
-                new Error('Arquivo não encontrado'),
-            )
-
-            await expect(
-                AnexosService.getAnexoForDownload(
-                    mockPrisma as any,
-                    'anexo-001',
-                    'user-001',
-                ),
-            ).rejects.toMatchObject({
-                statusCode: 404,
-            })
-        })
-
-        it('deve tratar erro inesperado ao buscar o anexo', async () => {
-            const erro = new Error(
-                'Erro inesperado no banco',
-            )
-
-            mockPrisma.anexo.findUnique.mockRejectedValueOnce(
-                erro,
-            )
-
-            await expect(
-                AnexosService.getAnexoForDownload(
-                    mockPrisma as any,
-                    'anexo-001',
-                    'user-001',
-                ),
-            ).rejects.toThrow(
-                'Erro inesperado no banco',
-            )
-
-            expect(
-                mockPrisma.anexo.findUnique,
-            ).toHaveBeenCalled()
-        })
-    })
-})
+  vi.resetAllMocks();
+});
+
+const prisma = mockPrisma as unknown as PrismaClient;
+const viewer = { id: "owner-1", role: "USUARIO" as const };
+
+function openTicket(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ticket-1",
+    protocolo: "TCK-1",
+    criadoPorId: viewer.id,
+    responsavelId: null,
+    organizacaoId: null,
+    status: "ABERTO",
+    encerradoEm: null,
+    arquivadoEm: null,
+    ...overrides,
+  };
+}
+
+function request(file: unknown): FastifyRequest {
+  return {
+    file: vi.fn().mockResolvedValue(file),
+  } as unknown as FastifyRequest;
+}
+
+function uploadedFile(overrides: Record<string, unknown> = {}) {
+  return {
+    filename: "documento.pdf",
+    mimetype: "application/pdf",
+    toBuffer: vi.fn().mockResolvedValue(Buffer.from("conteudo")),
+    ...overrides,
+  };
+}
+
+const storedAttachment = {
+  id: "cmj1234567890123456789012",
+  chamadoId: "ticket-1",
+  caminhoArquivo: "stored-file.pdf",
+  nomeArquivo: "documento.pdf",
+  mimeType: "application/pdf",
+  tamanhoBytes: 9,
+  enviadoEm: new Date("2026-01-01T00:00:00.000Z"),
+  enviadoPorId: viewer.id,
+  enviadoPor: { id: viewer.id, nome: "Usuário" },
+  downloadAllowed: true,
+  chamado: { criadoPorId: viewer.id, responsavelId: null, setorId: null },
+};
+
+describe("attachments service", () => {
+  it("counts and paginates attachments without returning internal file paths", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce({
+      id: "ticket-1",
+      criadoPorId: viewer.id,
+      responsavelId: null,
+      setorId: null,
+    });
+    mockPrisma.anexo.count.mockResolvedValueOnce(21);
+    mockPrisma.anexo.findMany.mockResolvedValueOnce([{
+      id: "attachment-1",
+      enviadoPorId: "uploader",
+    }]);
+
+    const result = await AnexosService.listAnexosByTicketId(prisma, "ticket-1", 2, 10, viewer);
+
+    expect(result).toEqual({
+      items: [{ id: "attachment-1", enviadoPorId: "uploader", downloadAllowed: true }],
+      total: 21,
+    });
+    expect(mockPrisma.anexo.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { chamadoId: "ticket-1" },
+      skip: 20,
+      take: 10,
+    }));
+    expect(mockPrisma.anexo.findMany).toHaveBeenCalledWith(expect.not.objectContaining({
+      select: expect.objectContaining({ caminhoArquivo: true }),
+    }));
+  });
+
+  it("returns not-found for a missing ticket", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      AnexosService.listAnexosByTicketId(prisma, "missing", 0, 20, viewer),
+    ).rejects.toMatchObject({ kind: "not-found", status: 404 });
+    expect(mockPrisma.anexo.findMany).not.toHaveBeenCalled();
+  });
+
+  it("denies listing attachments from another user's ticket", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce({
+      id: "ticket-1",
+      criadoPorId: "other-user",
+      responsavelId: null,
+      setorId: null,
+    });
+
+    await expect(
+      AnexosService.listAnexosByTicketId(prisma, "ticket-1", 0, 20, viewer),
+    ).rejects.toMatchObject({ kind: "not-found", status: 404 });
+    expect(mockPrisma.anexo.count).not.toHaveBeenCalled();
+    expect(mockPrisma.anexo.findMany).not.toHaveBeenCalled();
+  });
+
+  it("propagates unexpected list failures for RFC 7807 handling", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce({
+      id: "ticket-1",
+      criadoPorId: viewer.id,
+      responsavelId: null,
+      setorId: null,
+    });
+    const databaseError = new Error("database unavailable");
+    mockPrisma.anexo.count.mockRejectedValueOnce(databaseError);
+
+    await expect(
+      AnexosService.listAnexosByTicketId(prisma, "ticket-1", 1, 5, viewer),
+    ).rejects.toBe(databaseError);
+  });
+
+  it("checks the shared ticket interaction rule before accepting an upload", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket({
+      status: "ENCERRADO",
+      encerradoEm: new Date(),
+    }));
+    const req = request(uploadedFile());
+
+    await expect(
+      AnexosService.createAnexo(prisma, req, "ticket-1", viewer),
+    ).rejects.toMatchObject({ kind: "conflict", status: 409 });
+    expect(req.file).not.toHaveBeenCalled();
+    expect(mockPrisma.anexo.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an upload without a file", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket());
+    const req = request(undefined);
+
+    await expect(
+      AnexosService.createAnexo(prisma, req, "ticket-1", viewer),
+    ).rejects.toMatchObject({ kind: "bad-request", status: 400 });
+    expect(mockPrisma.anexo.create).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["archived", { arquivadoEm: new Date("2026-01-01T00:00:00.000Z") }],
+    ["resolved", { status: "RESOLVIDO", encerradoEm: new Date("2026-01-01T00:00:00.000Z") }],
+    ["closed", { status: "ENCERRADO", encerradoEm: new Date("2026-01-01T00:00:00.000Z") }],
+  ] as const)("rejects an upload in a %s ticket", async (_state, ticketOverrides) => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket(ticketOverrides));
+    const req = request(uploadedFile());
+
+    await expect(
+      AnexosService.createAnexo(prisma, req, "ticket-1", viewer),
+    ).rejects.toMatchObject({ kind: "conflict", status: 409 });
+    expect(req.file).not.toHaveBeenCalled();
+    expect(mockPrisma.anexo.create).not.toHaveBeenCalled();
+  });
+
+  it("hides another user's ticket as not-found", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket({ criadoPorId: "other-user" }));
+
+    await expect(
+      AnexosService.createAnexo(prisma, request(uploadedFile()), "ticket-1", viewer),
+    ).rejects.toMatchObject({ kind: "not-found", status: 404 });
+  });
+
+  it("rejects unsupported MIME types without persisting an attachment", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket());
+
+    await expect(
+      AnexosService.createAnexo(
+        prisma,
+        request(uploadedFile({ mimetype: "application/x-msdownload" })),
+        "ticket-1",
+        viewer,
+      ),
+    ).rejects.toMatchObject({ kind: "unsupported-media-type", status: 415 });
+    expect(mockPrisma.anexo.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects files larger than 10 MB", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket());
+
+    await expect(
+      AnexosService.createAnexo(
+        prisma,
+        request(uploadedFile({
+          toBuffer: vi.fn().mockResolvedValue(Buffer.alloc(10 * 1024 * 1024 + 1)),
+        })),
+        "ticket-1",
+        viewer,
+      ),
+    ).rejects.toMatchObject({ kind: "payload-too-large", status: 413 });
+    expect(mockPrisma.anexo.create).not.toHaveBeenCalled();
+  });
+
+  it("removes a partially written file when disk persistence fails", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket());
+    const diskError = new Error("disk full");
+    mockWriteFile.mockRejectedValueOnce(diskError);
+
+    await expect(
+      AnexosService.createAnexo(prisma, request(uploadedFile()), "ticket-1", viewer),
+    ).rejects.toBe(diskError);
+    expect(mockUnlink).toHaveBeenCalledOnce();
+    expect(mockPrisma.anexo.create).not.toHaveBeenCalled();
+  });
+
+  it("stores an allowed upload and attributes it to the authenticated viewer", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket());
+    const result = { id: storedAttachment.id, nomeArquivo: "documento.pdf" };
+    mockPrisma.anexo.create.mockResolvedValueOnce(result);
+
+    await expect(
+      AnexosService.createAnexo(prisma, request(uploadedFile()), "ticket-1", viewer),
+    ).resolves.toEqual(result);
+    expect(mockPrisma.anexo.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        chamadoId: "ticket-1",
+        enviadoPorId: viewer.id,
+        mimeType: "application/pdf",
+      }),
+    }));
+    expect(mockWriteFile).toHaveBeenCalledOnce();
+  });
+
+  it("removes the stored file when creating the database record fails", async () => {
+    mockPrisma.chamado.findFirst.mockResolvedValueOnce(openTicket());
+    const databaseError = new Error("database unavailable");
+    mockPrisma.anexo.create.mockRejectedValueOnce(databaseError);
+
+    await expect(
+      AnexosService.createAnexo(prisma, request(uploadedFile()), "ticket-1", viewer),
+    ).rejects.toBe(databaseError);
+    expect(mockWriteFile).toHaveBeenCalledOnce();
+    expect(mockUnlink).toHaveBeenCalledOnce();
+  });
+
+  it("returns only metadata from the authorized attachment record", async () => {
+    mockPrisma.anexo.findUnique.mockResolvedValueOnce(storedAttachment);
+
+    await expect(
+      AnexosService.getAnexoMetadata(prisma, storedAttachment.id, viewer.id, viewer.role),
+    ).resolves.toEqual({
+      id: storedAttachment.id,
+      chamadoId: storedAttachment.chamadoId,
+      nomeArquivo: storedAttachment.nomeArquivo,
+      mimeType: storedAttachment.mimeType,
+      tamanhoBytes: storedAttachment.tamanhoBytes,
+      enviadoEm: storedAttachment.enviadoEm,
+      enviadoPor: storedAttachment.enviadoPor,
+      downloadAllowed: true,
+    });
+  });
+
+  it("preserves download authorization and rejects path traversal", async () => {
+    mockPrisma.anexo.findUnique.mockResolvedValueOnce({
+      ...storedAttachment,
+      caminhoArquivo: "..\\outside.pdf",
+    });
+    await expect(
+      AnexosService.getAnexoForDownload(prisma, storedAttachment.id, viewer.id, viewer.role),
+    ).rejects.toMatchObject({ kind: "not-found", status: 404 });
+    expect(mockAccess).not.toHaveBeenCalled();
+  });
+
+  it.each(["ADMINISTRADOR", "BACKOFFICE"] as const)(
+    "allows %s to download an attachment",
+    async (role) => {
+      mockPrisma.anexo.findUnique.mockResolvedValueOnce(storedAttachment);
+      mockAccess.mockResolvedValueOnce(undefined);
+
+      await expect(
+        AnexosService.getAnexoForDownload(prisma, storedAttachment.id, "staff-1", role),
+      ).resolves.toMatchObject({
+        fileName: storedAttachment.nomeArquivo,
+        mimeType: storedAttachment.mimeType,
+      });
+      expect(mockAccess).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("returns not-found when the requested attachment does not exist", async () => {
+    mockPrisma.anexo.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      AnexosService.getAnexoMetadata(prisma, "missing", viewer.id, viewer.role),
+    ).rejects.toMatchObject({ kind: "not-found", status: 404 });
+  });
+
+  it("returns not-found when downloading a nonexistent attachment", async () => {
+    mockPrisma.anexo.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      AnexosService.getAnexoForDownload(prisma, "missing", viewer.id, viewer.role),
+    ).rejects.toMatchObject({ kind: "not-found", status: 404 });
+  });
+
+  it("propagates unexpected failures during download", async () => {
+    const databaseError = new Error("database unavailable");
+    mockPrisma.anexo.findUnique.mockRejectedValueOnce(databaseError);
+
+    await expect(
+      AnexosService.getAnexoForDownload(prisma, storedAttachment.id, viewer.id, viewer.role),
+    ).rejects.toBe(databaseError);
+  });
+
+  it("maps a missing physical file to RFC 7807 not-found", async () => {
+    mockPrisma.anexo.findUnique.mockResolvedValueOnce(storedAttachment);
+    mockAccess.mockRejectedValueOnce(Object.assign(new Error("missing"), { code: "ENOENT" }));
+
+    await expect(
+      AnexosService.getAnexoForDownload(prisma, storedAttachment.id, viewer.id, viewer.role),
+    ).rejects.toMatchObject({ kind: "not-found", status: 404 });
+  });
+
+  it("denies users without a relationship to the ticket or attachment", async () => {
+    mockPrisma.anexo.findUnique.mockResolvedValueOnce({
+      ...storedAttachment,
+      enviadoPorId: "uploader",
+      chamado: { criadoPorId: "owner", responsavelId: null, setorId: null },
+    });
+
+    await expect(
+      AnexosService.getAnexoMetadata(prisma, storedAttachment.id, "stranger", "USUARIO"),
+    ).rejects.toMatchObject({ kind: "not-found", status: 404 });
+  });
+
+  it("does not grant a technician download access without an attachment relationship", async () => {
+    mockPrisma.anexo.findUnique.mockResolvedValueOnce({
+      ...storedAttachment,
+      enviadoPorId: "uploader",
+      chamado: { criadoPorId: "owner", responsavelId: null, setorId: null },
+    });
+
+    await expect(
+      AnexosService.getAnexoForDownload(
+        prisma,
+        storedAttachment.id,
+        "technician",
+        "TECNICO",
+      ),
+    ).rejects.toMatchObject({ kind: "forbidden", status: 403 });
+  });
+
+  it("denies a user without a relationship from downloading an attachment", async () => {
+    mockPrisma.anexo.findUnique.mockResolvedValueOnce({
+      ...storedAttachment,
+      enviadoPorId: "uploader",
+      chamado: { criadoPorId: "owner", responsavelId: null, setorId: null },
+    });
+
+    await expect(
+      AnexosService.getAnexoForDownload(
+        prisma,
+        storedAttachment.id,
+        "stranger",
+        "USUARIO",
+      ),
+    ).rejects.toMatchObject({ kind: "forbidden", status: 403 });
+    expect(mockAccess).not.toHaveBeenCalled();
+  });
+});

@@ -4,12 +4,13 @@ import type { Links, Viewer } from "../../hateoas";
 export interface SugestaoLinkRecord {
   id: string;
   status: "NAO_RESPONDIDO" | "RESPONDIDO";
+  resposta?: string | null;
 }
 
-const SUGGESTIONS = "/sugestoes";
+const SUGGESTIONS = "/suggestions";
 
 export function suggestionSelfHref(id: string): string {
-  return path`/sugestoes/${id}`;
+  return path`/suggestions/${id}`;
 }
 
 export function buildSuggestionLinks(suggestion: SugestaoLinkRecord, viewer?: Viewer): Links {
@@ -18,9 +19,10 @@ export function buildSuggestionLinks(suggestion: SugestaoLinkRecord, viewer?: Vi
   return buildLinks({
     self: link(self),
     collection: link(SUGGESTIONS),
-    respond:
+    answer:
       isStaff(viewer) &&
       suggestion.status !== "RESPONDIDO" &&
+      !suggestion.resposta &&
       link(self, "PATCH"),
   });
 }

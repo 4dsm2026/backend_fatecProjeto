@@ -18,7 +18,7 @@ import {
   responderSugestao,
 } from "./sugestoes.service";
 
-const SUGGESTIONS = "/sugestoes";
+const SUGGESTIONS = "/suggestions";
 
 function requireViewer(req: FastifyRequest) {
   const viewer = viewerFrom(req);
@@ -84,7 +84,7 @@ export async function responder(req: FastifyRequest, reply: FastifyReply) {
     req.server.prisma,
     params.id,
     body,
-    { staffId: viewer.id },
+    { staffId: viewer.id, role: viewer.role },
   );
 
   return reply.send(toResource(suggestion, buildSuggestionLinks(suggestion, viewer)));

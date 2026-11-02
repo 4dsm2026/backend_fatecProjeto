@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
 import { zStringTrim } from "../../utils/zod-helpers";
@@ -11,12 +11,11 @@ const RegistrarSchema = z.object({
   acao: zStringTrim.min(2),
   alvo: zStringTrim.optional(),
   meta: z.unknown().optional(),
-  feitoPorId: zStringTrim.optional(),
 });
 
 const preBody =
   (schema: z.ZodTypeAny) =>
-  async (req: FastifyRequest, _reply: FastifyReply): Promise<void> => {
+  async (req: FastifyRequest): Promise<void> => {
     req.body = schema.parse(req.body);
   };
 
@@ -69,8 +68,7 @@ export default async function auditoriaRoutes(app: FastifyInstance) {
         summary: "Listar registros de auditoria",
         description:
           "Lista o histórico para administradores. `userId`, `from` e `to` são filtros opcionais; " +
-          "`page` começa em zero e `size` aceita de 1 a 100. A coleção não oferece link individual " +
-          "porque atualmente não existe uma rota de consulta de log por ID.",
+          "`page` começa em zero e `size` aceita de 1 a 100.",
         security: [{ bearerAuth: [] }],
         querystring: {
           type: "object",
@@ -115,6 +113,38 @@ export default async function auditoriaRoutes(app: FastifyInstance) {
     controller.listar,
   );
 
+  app.get(
+    "/admin/audit-logs/:id",
+    {
+      preHandler: [
+        app.authenticate as never,
+        app.authorize(["ADMINISTRADOR"]) as never,
+      ],
+      schema: {
+        tags: ["Auditoria"],
+        summary: "Consultar um registro de auditoria por ID",
+        description: "Retorna um único registro de auditoria com links para a coleção e para o ator associado.",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: { type: "string", minLength: 1 },
+          },
+        },
+        response: {
+          200: AuditLogSchema,
+          400: ProblemSchema,
+          401: ProblemSchema,
+          403: ProblemSchema,
+          404: ProblemSchema,
+          500: ProblemSchema,
+        },
+      },
+    },
+    controller.obterPorId,
+  );
+
   app.post<{ Body: RegistrarAuditoriaDTO }>(
     "/admin/audit-logs",
     {
@@ -128,7 +158,7 @@ export default async function auditoriaRoutes(app: FastifyInstance) {
         summary: "Registrar manualmente uma entrada de auditoria",
         description:
           "Mantém a operação de registro manual existente, restrita a administradores. " +
-          "O recurso criado retorna links para a coleção e para o usuário autor, se informado.",
+          "A identidade do autor é sempre obtida do token autenticado.",
         security: [{ bearerAuth: [] }],
         body: {
           type: "object",
@@ -137,11 +167,13 @@ export default async function auditoriaRoutes(app: FastifyInstance) {
             acao: { type: "string", minLength: 2 },
             alvo: { type: "string" },
             meta: { type: "object", additionalProperties: true },
-            feitoPorId: { type: "string" },
           },
         },
         response: {
-          201: AuditLogSchema,
+          201: {
+            ...AuditLogSchema,
+            headers: { Location: { type: "string", example: "/admin/audit-logs/log-1" } },
+          },
           400: ProblemSchema,
           401: ProblemSchema,
           403: ProblemSchema,

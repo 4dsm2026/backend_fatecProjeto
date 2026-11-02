@@ -1,7 +1,7 @@
 /**
  * Segurança: troca de senha autenticada (POST /auth/trocar-senha)
  * Exige a senha atual (reautenticação) antes de gravar a nova, e revoga as
- * demais sessões. Também cobre o bloqueio de 'senha' no PATCH /usuarios do aluno.
+ * demais sessões. Também cobre o bloqueio de 'senha' no PATCH /users do aluno.
  */
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 
@@ -100,11 +100,11 @@ describe('POST /auth/trocar-senha', () => {
   })
 })
 
-describe('PATCH /usuarios/:id — aluno não troca senha sem reautenticar', () => {
+describe('PATCH /users/:id — aluno não troca senha sem reautenticar', () => {
   it('403 — aluno não pode enviar "senha" via PATCH', async () => {
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoToken),
       payload: { senha: SENHA_FORTE },
     })
@@ -119,7 +119,7 @@ describe('PATCH /usuarios/:id — aluno não troca senha sem reautenticar', () =
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoToken),
       payload: { nome: 'Novo Nome' },
     })
