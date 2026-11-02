@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { PaginationQuerySchema } from '../hateoas'
+import { SugestaoDocumentoSchema, extrairTextoDocumento } from './sugestao-documento'
 
 export const SUGESTAO_CONTEUDO_MAX = 1000
 export const SUGESTAO_RESPOSTA_MAX = 1000
@@ -19,6 +20,10 @@ const SugestaoBodySchema = z.object({
     .trim()
     .min(3, 'A sugestão deve ter pelo menos 3 caracteres')
     .max(SUGESTAO_CONTEUDO_MAX, `A sugestão deve ter no máximo ${SUGESTAO_CONTEUDO_MAX} caracteres`),
+  documento: SugestaoDocumentoSchema.optional(),
+}).refine((data) => !data.documento || extrairTextoDocumento(data.documento).trim().length >= 3, {
+  message: 'A sugestão deve ter pelo menos 3 caracteres',
+  path: ['documento'],
 })
 
 export const SugestaoCreateSchema = z.object({
@@ -39,5 +44,9 @@ export const SugestaoResponderSchema = z.object({
   params: z.object({ id: z.string().min(1) }),
   body: z.object({
     resposta: SugestaoRespostaSchema,
+    respostaDocumento: SugestaoDocumentoSchema.optional(),
+  }).refine((data) => !data.respostaDocumento || extrairTextoDocumento(data.respostaDocumento).trim().length > 0, {
+    message: 'A resposta deve conter texto',
+    path: ['respostaDocumento'],
   }),
 });

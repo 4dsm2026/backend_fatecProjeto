@@ -19,6 +19,7 @@ export async function createSugestao(
       usuarioId,
       emailContato: data.emailContato,
       conteudo: data.conteudo,
+      ...(data.documento !== undefined ? { documento: data.documento } : {}),
     },
   })
 }
@@ -112,6 +113,7 @@ export async function responderSugestao(
     where: { id, status: "NAO_RESPONDIDO", resposta: null },
     data: {
       resposta: parsedResponse.data,
+      ...(data.respostaDocumento !== undefined ? { respostaDocumento: data.respostaDocumento } : {}),
       status: "RESPONDIDO",
       respondidoPorId: opts.staffId,
       respondidoEm: new Date(),

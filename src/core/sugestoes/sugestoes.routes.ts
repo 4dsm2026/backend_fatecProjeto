@@ -29,8 +29,10 @@ const SuggestionSchema = {
     usuarioId: { type: "string" },
     emailContato: { type: "string", format: "email" },
     conteudo: { type: "string" },
+    documento: { type: "object", nullable: true, additionalProperties: true },
     status: { type: "string", enum: ["NAO_RESPONDIDO", "RESPONDIDO"] },
     resposta: { type: "string", nullable: true },
+    respostaDocumento: { type: "object", nullable: true, additionalProperties: true },
     respondidoPorId: { type: "string", nullable: true },
     respondidoEm: { type: "string", format: "date-time", nullable: true },
     criadoEm: { type: "string", format: "date-time" },
@@ -98,6 +100,7 @@ export async function sugestoesRoutes(app: FastifyInstance) {
           properties: {
             emailContato: { type: "string", format: "email" },
             conteudo: { type: "string", minLength: 3, maxLength: 1000 },
+            documento: { type: "object", additionalProperties: true },
           },
         },
         response: {
@@ -175,7 +178,10 @@ export async function sugestoesRoutes(app: FastifyInstance) {
         body: {
           type: "object",
           required: ["resposta"],
-          properties: { resposta: { type: "string", minLength: 1, maxLength: 1000 } },
+          properties: {
+            resposta: { type: "string", minLength: 1, maxLength: 1000 },
+            respostaDocumento: { type: "object", additionalProperties: true },
+          },
         },
         response: {
           200: SuggestionSchema,
