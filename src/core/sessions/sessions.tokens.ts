@@ -7,7 +7,7 @@ import {
 } from "../../security/refresh";
 import { generateAccessToken } from "../../utils/jwt";
 import { RefreshSchema } from "../../validators/auth";
-import { setAuthCookies } from "../auth/auth.controller";
+import { setAuthCookies } from "./auth-cookies";
 import { buildTokenLinks } from "./sessions.links";
 
 const invalidRefresh = () => new ApiError("unauthorized", "Refresh token inválido");

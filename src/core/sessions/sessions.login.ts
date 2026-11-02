@@ -8,13 +8,8 @@ import { verifyPassword } from "../../security/password";
 import { generateAccessToken } from "../../utils/jwt";
 import { LoginSchema } from "../../validators/auth";
 import type { z } from "zod";
-import {
-  MAX_LOGIN_ATTEMPTS,
-  checkAccountLock,
-  recordFailedAttempt,
-  resetLoginAttempts,
-  setAuthCookies,
-} from "../auth/auth.controller";
+import { setAuthCookies } from "./auth-cookies";
+import { MAX_LOGIN_ATTEMPTS, checkAccountLock, recordFailedAttempt, resetLoginAttempts } from "./login-lockout";
 import { buildActivationRequiredLinks, buildSessionLinks } from "./sessions.links";
 import { FINALIDADE_PRIMEIRO_ACESSO } from "../auth/token-finalidade";
 
