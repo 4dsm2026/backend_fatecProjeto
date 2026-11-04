@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { zStrongPassword } from '../../src/utils/zod-helpers'
-import { FirstAccessSchema, ResetSenhaSchema, TrocarSenhaSchema } from '../../src/validators/auth'
+import { AtivarContaBodySchema, RedefinirSenhaBodySchema, TrocarSenhaSchema } from '../../src/validators/auth'
 
 const STRONG = 'NovaSenha1#'
-const TOKEN = 'token-com-mais-de-10-caracteres'
 
 describe('zStrongPassword (política única de senha)', () => {
   it('aceita senha com 8+ caracteres, maiúscula, minúscula, número e símbolo', () => {
@@ -35,8 +34,8 @@ describe('zStrongPassword (política única de senha)', () => {
 
 describe('os três fluxos de senha usam a MESMA política', () => {
   const casos = [
-    ['FirstAccessSchema', (senha: string) => FirstAccessSchema.safeParse({ token: TOKEN, newPassword: senha })],
-    ['ResetSenhaSchema', (senha: string) => ResetSenhaSchema.safeParse({ token: TOKEN, newPassword: senha })],
+    ['AtivarContaBodySchema (PUT /account-activations)', (senha: string) => AtivarContaBodySchema.safeParse({ novaSenha: senha })],
+    ['RedefinirSenhaBodySchema (PUT /password-resets)', (senha: string) => RedefinirSenhaBodySchema.safeParse({ novaSenha: senha })],
     ['TrocarSenhaSchema', (senha: string) => TrocarSenhaSchema.safeParse({ senhaAtual: 'x', novaSenha: senha })],
   ] as const
 

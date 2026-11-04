@@ -1,7 +1,7 @@
 // src/core/auth/user-public.ts
 /**
  * Campos públicos do usuário (nunca inclui senhaHash). Fonte única: usada por
- * /auth/me (legado), /users/me e /auth/usuarios.
+ * GET /users/me.
  */
 export const userPublicSelect = {
   id: true,

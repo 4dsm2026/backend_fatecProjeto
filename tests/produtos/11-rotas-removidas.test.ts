@@ -78,3 +78,40 @@ describe('GET /auth/usuarios não existe (listava usuários para qualquer pessoa
     expect(prismaMock.usuario.findMany).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * O módulo legado /auth foi substituído por recursos (POST /sessions, POST /tokens,
+ * PUT /users/me/password, POST|PUT /password-resets, PUT /account-activations,
+ * DELETE /sessions/current, GET /users/me). Nenhuma rota antiga pode voltar.
+ */
+describe('as rotas legadas de /auth foram substituídas e não existem mais', () => {
+  it.each([
+    ['POST', '/auth/login', 'POST /sessions'],
+    ['POST', '/auth/refresh', 'POST /tokens'],
+    ['POST', '/auth/logout', 'DELETE /sessions/current'],
+    ['GET', '/auth/me', 'GET /users/me'],
+    ['POST', '/auth/trocar-senha', 'PUT /users/me/password'],
+    ['POST', '/auth/esqueci-senha', 'POST /password-resets'],
+    ['POST', '/auth/reset-senha', 'PUT /password-resets/:token'],
+    ['POST', '/auth/primeiro-acesso', 'PUT /account-activations/:token'],
+  ] as const)('%s %s → 404 (agora: %s)', async (method, url) => {
+    const res = await app.inject({
+      method,
+      url,
+      headers: bearerAuth(makeUserToken({ role: 'ADMINISTRADOR' })),
+      payload: method === 'POST' ? { email: 'a@example.com', password: 'Qualquer123!', token: 'x'.repeat(20) } : undefined,
+    })
+
+    expect(res.statusCode).toBe(404)
+    expect(String(res.headers['content-type'])).toContain('application/problem+json')
+    expect(prismaMock.usuario.findUnique).not.toHaveBeenCalled()
+    expect(prismaMock.usuario.update).not.toHaveBeenCalled()
+    expect(prismaMock.sessao.create).not.toHaveBeenCalled()
+  })
+
+  it('nenhuma rota sob /auth sobrou no OpenAPI', async () => {
+    const paths = Object.keys((app as any).swagger().paths).filter((p) => p.startsWith('/auth'))
+
+    expect(paths).toEqual([])
+  })
+})

@@ -21,19 +21,8 @@ export const RefreshSchema = z.object({
   refreshToken: z.string().min(20),
 });
 
-export const FirstAccessBodySchema = z.object({
-  token: zStringTrim.min(10, "Token inválido"),
-  newPassword: zStrongPassword,
-  personalEmail: zEmail.optional(),
-});
-
 export const EsqueciSenhaSchema = z.object({
   email: zEmail,
-});
-
-export const ResetSenhaSchema = z.object({
-  token: zStringTrim.min(10),
-  newPassword: zStrongPassword,
 });
 
 /** `PUT /password-resets/:token`: o token sai do corpo e vai para o path. */
@@ -46,8 +35,6 @@ export const AtivarContaBodySchema = z.object({
   emailPessoal: zEmail.optional(),
 });
 export const AccountActivationParamsSchema = z.object({ token: z.string().min(1) });
-
-export const FirstAccessSchema = FirstAccessBodySchema;
 
 export const TrocarSenhaSchema = z.object({
   senhaAtual: zStringTrim.min(1, "Informe a senha atual"),

@@ -114,7 +114,7 @@ export default async function sessionsRoutes(app: FastifyInstance) {
         tags: ["Users"],
         summary: "Usuário logado",
         description:
-          "Perfil completo do usuário do token (os mesmos campos públicos de `GET /auth/me`) com `_links`. " +
+          "Perfil completo do usuário do token (campos públicos, sem hash de senha) com `_links`. " +
           "Os links dependem do papel: `update` e os de conta valem para todos; os de menu (`users`, `roles`, " +
           "`audit-logs`...) só aparecem para quem pode usá-los.",
         security: [{ bearerAuth: [] }],

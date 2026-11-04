@@ -2,7 +2,7 @@
 //
 // Fragmentos de schema OpenAPI GENUINAMENTE genéricos — não específicos do
 // módulo de Auth — reaproveitáveis por qualquer arquivo de rotas do projeto
-// (auth.routes.ts, anexos.routes.ts, e potencialmente os arquivos de rotas
+// (sessions.routes.ts, anexos.routes.ts, e potencialmente os arquivos de rotas
 // de outros módulos: tickets, usuários, admin, etc.).
 //
 // Critério para um fragmento estar aqui: a MESMA causa de infraestrutura
@@ -106,8 +106,8 @@ export const UnauthorizedErrorSchema = {
 } as const;
 
 // Corpo do 401 alternativo: NÃO vem de auth-verify.ts, é um padrão repetido
-// manualmente por vários handlers (ex.: auth.controller.ts:me/trocarSenha,
-// anexos.controller.ts:download/upload) que fazem
+// manualmente por vários handlers (ex.: anexos.controller.ts:download/upload)
+// que fazem
 // sua própria checagem `if (!req.user?.sub)` — teoricamente só dispararia se
 // um token passasse na verificação de assinatura/expiração mas não tivesse a
 // claim `sub` no payload, o que não deveria acontecer com tokens emitidos por

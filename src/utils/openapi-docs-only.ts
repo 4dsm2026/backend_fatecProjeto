@@ -39,7 +39,7 @@ import type { FastifyInstance } from "fastify";
  * https://fastify.dev/docs/latest/Reference/Validation-and-Serialization/
  *
  * Graças ao encapsulamento de plugins do Fastify, chamar isto dentro de
- * uma função de rotas (ex.: authRoutes, anexoRoutes) afeta somente as
+ * uma função de rotas (ex.: sessionsRoutes, anexoRoutes) afeta somente as
  * rotas registradas ali dentro — nunca o servidor inteiro.
  */
 export function useDocsOnlySchemas(app: FastifyInstance): void {
