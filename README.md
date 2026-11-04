@@ -211,6 +211,16 @@ analytics/report.py    # relatório de análise de chamados (Python, usa a API)
 - ⚠️ No ECS Fargate o disco do container é temporário: enquanto o driver S3 não existir, **os anexos se perdem a cada deploy ou reinício** ([#121](https://github.com/4dsm2026/backend_fatecProjeto/issues/121)).
 - Versões: cada merge em `main` gera uma release automática (veja [Releases](https://github.com/4dsm2026/backend_fatecProjeto/releases)).
 
+   ## 📚 Documentação
+
+   Toda a documentação do WorkFlow FATEC fica no site: **<https://4dsm2026.github.io/docs_fatecProjeto/>**
+
+   - Manual do usuário e processos
+   - Arquitetura (diagramas C4 e BPMN)
+   - Plano de testes e UX/UI
+
+   A documentação da API (Swagger) fica em `/docs` quando o servidor está rodando.
+
 ## Contribuindo
 
 Siga o [guia de contribuição da organização](https://github.com/4dsm2026/.github/blob/main/CONTRIBUTING.md): issue → branch `<tipo>/issue-<número>-<descrição>` → PR para `develop`. O `pnpm install` ativa os hooks do git, que conferem a mensagem de commit e bloqueiam arquivos grandes e `.env`.
