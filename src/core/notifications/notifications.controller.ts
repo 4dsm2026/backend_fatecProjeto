@@ -20,6 +20,7 @@ import {
   createTestNotification,
 } from "./notifications.service.js";
 import { buildNotificationLinks } from "./notifications.hateoas.js";
+import { canViewTicket } from "../tickets/ticket-rules.js";
 
 function getViewer(req: FastifyRequest): Viewer {
   const user = req.user as { id?: string; sub?: string; role?: Viewer["role"] } | undefined;
@@ -28,6 +29,21 @@ function getViewer(req: FastifyRequest): Viewer {
     throw new ApiError("unauthorized", "Usuário não autenticado");
   }
   return { id, role: user.role };
+}
+
+/** A listagem consulta os chamados de uma vez, sem divulgar links inacessíveis. */
+async function visibleTicketIds(
+  req: FastifyRequest,
+  viewer: Viewer,
+  notifications: Array<{ chamadoId: string | null }>,
+): Promise<Set<string>> {
+  const ids = [...new Set(notifications.flatMap((item) => item.chamadoId ? [item.chamadoId] : []))];
+  if (ids.length === 0) return new Set();
+  const tickets = await req.server.prisma.chamado.findMany({
+    where: { id: { in: ids }, deletadoEm: null },
+    select: { id: true, criadoPorId: true },
+  });
+  return new Set(tickets.filter((ticket) => canViewTicket(viewer, ticket.criadoPorId)).map((ticket) => ticket.id));
 }
 
 export async function listNotificationsHandler(
@@ -43,8 +59,9 @@ export async function listNotificationsHandler(
     query
   );
 
+  const visible = await visibleTicketIds(req, viewer, items);
   const resources = items.map((item) =>
-    toResource(item, buildNotificationLinks(item, viewer))
+    toResource(item, buildNotificationLinks(item, viewer, item.chamadoId !== null && visible.has(item.chamadoId)))
   );
 
   const extraLinks = buildLinks({
@@ -87,9 +104,10 @@ export async function patchNotificationHandler(
     body
   );
 
+  const visible = await visibleTicketIds(req, viewer, [updated]);
   return reply
     .code(200)
-    .send(toResource(updated, buildNotificationLinks(updated, viewer)));
+    .send(toResource(updated, buildNotificationLinks(updated, viewer, updated.chamadoId !== null && visible.has(updated.chamadoId))));
 }
 
 export async function patchAllNotificationsHandler(

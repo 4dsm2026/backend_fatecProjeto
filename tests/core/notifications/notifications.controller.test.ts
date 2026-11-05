@@ -105,6 +105,47 @@ describe("notifications.hateoas — Matriz de Estados e Links", () => {
 });
 
 describe("notifications.controller", () => {
+  it("só anuncia chamados visíveis ao usuário em uma única consulta", async () => {
+    const items = [
+      makeNotification({ id: "n-own", chamadoId: "own" }),
+      makeNotification({ id: "n-other", chamadoId: "other" }),
+      makeNotification({ id: "n-deleted", chamadoId: "deleted" }),
+    ];
+    const findTickets = vi.fn().mockResolvedValue([
+      { id: "own", criadoPorId: "usr-1" },
+      { id: "other", criadoPorId: "usr-2" },
+    ]);
+    const req = {
+      user: { id: "usr-1", role: "USUARIO" }, query: { page: "0", size: "20" },
+      server: { prisma: { chamado: { findMany: findTickets }, notificacao: {
+        findMany: vi.fn().mockResolvedValue(items), count: vi.fn().mockResolvedValue(3),
+      } } },
+    } as unknown as FastifyRequest;
+    const reply = createMockReply();
+    await listNotificationsHandler(req, reply);
+    const payload = vi.mocked(reply.send).mock.calls[0]?.[0] as { _embedded: { notifications: Array<{ _links: Record<string, unknown> }> } };
+    const links = payload._embedded.notifications.map((item) => item._links.ticket);
+    expect(links[0]).toMatchObject({ href: "/tickets/own", method: "GET" });
+    expect(links.slice(1)).toEqual([undefined, undefined]);
+    expect(findTickets).toHaveBeenCalledOnce();
+  });
+
+  it("não adiciona link de chamado de outro aluno após atualizar notificação", async () => {
+    const updated = makeNotification({ id: "n-1", chamadoId: "other", lidaEm: new Date() });
+    const req = {
+      user: { id: "usr-1", role: "USUARIO" }, params: { id: "n-1" }, body: { lida: true },
+      server: { prisma: {
+        chamado: { findMany: vi.fn().mockResolvedValue([{ id: "other", criadoPorId: "usr-2" }]) },
+        notificacao: { findFirst: vi.fn().mockResolvedValue(updated), update: vi.fn().mockResolvedValue(updated) },
+      } },
+    } as unknown as FastifyRequest;
+    const reply = createMockReply();
+    await patchNotificationHandler(req, reply);
+    const payload = vi.mocked(reply.send).mock.calls[0]?.[0] as { _links: Record<string, unknown> };
+    expect(payload._links.ticket).toBeUndefined();
+    expect(payload._links["mark-unread"]).toBeDefined();
+  });
+
   it("GET /notifications retorna coleção HAL com mark-all-read quando há não lidas", async () => {
     const item = makeNotification({ id: "n-10", lidaEm: null });
     const req = {
