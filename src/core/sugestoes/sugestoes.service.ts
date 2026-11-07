@@ -20,6 +20,7 @@ export async function createSugestao(
       emailContato: data.emailContato,
       conteudo: data.conteudo,
       ...(data.documento !== undefined ? { documento: data.documento } : {}),
+      ...(data.documento !== undefined ? { documento: data.documento } : {}),
     },
   })
 }
