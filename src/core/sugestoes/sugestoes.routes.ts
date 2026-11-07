@@ -5,7 +5,11 @@ export async function sugestoesRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate as any)
 
   // POST /sugestoes — qualquer usuário autenticado cria a própria sugestão
-  app.post('/', create)
+  app.post(
+  '/',
+  { bodyLimit: 10 * 1024 * 1024 },
+  create,
+)
 
   // GET /sugestoes — aluno vê as próprias; staff vê todas
   app.get('/', list)
@@ -16,7 +20,10 @@ export async function sugestoesRoutes(app: FastifyInstance) {
   // PATCH /sugestoes/:id — somente professor/funcionário (nunca o aluno)
   app.patch(
     '/:id',
-    { preHandler: (app as any).authorize(['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO']) },
+    {
+      bodyLimit: 10 * 1024 * 1024,
+      preHandler: (app as any).authorize(['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO']),
+    },
     responder,
   )
 }
