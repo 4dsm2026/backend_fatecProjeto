@@ -1,9 +1,5 @@
 import { z } from "zod";
-
-const pag = {
-  page: z.coerce.number().int().min(1).default(1).optional(),
-  perPage: z.coerce.number().int().min(1).max(100).default(20).optional(),
-};
+import { PaginationQuerySchema } from "../hateoas/pagination";
 
 export const SetorCreateSchema = z.object({
   body: z.object({
@@ -19,8 +15,7 @@ export const SetorUpdateSchema = z.object({
 });
 
 export const SetorListSchema = z.object({
-  query: z.object({
-    ...pag,
+  query: PaginationQuerySchema.extend({
     search: z.string().min(1).optional(),
     organizacaoId: z.string().min(1).optional(),
   }),

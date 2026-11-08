@@ -2,19 +2,10 @@ import { createHash, randomBytes } from "crypto";
 import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../../security/password";
 import { getMailDriver } from "../../config/mail";
+import { ApiError } from "../../hateoas";
+import { FINALIDADE_PRIMEIRO_ACESSO, FINALIDADE_RESET_SENHA } from "./token-finalidade";
 
 const APP_WEB_URL = process.env.APP_WEB_URL!;
-
-
-export function validarPoliticaSenha(senha: string): boolean {
-  return (
-    senha.length >= 8 &&
-    /[A-Z]/.test(senha) &&
-    /[a-z]/.test(senha) &&
-    /\d/.test(senha) &&
-    /[^A-Za-z0-9]/.test(senha)
-  );
-}
 
 /**
  * Gera token bruto + hash.
@@ -27,7 +18,7 @@ function gerarToken() {
 
 /**
  * Envia link de PRIMEIRO ACESSO.
- * Usa o TokenResetSenha (mesma tabela do reset normal).
+ * Usa a tabela TokenResetSenha, com finalidade PRIMEIRO_ACESSO (não vale como reset).
  */
 export async function enviarLinkPrimeiroAcesso(
   prisma: PrismaClient,
@@ -48,6 +39,7 @@ export async function enviarLinkPrimeiroAcesso(
     data: {
       usuarioId: usuario.id,
       tokenHash,
+      finalidade: FINALIDADE_PRIMEIRO_ACESSO,
       expiraEm,
     },
   });
@@ -66,7 +58,6 @@ export async function enviarLinkPrimeiroAcesso(
     `,
   });
 }
-
 
 export async function enviarLinkEsqueciSenha(
   prisma: PrismaClient,
@@ -99,6 +90,7 @@ export async function enviarLinkEsqueciSenha(
     data: {
       usuarioId: usuario.id,
       tokenHash,
+      finalidade: FINALIDADE_RESET_SENHA,
       expiraEm,
     },
   });
@@ -118,66 +110,63 @@ export async function enviarLinkEsqueciSenha(
   });
 }
 
-
-export async function consumirTokenSenha(
-  prisma: PrismaClient,
-  tokenRaw: string,
-  novaSenha: string,
-) {
-  if (!validarPoliticaSenha(novaSenha)) {
-    const err: any = new Error("Senha não atende aos critérios mínimos.");
-    err.statusCode = 400;
-    throw err;
-  }
-
+/**
+ * Redefine a senha a partir de um token de RESET_SENHA (`PUT /password-resets/:token`).
+ *
+ * Erros (D-R2): token inexistente, expirado, de outra finalidade ou de conta
+ * inativa/apagada = `404` (indistinguíveis de propósito); token já usado = `409`.
+ *
+ * O token é consumido com `updateMany ... usadoEm: null` DENTRO da transação e o
+ * resultado é conferido: duas requisições simultâneas com o mesmo token não
+ * passam as duas. Os OUTROS tokens de reset pendentes do usuário também são
+ * invalidados. Encerra TODAS as sessões do usuário. A senha já chega validada
+ * (zStrongPassword, aparada) pelo schema da rota.
+ */
+export async function redefinirSenhaPorToken(prisma: PrismaClient, tokenRaw: string, novaSenha: string) {
   const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
+  const agora = new Date();
 
   const token = await prisma.tokenResetSenha.findFirst({
-    where: {
-      tokenHash,
-      usadoEm: null,
-      expiraEm: { gt: new Date() },
+    where: { tokenHash, finalidade: FINALIDADE_RESET_SENHA },
+    include: {
+      usuario: {
+        select: { id: true, nome: true, emailPessoal: true, emailEducacional: true, ativo: true, deletadoEm: true },
+      },
     },
   });
 
-  if (!token) {
-    const err: any = new Error("Token inválido ou expirado.");
-    err.statusCode = 400;
-    throw err;
+  if (!token || token.expiraEm <= agora || !token.usuario.ativo || token.usuario.deletadoEm) {
+    throw new ApiError("not-found", "Token inválido ou expirado");
+  }
+  if (token.usadoEm) {
+    throw new ApiError("conflict", "Token já utilizado");
   }
 
   const senhaHash = await hashPassword(novaSenha);
 
-  await prisma.$transaction([
-    prisma.usuario.update({
+  await prisma.$transaction(async (tx) => {
+    const consumido = await tx.tokenResetSenha.updateMany({
+      where: { id: token.id, usadoEm: null, expiraEm: { gt: agora } },
+      data: { usadoEm: agora },
+    });
+    if (consumido.count !== 1) {
+      throw new ApiError("conflict", "Token já utilizado");
+    }
+    // Quem pediu o link mais de uma vez tem vários tokens válidos: usar um encerra todos.
+    await tx.tokenResetSenha.updateMany({
+      where: { usuarioId: token.usuarioId, finalidade: FINALIDADE_RESET_SENHA, usadoEm: null },
+      data: { usadoEm: agora },
+    });
+    await tx.usuario.update({
       where: { id: token.usuarioId },
-      data: {
-        senhaHash,
-        precisaTrocarSenha: false,
-        passwordUpdatedAt: new Date(),
-      },
-    }),
-    prisma.tokenResetSenha.update({
-      where: { id: token.id },
-      data: { usadoEm: new Date() },
-    }),
-    // Redefinir a senha deve encerrar as sessões antigas (consistente com
-    // POST /auth/trocar-senha), impedindo que um refresh anterior siga válido.
-    prisma.sessao.updateMany({
+      data: { senhaHash, precisaTrocarSenha: false, passwordUpdatedAt: agora },
+    });
+    await tx.sessao.updateMany({
       where: { usuarioId: token.usuarioId, revogadaEm: null },
-      data: { revogadaEm: new Date() },
-    }),
-  ]);
-
-  const user = await prisma.usuario.findUnique({
-    where: { id: token.usuarioId },
-    select: {
-      id: true,
-      nome: true,
-      ra: true,
-      papel: true,
-    },
+      data: { revogadaEm: agora },
+    });
   });
 
-  return user;
+  const { id, nome, emailPessoal, emailEducacional } = token.usuario;
+  return { id, nome, emailPessoal, emailEducacional };
 }

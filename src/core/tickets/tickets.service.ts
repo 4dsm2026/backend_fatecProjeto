@@ -1,8 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { StatusChamado } from '@prisma/client';
+import { Prisma, StatusChamado } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
 import { notifyMany } from '../notifications/notify';
+import { toSkipTake } from '../../hateoas';
+import { isReopen } from './ticket-rules'
+import { bestEffort } from '../../utils/best-effort'
+import { countUnreadByTicket } from '../ticket-messages/messages.service'
 
 type Ctx = PrismaClient;
 
@@ -10,52 +14,81 @@ const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 20;
 
 /* ========================= helpers ========================= */
-
 const pick = <T extends Record<string, unknown>>(obj: T): Partial<T> =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v != null)) as Partial<T>;
 
-const ticketInclude = (include?: TicketsListQuery['include']) => {
-  const base = {
-    cliente: false, contrato: false, servico: false, setor: true,
-    responsavel: false, criadoPor: false, historico: false,
-  };
-  if (!include) return base;
-  const arr = Array.isArray(include) ? include : [include];
-  for (const k of arr) (base as any)[k] = true;
-  return base;
-};
 
-const buildWhere = (q: TicketsListQuery) => {
-  const {
-    search, status, nivel, prioridade,
-    clienteId, contratoId, setorId, servicoId, responsavelId, organizacaoId,
-    criadoDe, criadoAte, criadoPorId,
-  } = q;
+/** Campo Json do Prisma: ausente vira NULL do banco (`Prisma.DbNull`), não JSON `null`. */
+const toJsonInput = (value: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull =>
+  value == null ? Prisma.DbNull : (value as Prisma.InputJsonValue);
+
+/** Usuário nas respostas de chamado: nunca a linha inteira (tem senhaHash, telefone...). */
+const USUARIO_PUBLICO = { select: { id: true, nome: true, emailPessoal: true } };
+
+const ticketInclude = (include?: TicketsListQuery['include']) => {
+  const pedidos: string[] = Array.isArray(include) ? include : [include ?? ''];
+  const quer = (relacao: string) => pedidos.includes(relacao);
 
   return {
-    deletadoEm: null,
-    ...(criadoPorId   ? { criadoPorId }   : {}),
-    ...(organizacaoId ? { organizacaoId } : {}),
-    ...(clienteId     ? { clienteId }     : {}),
-    ...(contratoId    ? { contratoId }    : {}),
-    ...(setorId       ? { setorId }       : {}),
-    ...(servicoId     ? { servicoId }     : {}),
-    ...(responsavelId ? { responsavelId } : {}),
-    ...(status    ? { status:    Array.isArray(status)    ? { in: status }    : status }    : {}),
-    ...(nivel     ? { nivel:     Array.isArray(nivel)     ? { in: nivel }     : nivel }     : {}),
-    ...(prioridade ? { prioridade: Array.isArray(prioridade) ? { in: prioridade } : prioridade } : {}),
-    ...(criadoDe || criadoAte
-      ? { criadoEm: { ...(criadoDe ? { gte: new Date(criadoDe) } : {}), ...(criadoAte ? { lte: new Date(criadoAte) } : {}) } }
-      : {}),
-    ...(search
-      ? { OR: [
-          { titulo:    { contains: search } },
-          { descricao: { contains: search } },
-          { protocolo: { contains: search } },
-        ] }
-      : {}),
+    cliente: quer('cliente'),
+    contrato: quer('contrato'),
+    servico: quer('servico'),
+    setor: true,
+    responsavel: quer('responsavel') ? USUARIO_PUBLICO : false,
+    criadoPor: quer('criadoPor') ? USUARIO_PUBLICO : false,
+    historico: quer('historico'),
   };
 };
+
+const archivedFilter = (arquivados: TicketsListQuery['arquivados']) => {
+  if (arquivados === 'incluir') return {};
+  if (arquivados === 'somente') return { arquivadoEm: { not: null } };
+  return { arquivadoEm: null };
+};
+
+const equalityFilters = ({
+  criadoPorId, organizacaoId, clienteId, contratoId, setorId, servicoId, responsavelId,
+}: TicketsListQuery) => ({
+  ...(criadoPorId   ? { criadoPorId }   : {}),
+  ...(organizacaoId ? { organizacaoId } : {}),
+  ...(clienteId     ? { clienteId }     : {}),
+  ...(contratoId    ? { contratoId }    : {}),
+  ...(setorId       ? { setorId }       : {}),
+  ...(servicoId     ? { servicoId }     : {}),
+  ...(responsavelId ? { responsavelId } : {}),
+});
+
+/** Um valor vira igualdade; uma lista vira `IN`. */
+const inOrEqual = <T>(value: T | T[]) => (Array.isArray(value) ? { in: value } : value);
+
+const enumFilters = ({ status, nivel, prioridade }: TicketsListQuery) => ({
+  ...(status     ? { status:     inOrEqual(status) }     : {}),
+  ...(nivel      ? { nivel:      inOrEqual(nivel) }      : {}),
+  ...(prioridade ? { prioridade: inOrEqual(prioridade) } : {}),
+});
+
+const createdBetween = ({ criadoDe, criadoAte }: TicketsListQuery) =>
+  criadoDe || criadoAte
+    ? { criadoEm: { ...(criadoDe ? { gte: new Date(criadoDe) } : {}), ...(criadoAte ? { lte: new Date(criadoAte) } : {}) } }
+    : {};
+
+const searchFilter = (search: TicketsListQuery['search']) =>
+  search
+    ? { OR: [
+        { titulo:    { contains: search } },
+        { descricao: { contains: search } },
+        { protocolo: { contains: search } },
+      ] }
+    : {};
+
+const buildWhere = (q: TicketsListQuery) => ({
+  deletadoEm: null,
+  ...archivedFilter(q.arquivados),
+  ...equalityFilters(q),
+  ...enumFilters(q),
+  ...createdBetween(q),
+  ...searchFilter(q.search),
+});
 
 async function getUsuariosDoSetor(prisma: Ctx, setorId: string): Promise<string[]> {
   const vinculos = await prisma.usuarioSetor.findMany({
@@ -187,8 +220,8 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
       catalogoCategoriaId:   resolvedCatalogoCatId ?? null,
       catalogoCategoriaNome: resolvedCatNome,
       setorProvavel:         data.setorProvavel  ?? null,
-      dadosAcademicos:       (data.dadosAcademicos  as any) ?? null,
-      camposEspecificos:     (data.camposEspecificos as any) ?? null,
+      dadosAcademicos:       toJsonInput(data.dadosAcademicos),
+      camposEspecificos:     toJsonInput(data.camposEspecificos),
       origem:                data.origem           ?? null,
       precisaAcaoDoAluno:    data.precisaAcaoDoAluno ?? false,
     },
@@ -210,13 +243,13 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
     setorId: ticket.setorId,
   });
 
-  notifyMany(prisma, Array.from(alvos), {
+  await bestEffort('notificar-chamado-criado', notifyMany(prisma, Array.from(alvos), {
     titulo: 'Chamado criado',
     mensagem: `Chamado ${protocolo} criado.`,
     tipo: 'CHAMADO_CRIADO',
     chamadoId: ticket.id,
     organizacaoId: ticket.organizacaoId ?? null,
-  }).catch(() => {});
+  }));
 
   return prisma.chamado.findFirst({
     where: { id: ticket.id },
@@ -254,36 +287,46 @@ export async function alunoSemAcessoAoChamado(
 }
 
 export async function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
-  const baseInclude: any = ticketInclude(include);
-  baseInclude.mensagens = {
-    include: { autor: { select: { id: true, nome: true, emailPessoal: true } } },
-    orderBy: { criadoEm: 'asc' },
-  };
-  baseInclude.historico = {
-    include: { porUsuario: { select: { id: true, nome: true, emailPessoal: true } } },
-    orderBy: { criadoEm: 'desc' },
-  };
-  return prisma.chamado.findFirst({ where: { id, deletadoEm: null }, include: baseInclude });
+  return prisma.chamado.findFirst({
+    where: { id, deletadoEm: null },
+    include: {
+      ...ticketInclude(include),
+      mensagens: {
+        include: { autor: { select: { id: true, nome: true, emailPessoal: true } } },
+        orderBy: { criadoEm: 'asc' },
+      },
+      historico: {
+        include: { porUsuario: { select: { id: true, nome: true, emailPessoal: true } } },
+        orderBy: { criadoEm: 'desc' },
+      },
+    },
+  });
 }
 
-export async function listTickets(prisma: Ctx, q: TicketsListQuery) {
-  const page     = q.page ?? 1;
-  const pageSize = Math.min(q.pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
-  const skip     = (page - 1) * pageSize;
-  const where    = buildWhere(q);
+/**
+ * `viewerId` só é usado com `include=naoLidas`: cada chamado ganha `mensagensNaoLidas`
+ * (as que outras pessoas escreveram e o usuário ainda não leu).
+ */
+export async function listTickets(prisma: Ctx, q: TicketsListQuery, viewerId?: string) {
+  const page  = q.page ?? 0;
+  const size  = Math.min(q.size ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+  const where = buildWhere(q);
 
   const [total, items] = await Promise.all([
     prisma.chamado.count({ where }),
     prisma.chamado.findMany({
       where,
       orderBy: { [q.orderBy ?? 'criadoEm']: q.orderDir ?? 'desc' },
-      skip,
-      take: pageSize,
+      ...toSkipTake({ page, size }),
       include: ticketInclude(q.include),
     }),
   ]);
 
-  return { total, page, pageSize, items };
+  if (!viewerId || !q.include?.includes('naoLidas')) return { total, page, size, items };
+
+  const naoLidas = await countUnreadByTicket(prisma, items.map((t) => t.id), viewerId);
+  const comContagem = items.map((t) => ({ ...t, mensagensNaoLidas: naoLidas.get(t.id) ?? 0 }));
+  return { total, page, size, items: comContagem };
 }
 
 export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateInput, opts: { feitoPorId?: string }) {
@@ -293,6 +336,17 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
 
   const isStatusChange   = !!data.status && data.status !== before.status;
   const oldResponsavelId = before.responsavelId;
+  const novoStatus = isStatusChange ? data.status : undefined;
+  const fechando   = novoStatus === StatusChamado.ENCERRADO || novoStatus === StatusChamado.RESOLVIDO;
+  const reabrindo  = !!novoStatus && isReopen(before.status, novoStatus);
+
+  let encerradoEm: Date | null | undefined;
+  if (fechando) encerradoEm = new Date();
+  else if (reabrindo) encerradoEm = null;
+
+  let arquivadoEm: Date | null | undefined;
+  if (data.arquivado === true) arquivadoEm = new Date();
+  else if (data.arquivado === false) arquivadoEm = null;
 
   const updated = await prisma.chamado.update({
     where: { id },
@@ -310,18 +364,26 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
         responsavelId: data.responsavelId,
         organizacaoId: data.organizacaoId,
         precisaAcaoDoAluno: data.precisaAcaoDoAluno,
-        observacaoInterna:  (data as any).observacaoInterna,
-        slaHoras:    (data as any).slaHoras,
-        slaDias:     (data as any).slaDias,
+        observacaoInterna:  data.observacaoInterna,
+        slaHoras:    data.slaHoras,
+        slaDias:     data.slaDias,
       }),
-      vencimentoSla: (data as any).vencimentoSla ? new Date((data as any).vencimentoSla) : undefined,
-      encerradoEm:
-        data.status &&
-        (data.status === StatusChamado.ENCERRADO || data.status === StatusChamado.RESOLVIDO)
-          ? new Date()
-          : undefined,
+      vencimentoSla: data.vencimentoSla ? new Date(data.vencimentoSla) : undefined,
+      encerradoEm,
+      arquivadoEm,
     },
   });
+
+  if (data.arquivado !== undefined) {
+    await bestEffort('auditoria-arquivar-chamado', prisma.auditoria.create({
+      data: {
+        feitoPorId: feitoPorId ?? null,
+        acao: data.arquivado ? 'ARQUIVAR_CHAMADO' : 'DESARQUIVAR_CHAMADO',
+        alvo: id,
+        meta: { protocolo: before.protocolo },
+      },
+    }));
+  }
 
   if (isStatusChange) {
     const [, alvoInfo] = await Promise.all([
@@ -346,43 +408,27 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
       setorId: alvoInfo?.setorId ?? null,
     });
 
-    notifyMany(prisma, Array.from(alvos), {
+    await bestEffort('notificar-status-alterado', notifyMany(prisma, Array.from(alvos), {
       titulo: 'Status atualizado',
       mensagem: `Chamado ${alvoInfo?.protocolo ?? id} mudou para ${data.status}.`,
       tipo: 'STATUS_ALTERADO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,
-    }).catch(() => {});
+    }));
   }
 
   if (data.responsavelId !== undefined && data.responsavelId !== oldResponsavelId && data.responsavelId) {
     const alvoInfo = await prisma.chamado.findUnique({ where: { id }, select: { protocolo: true, organizacaoId: true } });
-    notifyMany(prisma, [data.responsavelId], {
+    await bestEffort('notificar-chamado-atribuido', notifyMany(prisma, [data.responsavelId], {
       titulo: 'Chamado atribuído',
       mensagem: `Você foi atribuído ao chamado ${alvoInfo?.protocolo ?? id}.`,
       tipo: 'CHAMADO_ATRIBUIDO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,
-    }).catch(() => {});
+    }));
   }
 
   return updated;
-}
-
-export async function softDeleteTicket(prisma: Ctx, id: string, opts: { feitoPorId?: string }) {
-  const found = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } });
-  if (!found) throw Object.assign(new Error('Chamado não encontrado'), { code: 'P2025' });
-
-  const deleted = await prisma.chamado.update({
-    where: { id },
-    data: { deletadoEm: new Date() },
-  });
-
-  prisma.auditoria.create({
-    data: { feitoPorId: opts.feitoPorId ?? null, acao: 'DELETE_SOFT_CHAMADO', alvo: id, meta: { protocolo: found.protocolo } },
-  }).catch(() => {});
-
-  return deleted;
 }
 
 /* ========================= stats ========================= */

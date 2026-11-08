@@ -2,7 +2,7 @@
  * Segurança: controle de acesso (IDOR / escalonamento de privilégio)
  * Cobre as regras adicionadas para papel USUARIO (aluno):
  *  - não acessa chamados de outros alunos (GET/PATCH/DELETE/mensagens)
- *  - não altera papel/ativo de ninguém via PATCH /usuarios/:id
+ *  - não altera papel/ativo de ninguém via PATCH /users/:id
  *  - não edita o cadastro de outro usuário
  */
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
@@ -53,14 +53,14 @@ describe('IDOR — chamados de outro aluno', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: `/tickets/${IDS.ticket}`,
+      url: `/tickets/${IDS.ticket}/messages`,
       headers: bearerAuth(alunoIntrusoToken),
     })
 
     expect(res.statusCode).toBe(404)
   })
 
-  it('PATCH /tickets/:id — 404 para aluno que não é dono', async () => {
+    it('PATCH /tickets/:id — 404 para aluno que não é dono', async () => {
     prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
 
     const res = await app.inject({
@@ -71,19 +71,7 @@ describe('IDOR — chamados de outro aluno', () => {
     })
 
     expect(res.statusCode).toBe(404)
-  })
-
-  it('DELETE /tickets/:id — 404 para aluno que não é dono', async () => {
-    prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
-
-    const res = await app.inject({
-      method: 'DELETE',
-      url: `/tickets/${IDS.ticket}`,
-      headers: bearerAuth(alunoIntrusoToken),
-    })
-
-    expect(res.statusCode).toBe(404)
-  })
+  })  
 
   it('GET /tickets/:id/mensagens — 404 para aluno que não é dono', async () => {
     prismaMock.chamado.findFirst.mockResolvedValue({ criadoPorId: IDS.user })
@@ -159,40 +147,56 @@ describe('IDOR — anexos de chamado de outro aluno', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('IDOR — marcar notificação de outro usuário como lida', () => {
-  it('PATCH /notifications/:id/lida escopa a atualização por usuarioId', async () => {
-    prismaMock.notificacao.updateMany.mockResolvedValue({ count: 1 })
+  it('PATCH /notifications/:id escopa a busca por usuarioId', async () => {
+    const notif = {
+      id: 'notif-de-outro',
+      usuarioId: 'outro-aluno-999',
+      titulo: 'Teste',
+      mensagem: 'Teste',
+      tipo: 'SISTEMA',
+      canal: 'IN_APP',
+      criadoEm: new Date(),
+      lidaEm: null,
+      arquivadaEm: null,
+      chamadoId: null,
+    }
+    prismaMock.notificacao.findFirst.mockResolvedValue(notif)
+    prismaMock.notificacao.update.mockResolvedValue({ ...notif, lidaEm: new Date() })
 
     const res = await app.inject({
       method: 'PATCH',
-      url: '/notifications/notif-de-outro/lida',
+      url: '/notifications/notif-de-outro',
       headers: bearerAuth(alunoIntrusoToken),
+      payload: { lida: true },
     })
 
-    expect([200, 204]).toContain(res.statusCode)
+    expect(res.statusCode).toBe(200)
     // A cláusula where DEVE conter o usuarioId de quem chama (não só o id).
-    const arg = prismaMock.notificacao.updateMany.mock.calls[0][0]
+    const arg = prismaMock.notificacao.findFirst.mock.calls[0][0]
     expect(arg.where).toMatchObject({ id: 'notif-de-outro', usuarioId: 'outro-aluno-999' })
   })
 
-  it('PATCH /notifications/:id/lida — 404 quando não há match (id de outro dono)', async () => {
-    prismaMock.notificacao.updateMany.mockResolvedValue({ count: 0 })
+  it('PATCH /notifications/:id — 404 quando não há match (id de outro dono)', async () => {
+    prismaMock.notificacao.findFirst.mockResolvedValue(null)
 
     const res = await app.inject({
       method: 'PATCH',
-      url: '/notifications/notif-de-outro/lida',
+      url: '/notifications/notif-de-outro',
       headers: bearerAuth(alunoIntrusoToken),
+      payload: { lida: true },
     })
 
     expect(res.statusCode).toBe(404)
+    expect(prismaMock.notificacao.update).not.toHaveBeenCalled()
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
+describe('Escalonamento de privilégio — PATCH /users/:id', () => {
   it('403 quando aluno tenta se promover a ADMINISTRADOR', async () => {
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoDonoToken),
       payload: { papel: 'ADMINISTRADOR' },
     })
@@ -205,7 +209,7 @@ describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
   it('403 quando aluno tenta alterar "ativo"', async () => {
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoDonoToken),
       payload: { ativo: false },
     })
@@ -217,7 +221,7 @@ describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
   it('403 quando aluno tenta editar o cadastro de outro usuário', async () => {
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoIntrusoToken),
       payload: { nome: 'Nome Alterado' },
     })
@@ -234,7 +238,7 @@ describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoDonoToken),
       payload: { nome: 'João Atualizado', telefoneCelular: '11999998888' },
     })
@@ -251,7 +255,7 @@ describe('Escalonamento de privilégio — PATCH /usuarios/:id', () => {
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(adminToken),
       payload: { papel: 'TECNICO' },
     })

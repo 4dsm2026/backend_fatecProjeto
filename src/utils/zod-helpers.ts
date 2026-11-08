@@ -6,6 +6,19 @@ export const zStringTrim = z.string().trim();
 export const zEmail = zStringTrim.email("E-mail inválido");
 export const zPassword = zStringTrim.min(8, "Senha deve ter no mínimo 8 caracteres");
 
+/**
+ * Política ÚNICA de senha forte (fonte da verdade). Usada pelos schemas de
+ * primeiro acesso, reset e troca de senha e pelo service de reset.
+ * O valor validado é o valor já aparado (trim): quem hasheia deve usar o
+ * `data` devolvido pelo parse, nunca a string original.
+ */
+export const zStrongPassword = zStringTrim
+  .min(8, "Mínimo de 8 caracteres")
+  .regex(/[A-Z]/, "Inclua ao menos uma letra maiúscula")
+  .regex(/[a-z]/, "Inclua ao menos uma letra minúscula")
+  .regex(/\d/, "Inclua ao menos um número")
+  .regex(/[^A-Za-z0-9]/, "Inclua ao menos um símbolo");
+
 // Se você usa cuid2 no Prisma, pode usar o validator nativo:
 export const zCuid = zStringTrim.regex(/^c[^\s]{24}$/, "ID inválido (cuid)");
 // ou: export const zCuid = z.string().cuid2();
@@ -17,7 +30,12 @@ export const zIP = zStringTrim.max(64).optional();
 /** Boolean que aceita "true"/"false" (querystring) */
 export const zBooleanish = z
   .union([z.boolean(), zStringTrim.transform((s) => s.toLowerCase())])
-  .transform((v) => (typeof v === "boolean" ? v : v === "true" ? true : v === "false" ? false : undefined))
+  .transform((v) => {
+    if (typeof v === "boolean") return v;
+    if (v === "true") return true;
+    if (v === "false") return false;
+    return undefined;
+  })
   .optional();
 
 /** Datas ISO (string) -> Date */
@@ -53,14 +71,6 @@ export const zPapel = z
   .transform(normalizePapel)
   .refine(isPapelValue, "Papel inválido")
   .transform((v) => v as PapelValue);
-
-/** Papel opcional com default USUARIO */
-export const zPapelOptional = z
-  .string()
-  .trim()
-  .optional()
-  .transform((v) => (v ? normalizePapel(v) : "USUARIO"))
-  .transform((v) => (isPapelValue(v) ? v : "USUARIO"));
 
 /** Helper pra montar schema de rota (body/query/params) com parse + tipagem */
 export function buildRouteValidator<

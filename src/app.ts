@@ -1,7 +1,7 @@
 // src/app.ts
 import fs from "node:fs";
 import path from "node:path";
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
@@ -9,16 +9,15 @@ import fastifyFormbody from "@fastify/formbody";
 import fastifyCookie from "@fastify/cookie";
 import { env } from "./env";
 import prismaPlugin from "./plugins/prisma";
-import authRoutes from "./core/auth/auth.routes";
+import sessionsRoutes from "./core/sessions/sessions.routes";
 import authVerify from "./plugins/auth-verify";
 import auditoriaRoutes from "./core/auditoria/auditoria.routes";
 import { usersRoutes } from "./core/users/users.routes";
-import { ticketsRoutes } from "./core/tickets/tickets.routes";
+import { ticketsRoutes, ticketStatsRoutes } from "./core/tickets/tickets.routes";
 import { catalogoRoutes } from "./core/catalogo/catalogo.routes";
 import swaggerPlugin from "./plugins/swagger";
 import helmetPlugin from "./plugins/helmet";
 import rateLimitPlugin from "./plugins/rateLimit";
-import { registerErrorHandler } from "./middlewares/errorHandler";
 import { setoresRoutes } from "./core/setores/setores.routes";
 import { papeisRoutes } from "./core/papeis/papeis.routes";
 import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
@@ -28,6 +27,14 @@ import { anexoRoutes } from "./core/anexos/anexos.routes";
 import { sugestoesRoutes } from "./core/sugestoes/sugestoes.routes";
 import { verifyAccessToken } from "./utils/jwt";
 import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
+import { entryLinks, registerProblemHandler, toResource } from "./hateoas";
+import type { Role } from "./hateoas";
+import { redactUrl } from "./utils/redact-url";
+import type { RawData, WebSocket } from "ws";
+import type { Prisma } from "@prisma/client";
+import { appGlobals } from "./types/app-globals";
+import type { NotifyPayload } from "./types/app-globals";
+
 
 /* ====== Configuração de uploads ====== */
 const UPLOADS_DIR = path.resolve(
@@ -41,6 +48,20 @@ export async function buildApp() {
   const app = Fastify({
     logger: {
       level: env.NODE_ENV === "production" ? "info" : "debug",
+      // Mesmo conteúdo do serializador padrão do Fastify, mas sem o token que viaja na URL.
+      serializers: {
+        req: (req: FastifyRequest) => {
+          const version = req.headers?.["accept-version"];
+          return {
+            method: req.method,
+            url: redactUrl(req.url),
+            version: Array.isArray(version) ? version[0] : version,
+            host: req.host,
+            remoteAddress: req.ip,
+            remotePort: req.socket?.remotePort,
+          };
+        },
+      },
       ...(env.NODE_ENV !== "production" && {
         transport: { target: "pino-pretty", options: { colorize: true } },
       }),
@@ -70,6 +91,7 @@ export async function buildApp() {
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Location", "Retry-After", "WWW-Authenticate"],
     credentials: true,
   });
 
@@ -88,17 +110,28 @@ export async function buildApp() {
   await app.register(swaggerPlugin);
   await app.register(websocket);
 
-  registerErrorHandler(app);
+  registerProblemHandler(app);
 
   // NOTA: /downloads/ foi removido intencionalmente.
-  // Arquivos são servidos exclusivamente via GET /anexos/:id (rota autenticada).
+  // Arquivos são servidos exclusivamente via GET /attachments/:id/content.
 
   app.addHook("onRequest", async (req) =>
-    req.log.debug({ method: req.method, url: req.url }, "REQ"),
+    req.log.debug({ method: req.method, url: redactUrl(req.url) }, "REQ"),
   );
 
   // ✅ Health check público
-  app.get("/health", async (_req, reply) => {
+  app.get("/health", {
+    schema: {
+      tags: ["Sistema"],
+      summary: "Verificar saúde da API",
+      description:
+        "Verifica a conectividade com o banco de dados. Endpoint público. " +
+        "Retorna HTTP 200 com `{ status: \"ok\", db: \"connected\" }` quando " +
+        "a conexão está disponível, ou HTTP 503 com `{ status: \"degraded\", " +
+        "db: \"disconnected\" }` quando o banco não responde.",
+      security: [],
+    },
+  }, async (_req, reply) => {
     try {
       await app.prisma.$queryRaw`SELECT 1`;
       return { status: "ok", db: "connected" };
@@ -107,17 +140,24 @@ export async function buildApp() {
     }
   });
 
-  app.register(authRoutes, { prefix: "/auth" });
-  app.register(usersRoutes, { prefix: "/usuarios" });
+  // Raiz da API (HATEOAS): links de entrada de acordo com o papel de quem pede
+  app.get("/api", { preHandler: [app.authenticate] }, async (req) => {
+    const user = req.user as { sub: string; role: Role };
+    return toResource({}, entryLinks({ id: user.sub, role: user.role }));
+  });
+
+  app.register(sessionsRoutes);
+  app.register(usersRoutes, { prefix: "/users" });
   app.register(ticketsRoutes, { prefix: "/tickets" });
-  app.register(catalogoRoutes, { prefix: "/catalogo" });
+  app.register(ticketStatsRoutes, { prefix: "/ticket-stats" });
+  app.register(catalogoRoutes, { prefix: "/catalog" });
   app.register(setoresRoutes, { prefix: "/admin" });
   app.register(papeisRoutes, { prefix: "/admin" });
   app.register(usuarioSetorRoutes, { prefix: "/admin" });
   app.register(comunicacoesRoutes, { prefix: "/admin" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(anexoRoutes, { prefix: "/" });
-  app.register(sugestoesRoutes, { prefix: "/sugestoes" });
+  app.register(sugestoesRoutes, { prefix: "/suggestions" });
   app.register(auditoriaRoutes);
 
   // ---------------------------------------------------------
@@ -126,12 +166,26 @@ export async function buildApp() {
   // o JWT na query string (que vaza em logs de acesso/proxy).
   // O token via ?token= ainda é aceito como fallback de compatibilidade.
   // ---------------------------------------------------------
-  const connections = new Map<string, import("ws").WebSocket>();
+  const connections = new Map<string, WebSocket>();
   const AUTH_TIMEOUT_MS = 10_000;
 
-  app.get("/ws", { websocket: true }, (connection, _req) => {
-    const socket = (connection as any).socket ?? (connection as any);
+  /** Frame que o cliente manda pelo WebSocket. Os campos chegam sem garantia de tipo. */
+  type WsFrame = {
+    type?: unknown;
+    token?: unknown;
+  };
 
+  /** `null` se não for JSON; um frame vazio se for JSON que não seja um objeto. */
+  function parseWsFrame(raw: RawData): WsFrame | null {
+    try {
+      const parsed: unknown = JSON.parse(raw.toString());
+      return typeof parsed === "object" && parsed !== null ? (parsed as WsFrame) : {};
+    } catch {
+      return null;
+    }
+  }
+
+  app.get("/ws", { websocket: true }, (socket: WebSocket) => {
     let userId: string | null = null;
     let authTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -147,6 +201,24 @@ export async function buildApp() {
       }
     }
 
+    function stopAuthTimer(): void {
+      if (authTimer) {
+        clearTimeout(authTimer);
+        authTimer = null;
+      }
+    }
+
+    // Handshake: enquanto não autenticado, só o frame { type: "auth" } vale.
+    function handshake(frame: WsFrame): void {
+      if (frame.type === "auth" && authenticate(frame.token)) {
+        stopAuthTimer();
+        socket.send(JSON.stringify({ type: "auth_ok" }));
+        return;
+      }
+      socket.send(JSON.stringify({ error: "Não autenticado" }));
+      socket.close();
+    }
+
     // Autenticação exclusivamente pelo 1º frame { type: "auth", token } — o
     // token nunca vai na URL (evita vazamento em logs). Fecha se não chegar.
     authTimer = setTimeout(() => {
@@ -156,52 +228,19 @@ export async function buildApp() {
       }
     }, AUTH_TIMEOUT_MS);
 
-    socket.on("message", async (rawMsg: string) => {
-      let data: any;
-      try {
-        data = JSON.parse(rawMsg);
-      } catch {
-        return;
-      }
+    socket.on("message", (rawMsg: RawData) => {
+      const frame = parseWsFrame(rawMsg);
+      if (!frame) return;
 
-      // Handshake: enquanto não autenticado, só o frame { type: "auth" } vale.
-      if (!userId) {
-        if (data?.type === "auth" && authenticate(data.token)) {
-          if (authTimer) { clearTimeout(authTimer); authTimer = null; }
-          socket.send(JSON.stringify({ type: "auth_ok" }));
-        } else {
-          socket.send(JSON.stringify({ error: "Não autenticado" }));
-          socket.close();
-        }
-        return;
-      }
-
-      try {
-        if (data.type === "nova_mensagem") {
-          const { chamadoId, mensagem, autorId, autor } = data;
-          for (const [, client] of connections) {
-            if (client.readyState === client.OPEN) {
-              client.send(JSON.stringify({
-                type: "nova_mensagem",
-                chamadoId,
-                mensagem: {
-                  id: Date.now().toString(),
-                  conteudo: mensagem,
-                  criadoEm: new Date().toISOString(),
-                  autorId,
-                  autor,
-                },
-              }));
-            }
-          }
-        }
-      } catch (err) {
-        app.log.error({ err }, "Erro ao processar WS message");
-      }
+      // Depois do handshake o cliente não envia nada que o servidor aceite:
+      // `nova_mensagem` nasce só no POST /tickets/:id/messages e é emitida pelo
+      // servidor (broadcastWS). Repassar frames de clientes permitia forjar
+      // mensagens de outra pessoa.
+      if (!userId) handshake(frame);
     });
 
     socket.on("close", () => {
-      if (authTimer) { clearTimeout(authTimer); authTimer = null; }
+      stopAuthTimer();
       if (userId) {
         connections.delete(userId);
         app.log.info(`WS desconectado: userId=${userId}`);
@@ -213,7 +252,7 @@ export async function buildApp() {
     });
   });
 
-  (globalThis as any).broadcastWS = (data: any) => {
+  appGlobals().broadcastWS = (data: unknown) => {
     for (const [, socket] of connections) {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
     }
@@ -230,7 +269,7 @@ export async function buildApp() {
     return new Set(optIn.map((u: { id: string }) => u.id));
   }
 
-  app.decorate("notifyUsers", async (userIds: string[], data: any) => {
+  app.decorate("notifyUsers", async (userIds: string[], data: NotifyPayload) => {
     const alvos = await getInAppOptInUserIds(userIds);
 
     for (const userId of userIds) {
@@ -246,15 +285,15 @@ export async function buildApp() {
           mensagem: data.mensagem ?? "Você tem uma atualização no chamado",
           tipo: data.tipo ?? "SISTEMA",
           canal: data.canal ?? "IN_APP",
-          meta: data.meta ?? {},
+          meta: (data.meta ?? {}) as Prisma.InputJsonObject,
         },
       });
     }
   });
 
-  // Referência global usada por messages.service — necessária por limitação de arquitetura
-  // TODO: refatorar para injeção de dependência via plugin Fastify
-  (global as any).fastifyAppInstance = app;
+  // Referência global usada por messages.service. É uma limitação conhecida da arquitetura:
+  // o ideal seria injetar a instância por um plugin do Fastify, sem passar por `globalThis`.
+  appGlobals().fastifyAppInstance = app;
 
   scheduleCleanupAnexos(app.prisma, UPLOADS_DIR);
 

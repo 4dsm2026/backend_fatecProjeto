@@ -1,34 +1,57 @@
 import type { FastifyInstance } from "fastify";
+import { toResource } from "../../hateoas";
+import { buildCatalogLinks } from "./catalogo.hateoas";
 
 export async function catalogoRoutes(app: FastifyInstance) {
-  app.get("/", async (req, res) => {
-    const prisma = req.server.prisma;
-
-    try {
-      const categorias = await prisma.categoria.findMany({
-        include: {
-          servicos: {
-            where: { ativo: true },
-            select: {
-              id: true,
-              nome: true,
-              descricao: true,
-              ativo: true,
-              categoriaId: true,
+  app.get("/", {
+    schema: {
+      tags: ["Catálogo"],
+      summary: "Consultar o catálogo de serviços",
+      description:
+        "Retorna as categorias e serviços ativos. As categorias são conteúdo aninhado do recurso catálogo; " +
+        "não há endpoints individuais para elas ou seus serviços.",
+      security: [],
+      response: {
+        200: {
+          type: "object",
+          required: ["categorias", "_links"],
+          properties: {
+            categorias: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: true,
+                properties: {
+                  id: { type: "string" },
+                  nome: { type: "string" },
+                  servicos: { type: "array", items: { type: "object", additionalProperties: true } },
+                },
+              },
             },
+            _links: { type: "object", additionalProperties: true },
           },
         },
-        orderBy: { nome: "asc" },
-      });
+      },
+    },
+  }, async (req, res) => {
+    const categorias = await req.server.prisma.categoria.findMany({
+      include: {
+        servicos: {
+          where: { ativo: true },
+          select: {
+            id: true,
+            nome: true,
+            descricao: true,
+            ativo: true,
+            categoriaId: true,
+          },
+        },
+      },
+      orderBy: { nome: "asc" },
+    });
 
-      if (!categorias || categorias.length === 0) {
-        return res.status(200).send({ categorias: [] });
-      }
-
-      return res.status(200).send({ categorias });
-    } catch (e: any) {
-      req.log.error(e, "Erro ao carregar catálogo");
-      return res.status(500).send({ error: "Erro ao carregar catálogo" });
-    }
+    return res.status(200).send(
+      toResource({ categorias }, buildCatalogLinks()),
+    );
   });
 }

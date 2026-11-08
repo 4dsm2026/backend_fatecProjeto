@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zEmail, zStringTrim, zPapelOptional } from "../utils/zod-helpers";
+import { zEmail, zStringTrim, zStrongPassword } from "../utils/zod-helpers";
 
 export const zRA = zStringTrim
   .min(3, "RA muito curto")
@@ -21,43 +21,22 @@ export const RefreshSchema = z.object({
   refreshToken: z.string().min(20),
 });
 
-export const RegisterSchema = z.object({
-  email: zEmail,
-  password: zStringTrim.min(8),
-  role: zPapelOptional,
-  name: zStringTrim.min(2, "Nome muito curto"),
-  educationalEmail: zEmail.optional(),
-  ra: zRA.optional(),
-});
-
-export const FirstAccessBodySchema = z.object({
-  token: zStringTrim.min(10, "Token inválido"),
-  newPassword: zStringTrim
-    .min(8, "Mínimo de 8 caracteres")
-    .regex(/[A-Z]/, "Inclua ao menos uma letra maiúscula")
-    .regex(/[a-z]/, "Inclua ao menos uma letra minúscula")
-    .regex(/\d/, "Inclua ao menos um número")
-    .regex(/[^A-Za-z0-9]/, "Inclua ao menos um símbolo"),
-  personalEmail: zEmail.optional(),
-});
-
 export const EsqueciSenhaSchema = z.object({
   email: zEmail,
 });
 
-export const ResetSenhaSchema = z.object({
-  token: zStringTrim.min(10),
-  newPassword: zStringTrim.min(8),
-});
+/** `PUT /password-resets/:token`: o token sai do corpo e vai para o path. */
+export const RedefinirSenhaBodySchema = z.object({ novaSenha: zStrongPassword });
+export const PasswordResetParamsSchema = z.object({ token: z.string().min(1) });
 
-export const FirstAccessSchema = FirstAccessBodySchema;
+/** `PUT /account-activations/:token`: o token vai no caminho; senha e e-mail (opcional) no corpo. */
+export const AtivarContaBodySchema = z.object({
+  novaSenha: zStrongPassword,
+  emailPessoal: zEmail.optional(),
+});
+export const AccountActivationParamsSchema = z.object({ token: z.string().min(1) });
 
 export const TrocarSenhaSchema = z.object({
   senhaAtual: zStringTrim.min(1, "Informe a senha atual"),
-  novaSenha: zStringTrim
-    .min(8, "Mínimo de 8 caracteres")
-    .regex(/[A-Z]/, "Inclua ao menos uma letra maiúscula")
-    .regex(/[a-z]/, "Inclua ao menos uma letra minúscula")
-    .regex(/\d/, "Inclua ao menos um número")
-    .regex(/[^A-Za-z0-9]/, "Inclua ao menos um símbolo"),
+  novaSenha: zStrongPassword,
 });

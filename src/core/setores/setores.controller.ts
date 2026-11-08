@@ -1,93 +1,103 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { buildRouteValidator } from "../../utils/zod-helpers";
-import { parseRoute, sendNotFound } from "../../utils/http";
+import type { FastifyRequest, FastifyReply } from "fastify";
 import {
-  SetorCreateSchema, SetorUpdateSchema, SetorListSchema, SetorIdSchema
+  SetorCreateSchema, SetorUpdateSchema, SetorListSchema, SetorIdSchema,
 } from "../../validators/setores";
 import {
-  createSetor, getSetorById, listSetores, updateSetor, deleteSetor
+  createSetor, getSetorById, listSetores, updateSetor, deleteSetor,
 } from "./setores.service";
-import type { SetoresListQuery } from "./setores.types";
+import { buildSectorLinks } from "./setores.hateoas";
+import {
+  ApiError,
+  buildLinks,
+  isAdmin,
+  link,
+  parseOrThrow,
+  pickFilters,
+  toCollection,
+  toResource,
+  viewerFrom,
+} from "../../hateoas";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/*
+ * Os erros são lançados (ApiError / erros do Prisma) e convertidos em
+ * `application/problem+json` pelo handler global (registerProblemHandler).
+ * P2025 -> 404, P2002 -> 409, falha de validação -> 400.
+ */
 
-const createValidator = buildRouteValidator({ body: SetorCreateSchema.shape.body });
-const listValidator   = buildRouteValidator({ query: SetorListSchema.shape.query });
-const idValidator     = buildRouteValidator({ params: SetorIdSchema.shape.params });
-const updateValidator = buildRouteValidator({
-  params: SetorUpdateSchema.shape.params,
-  body:   SetorUpdateSchema.shape.body,
-});
+const LIST_FILTER_KEYS = ["search", "organizacaoId"] as const;
 
-/* POST /setores */
+function notFound(): ApiError {
+  return new ApiError("not-found", "Setor não encontrado");
+}
+
+/* POST /admin/sectors */
 export async function create(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ body?: typeof SetorCreateSchema.shape.body._output }>(createValidator, req, res);
-  if (!data) return;
-  const prisma = req.server.prisma;
-  try {
-    const setor = await createSetor(prisma, data.body!);
-    await res.code(201).send(setor);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao criar setor");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+  const body = parseOrThrow(SetorCreateSchema.shape.body, req.body);
+  const viewer = viewerFrom(req);
+
+  const setor = await createSetor(req.server.prisma, body);
+  const links = buildSectorLinks(setor, viewer);
+
+  return res
+    .code(201)
+    .header("Location", (links.self as { href: string }).href)
+    .send(toResource(setor, links));
 }
 
-/* GET /setores/:id */
+/* GET /admin/sectors/:id */
 export async function getOne(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ params?: typeof SetorIdSchema.shape.params._output }>(idValidator, req, res);
-  if (!data) return;
-  const prisma = req.server.prisma;
-  try {
-    const setor = await getSetorById(prisma, data.params!.id);
-    if (!setor) return sendNotFound(res, "Setor");
-    await res.send(setor);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao buscar setor");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+  const { id } = parseOrThrow(SetorIdSchema.shape.params, req.params);
+  const viewer = viewerFrom(req);
+
+  const setor = await getSetorById(req.server.prisma, id);
+  if (!setor) throw notFound();
+
+  return res.code(200).send(toResource(setor, buildSectorLinks(setor, viewer)));
 }
 
-/* GET /setores */
+/* GET /admin/sectors?page=&size=&search=&organizacaoId= */
 export async function list(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ query?: typeof SetorListSchema.shape.query._output }>(listValidator, req, res);
-  if (!data) return;
-  const prisma = req.server.prisma;
-  try {
-    const page = await listSetores(prisma, data.query! as SetoresListQuery);
-    await res.send(page);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao listar setores");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+  const query = parseOrThrow(SetorListSchema.shape.query, req.query);
+  const viewer = viewerFrom(req);
+
+  const result = await listSetores(req.server.prisma, query);
+
+  const collection = toCollection({
+    rel: "sectors",
+    basePath: "/admin/sectors",
+    items: result.data.map((setor) => toResource(setor, buildSectorLinks(setor, viewer))),
+    page: result.page,
+    size: result.size,
+    total: result.total,
+    filters: pickFilters(query, LIST_FILTER_KEYS),
+    links: buildLinks({
+      create: isAdmin(viewer) && link("/admin/sectors", "POST"),
+    }),
+  });
+
+  return res.code(200).send(collection);
 }
 
-/* PATCH /setores/:id */
+/* PATCH /admin/sectors/:id */
 export async function patch(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ params?: typeof SetorUpdateSchema.shape.params._output; body?: typeof SetorUpdateSchema.shape.body._output }>(updateValidator, req, res);
-  if (!data) return;
+  const { id } = parseOrThrow(SetorUpdateSchema.shape.params, req.params);
+  const body = parseOrThrow(SetorUpdateSchema.shape.body, req.body);
+  const viewer = viewerFrom(req);
   const prisma = req.server.prisma;
-  try {
-    const setor = await updateSetor(prisma, data.params!.id, data.body!);
-    await res.send(setor);
-  } catch (e: any) {
-    if (e?.code === "P2025") return sendNotFound(res, "Setor");
-    req.log.error({ e }, "💥 Erro ao atualizar setor");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+
+  if (!(await getSetorById(prisma, id))) throw notFound();
+
+  const setor = await updateSetor(prisma, id, body);
+  return res.code(200).send(toResource(setor, buildSectorLinks(setor, viewer)));
 }
 
-/* DELETE /setores/:id */
+/* DELETE /admin/sectors/:id */
 export async function removeHard(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ params?: typeof SetorIdSchema.shape.params._output }>(idValidator, req, res);
-  if (!data) return;
+  const { id } = parseOrThrow(SetorIdSchema.shape.params, req.params);
   const prisma = req.server.prisma;
-  try {
-    await deleteSetor(prisma, data.params!.id);
-    await res.code(204).send();
-  } catch (e: any) {
-    if (e?.code === "P2025") return sendNotFound(res, "Setor");
-    req.log.error({ e }, "💥 Erro ao excluir setor");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+
+  if (!(await getSetorById(prisma, id))) throw notFound();
+
+  await deleteSetor(prisma, id);
+  return res.code(204).send();
 }

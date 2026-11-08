@@ -1,150 +1,140 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { buildRouteValidator } from "../../utils/zod-helpers";
-import { sendNotFound, sendUnauthorized, sendValidationError } from "../../utils/http";
-import { NotificationsListSchema, NotificationIdSchema } from "./notifications.types";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import {
+  buildLinks,
+  link,
+  toCollection,
+  toResource,
+  type Viewer,
+} from "../../hateoas/index.js";
+import { ApiError } from "../../hateoas/problem.js";
+import {
+  ListNotificationsQuerySchema,
+  NotificationIdParamsSchema,
+  PatchAllNotificationsBodySchema,
+  PatchNotificationBodySchema,
+} from "./notifications.types.js";
 import {
   listNotifications,
-  markAsRead,
-  archiveNotification,
-  unarchiveNotification,
-  markAllAsRead,
+  markAllNotificationsAsRead,
+  patchNotification,
   createTestNotification,
-} from "./notifications.service";
+} from "./notifications.service.js";
+import { buildNotificationLinks } from "./notifications.hateoas.js";
+import { canViewTicket } from "../tickets/ticket-rules.js";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-const listValidator = buildRouteValidator({ query: NotificationsListSchema.shape.query });
-const idValidator = buildRouteValidator({ params: NotificationIdSchema.shape.params });
-
-const requireUserId = async (req: FastifyRequest, res: FastifyReply): Promise<string | null> => {
-  const userId = req.user?.sub as string | undefined;
-  if (!userId) {
-    await res.code(401).send({ error: "Não autenticado" });
-    return null;
+function getViewer(req: FastifyRequest): Viewer {
+  const user = req.user as { id?: string; sub?: string; role?: Viewer["role"] } | undefined;
+  const id = user?.id ?? user?.sub;
+  if (!id || !user?.role) {
+    throw new ApiError("unauthorized", "Usuário não autenticado");
   }
+  return { id, role: user.role };
+}
 
-  return userId;
-};
-
-const validateIdOrBadRequest = async (
+/** A listagem consulta os chamados de uma vez, sem divulgar links inacessíveis. */
+async function visibleTicketIds(
   req: FastifyRequest,
-  res: FastifyReply,
-  parsed: ReturnType<typeof idValidator.parse>,
-) => {
-  if ("error" in parsed) {
-    return res.code(400).send(parsed.error);
-  }
-
-  return parsed.data?.params?.id ?? null;
-};
-
-/* GET /notifications */
-export async function list(req: FastifyRequest, res: FastifyReply) {
-  const parsed = listValidator.parse(req);
-  if ("error" in parsed) return sendValidationError(res, parsed.error);
-
-  const prisma = req.server.prisma;
-  const userId = await requireUserId(req, res);
-  if (!userId) return;
-
-  try {
-    const page = await listNotifications(prisma, userId, parsed.data!.query!);
-    return res.send(page);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao listar notificações");
-    return res.code(500).send({ error: "Erro interno ao listar notificações" });
-  }
+  viewer: Viewer,
+  notifications: Array<{ chamadoId: string | null }>,
+): Promise<Set<string>> {
+  const ids = [...new Set(notifications.flatMap((item) => item.chamadoId ? [item.chamadoId] : []))];
+  if (ids.length === 0) return new Set();
+  const tickets = await req.server.prisma.chamado.findMany({
+    where: { id: { in: ids }, deletadoEm: null },
+    select: { id: true, criadoPorId: true },
+  });
+  return new Set(tickets.filter((ticket) => canViewTicket(viewer, ticket.criadoPorId)).map((ticket) => ticket.id));
 }
 
-/* POST /notifications/:id/read */
-export async function readOne(req: FastifyRequest, res: FastifyReply) {
-  const parsed = idValidator.parse(req);
-  const notificationId = await validateIdOrBadRequest(req, res, parsed);
-  if (!notificationId) return;
+export async function listNotificationsHandler(
+  req: FastifyRequest,
+  reply: FastifyReply
+) {
+  const viewer = getViewer(req);
+  const query = ListNotificationsQuerySchema.parse(req.query);
 
-  const prisma = req.server.prisma;
-  const userId = await requireUserId(req, res);
-  if (!userId) return;
+  const { items, total, unreadCount } = await listNotifications(
+    req.server.prisma,
+    viewer.id,
+    query
+  );
 
-  try {
-    await markAsRead(prisma, notificationId, userId);
-    return res.code(204).send();
-  } catch (e: any) {
-    if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação", "f");
-    req.log.error({ e }, "💥 Erro ao marcar notificação como lida");
-    return res.code(500).send({ error: errMsg(e) });
-  }
+  const visible = await visibleTicketIds(req, viewer, items);
+  const resources = items.map((item) =>
+    toResource(item, buildNotificationLinks(item, viewer, item.chamadoId !== null && visible.has(item.chamadoId)))
+  );
+
+  const extraLinks = buildLinks({
+    "mark-all-read":
+      unreadCount > 0 &&
+      link("/notifications", "PATCH", { title: "Marcar todas como lidas" }),
+  });
+
+  const collection = toCollection({
+    rel: "notifications",
+    basePath: "/notifications",
+    items: resources,
+    page: query.page,
+    size: query.size,
+    total,
+    filters: {
+      apenasNaoLidas:
+        query.apenasNaoLidas !== undefined ? String(query.apenasNaoLidas) : undefined,
+      arquivadas:
+        query.arquivadas !== undefined ? String(query.arquivadas) : undefined,
+    },
+    links: extraLinks,
+  });
+
+  return reply.code(200).send(collection);
 }
 
-/* POST /notifications/:id/archive */
-export async function archive(req: FastifyRequest, res: FastifyReply) {
-  const parsed = idValidator.parse(req);
-  const notificationId = await validateIdOrBadRequest(req, res, parsed);
-  if (!notificationId) return;
+export async function patchNotificationHandler(
+  req: FastifyRequest,
+  reply: FastifyReply
+) {
+  const viewer = getViewer(req);
+  const { id } = NotificationIdParamsSchema.parse(req.params);
+  const body = PatchNotificationBodySchema.parse(req.body);
 
-  const prisma = req.server.prisma;
-  const userId = await requireUserId(req, res);
-  if (!userId) return;
+  const updated = await patchNotification(
+    req.server.prisma,
+    id,
+    viewer.id,
+    body
+  );
 
-  try {
-    await archiveNotification(prisma, notificationId, userId);
-    return res.code(204).send();
-  } catch (e: any) {
-    if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação", "f");
-    req.log.error({ e }, "💥 Erro ao arquivar notificação");
-    return res.code(500).send({ error: errMsg(e) });
-  }
+  const visible = await visibleTicketIds(req, viewer, [updated]);
+  return reply
+    .code(200)
+    .send(toResource(updated, buildNotificationLinks(updated, viewer, updated.chamadoId !== null && visible.has(updated.chamadoId))));
 }
 
-/* POST /notifications/:id/unarchive */
-export async function unarchive(req: FastifyRequest, res: FastifyReply) {
-  const parsed = idValidator.parse(req);
-  const notificationId = await validateIdOrBadRequest(req, res, parsed);
-  if (!notificationId) return;
+export async function patchAllNotificationsHandler(
+  req: FastifyRequest,
+  reply: FastifyReply
+) {
+  const viewer = getViewer(req);
+  PatchAllNotificationsBodySchema.parse(req.body);
 
-  const prisma = req.server.prisma;
-  const userId = await requireUserId(req, res);
-  if (!userId) return;
+  const result = await markAllNotificationsAsRead(req.server.prisma, viewer.id);
+  const links = buildLinks({
+    self: link("/notifications", "GET"),
+  });
 
-  try {
-    await unarchiveNotification(prisma, notificationId, userId);
-    return res.code(204).send();
-  } catch (e: any) {
-    if (e?.code === "P2025")
-      return sendNotFound(res, "Notificação", "f");
-    req.log.error({ e }, "💥 Erro ao desarquivar notificação");
-    return res.code(500).send({ error: errMsg(e) });
-  }
+  return reply.code(200).send(toResource(result, links));
 }
 
-/* POST /notifications/read-all */
-export async function readAll(req: FastifyRequest, res: FastifyReply) {
-  const prisma = req.server.prisma;
-  const userId = await requireUserId(req, res);
-  if (!userId) return;
+export async function createTestNotificationHandler(
+  req: FastifyRequest,
+  reply: FastifyReply
+) {
+  const viewer = getViewer(req);
+  const created = await createTestNotification(req.server.prisma, viewer.id);
+  const resource = toResource(created, buildNotificationLinks(created, viewer));
 
-  try {
-    const result = await markAllAsRead(prisma, userId);
-    return res.send(result);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao marcar todas como lidas");
-    return res.code(500).send({ error: errMsg(e) });
-  }
-}
-
-/* POST /notifications/test */
-export async function createTest(req: FastifyRequest, res: FastifyReply) {
-  const prisma = req.server.prisma;
-  const userId = await requireUserId(req, res);
-  if (!userId) return;
-
-  try {
-    const created = await createTestNotification(prisma, userId);
-    return res.send(created);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao criar notificação de teste");
-    return res.code(500).send({ error: errMsg(e) });
-  }
+  return reply
+    .code(201)
+    .header("Location", `/notifications/${created.id}`)
+    .send(resource);
 }

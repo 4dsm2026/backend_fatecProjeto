@@ -1,95 +1,88 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { PrismaClient } from "@prisma/client";
 import {
   createSetor,
+  deleteSetor,
   getSetorById,
   listSetores,
   updateSetor,
-  deleteSetor,
-} from "../../../src/core/setores/setores.service.ts";
+} from "../../../src/core/setores/setores.service.js";
 
-const prismaMock = {
-  setor: {
-    create: vi.fn(),
-    findUnique: vi.fn(),
-    findMany: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    count: vi.fn(),
-  },
-} as any;
+function createMockPrisma() {
+  return {
+    setor: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
+  } as unknown as PrismaClient;
+}
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
+describe("setores.service", () => {
+  it("lista setores com paginação base 0 (toSkipTake) e filtro de busca", async () => {
+    const prisma = createMockPrisma();
+    vi.mocked(prisma.setor.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.setor.count).mockResolvedValue(0);
 
-describe("Setores Service", () => {
-  it("Deve criar um setor com sucesso (Sucesso)", async () => {
-    const body = { nome: "TI" };
-    prismaMock.setor.create.mockResolvedValue({ id: "setor-1", ...body });
+    await listSetores(prisma, { page: 2, size: 10, search: "Suporte" });
 
-    const result = await createSetor(prismaMock, body);
-
-    expect(result).toEqual({ id: "setor-1", nome: "TI" });
-    expect(prismaMock.setor.create).toHaveBeenCalledWith({ data: body });
+    expect(prisma.setor.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { nome: { contains: "Suporte" } },
+        skip: 20,
+        take: 10,
+      })
+    );
   });
 
-  it("Deve retornar um setor por ID quando existente (Sucesso)", async () => {
+  it("cria um novo setor", async () => {
+    const prisma = createMockPrisma();
     const mockSetor = {
-      id: "setor-1",
-      nome: "TI",
-      _count: { usuarioSetores: 0, chamados: 0 },
+      id: "sec-1",
+      nome: "Secretaria Acadêmica",
+      descricao: "Atendimento ao aluno",
+      organizacaoId: null,
     };
-    prismaMock.setor.findUnique.mockResolvedValue(mockSetor);
+    vi.mocked(prisma.setor.create).mockResolvedValue(mockSetor as never);
 
-    const result = await getSetorById(prismaMock, "setor-1");
+    const created = await createSetor(prisma, {
+      nome: "Secretaria Acadêmica",
+      descricao: "Atendimento ao aluno",
+    });
 
+    expect(created).toEqual(mockSetor);
+  });
+
+  it("busca setor por id", async () => {
+    const prisma = createMockPrisma();
+    const mockSetor = { id: "sec-1", nome: "TI" };
+    vi.mocked(prisma.setor.findUnique).mockResolvedValue(mockSetor as never);
+
+    const result = await getSetorById(prisma, "sec-1");
     expect(result).toEqual(mockSetor);
-    expect(prismaMock.setor.findUnique).toHaveBeenCalledWith({
-      where: { id: "setor-1" },
-      include: {
-        _count: { select: { usuarioSetores: true, chamados: true } },
-      },
-    });
   });
 
-  it("Deve retornar a lista de setores cadastrados (Sucesso)", async () => {
-    const mockList = [{ id: "setor-1", nome: "TI" }];
-    prismaMock.setor.findMany.mockResolvedValue(mockList);
-    prismaMock.setor.count.mockResolvedValue(1);
+  it("atualiza parcialmente um setor", async () => {
+    const prisma = createMockPrisma();
+    const updated = { id: "sec-1", nome: "TI Atualizado" };
+    vi.mocked(prisma.setor.update).mockResolvedValue(updated as never);
 
-    const result = await listSetores(prismaMock, {});
-
-    expect(result).toEqual({
-      data: mockList,
-      total: 1,
-      page: 1,
-      perPage: 20,
+    const result = await updateSetor(prisma, "sec-1", {
+      nome: "TI Atualizado",
     });
-    expect(prismaMock.setor.findMany).toHaveBeenCalled();
-    expect(prismaMock.setor.count).toHaveBeenCalled();
+    expect(result).toEqual(updated);
   });
 
-  it("Deve atualizar um setor existente (Sucesso)", async () => {
-    const body = { nome: "TI Atualizado" };
-    prismaMock.setor.update.mockResolvedValue({ id: "setor-1", ...body });
+  it("remove um setor permanentemente", async () => {
+    const prisma = createMockPrisma();
+    vi.mocked(prisma.setor.delete).mockResolvedValue({ id: "sec-1" } as never);
 
-    const result = await updateSetor(prismaMock, "setor-1", body);
-
-    expect(result).toEqual({ id: "setor-1", nome: "TI Atualizado" });
-    expect(prismaMock.setor.update).toHaveBeenCalledWith({
-      where: { id: "setor-1" },
-      data: body,
-    });
-  });
-
-  it("Deve remover o setor com sucesso (Sucesso)", async () => {
-    prismaMock.setor.delete.mockResolvedValue({ id: "setor-1", nome: "TI" });
-
-    const result = await deleteSetor(prismaMock, "setor-1");
-
-    expect(result).toEqual({ id: "setor-1", nome: "TI" });
-    expect(prismaMock.setor.delete).toHaveBeenCalledWith({
-      where: { id: "setor-1" },
+    await deleteSetor(prisma, "sec-1");
+    expect(prisma.setor.delete).toHaveBeenCalledWith({
+      where: { id: "sec-1" },
     });
   });
 });

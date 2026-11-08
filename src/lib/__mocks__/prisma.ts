@@ -25,8 +25,11 @@ function buildMock() {
     },
     mensagem: {
       create: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
+      groupBy: vi.fn(),
+      updateMany: vi.fn(),
     },
     setor: {
       create: vi.fn(),
@@ -48,6 +51,7 @@ function buildMock() {
       create: vi.fn(),
       createMany: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -70,6 +74,7 @@ function buildMock() {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
+      update: vi.fn(),
       delete: vi.fn(),
       count: vi.fn(),
     },
@@ -87,6 +92,7 @@ function buildMock() {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     anexo: {
       create: vi.fn(),
@@ -111,7 +117,7 @@ function buildMock() {
     },
   }
   // $transaction passes the mock itself as the tx client so inner calls work
-  
+
   // $transaction passes the mock itself as the tx client so inner calls work
   mock.$transaction = vi.fn().mockImplementation((fnOrArr: any) =>
     typeof fnOrArr === 'function' ? fnOrArr(mock) : Promise.all(fnOrArr),

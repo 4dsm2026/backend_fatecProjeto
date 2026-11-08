@@ -1,10 +1,21 @@
 import type { PrismaClient } from "@prisma/client";
+import { toSkipTake } from "../../hateoas";
+import type { ComunicacaoListQuery, ComunicacaoListResult, ComunicacaoTemplate } from "./comunicacoes.types";
 
 type Ctx = PrismaClient;
 
-/** Lista todos os templates persistidos (o front mescla com os defaults). */
-export async function listTemplates(prisma: Ctx) {
-  return prisma.comunicacaoTemplate.findMany({ orderBy: { chave: "asc" } });
+/** Lista templates persistidos em uma página (o front mescla com os defaults). */
+export async function listTemplates(prisma: Ctx, query: ComunicacaoListQuery): Promise<ComunicacaoListResult> {
+  const { skip, take } = toSkipTake(query);
+  const [items, total] = await Promise.all([
+    prisma.comunicacaoTemplate.findMany({ orderBy: { chave: "asc" }, skip, take }),
+    prisma.comunicacaoTemplate.count(),
+  ]);
+  return { items, total };
+}
+
+export async function getTemplate(prisma: Ctx, chave: string): Promise<ComunicacaoTemplate | null> {
+  return prisma.comunicacaoTemplate.findUnique({ where: { chave } });
 }
 
 /** Cria ou atualiza um template pela chave. */
@@ -19,7 +30,7 @@ export async function upsertTemplate(
     corpo: string;
     variaveis?: string[];
   },
-) {
+): Promise<ComunicacaoTemplate> {
   const payload = {
     nome: data.nome,
     descricao: data.descricao ?? null,

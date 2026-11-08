@@ -1,5 +1,7 @@
 // src/plugins/auth-verify.ts
 import fp from "fastify-plugin";
+import type { FastifyRequest } from "fastify";
+import { ApiError } from "../hateoas";
 import { verifyAccessToken } from "../utils/jwt";
 
 // Observação: `FastifyInstance.authenticate`/`authorize` e `FastifyRequest.user`
@@ -10,33 +12,36 @@ import { verifyAccessToken } from "../utils/jwt";
 // textualmente diferente (ex.: `papeis: string[]` vs o `papeis: PapelValue[]`
 // já usado lá) gera erro de conflito de tipos (TS2717).
 
+/** RFC 6750: sem credencial, `Bearer` puro; com credencial recusada, `error="invalid_token"`. */
+const INVALID_TOKEN = { "WWW-Authenticate": 'Bearer error="invalid_token"' };
+
 export default fp(async (app) => {
-  app.decorate("authenticate", async (req: any, res: any) => {
+  app.decorate("authenticate", async (req: FastifyRequest) => {
     if (req.method === "OPTIONS") return;
 
+    const authHeader = req.headers.authorization;
+    const token = typeof authHeader === "string" ? authHeader.replace(/^Bearer\s+/i, "").trim() : "";
+    if (!token) {
+      throw new ApiError("unauthorized", "Não autenticado", "Envie o token no header Authorization: Bearer <token>");
+    }
+
     try {
-      const authHeader = req.headers?.authorization;
-      if (!authHeader || typeof authHeader !== "string") {
-        throw new Error("Token ausente");
-      }
-
-      const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-      if (!token) throw new Error("Token ausente");
-
       req.user = verifyAccessToken(token);
     } catch (err) {
       app.log.warn({ err }, "Falha de autenticação JWT");
-      return res.code(401).send({ error: "Não autorizado" });
+      throw new ApiError("unauthorized", "Token inválido ou expirado", undefined, undefined, {
+        headers: INVALID_TOKEN,
+      });
     }
   });
 
   app.decorate(
     "authorize",
     (papeis: string[]) =>
-      async (req: any, res: any) => {
+      async (req: FastifyRequest) => {
         const role = req.user?.role;
         if (!role || !papeis.includes(role)) {
-          return res.code(403).send({ error: "Acesso negado" });
+          throw new ApiError("forbidden", "Acesso negado", "Seu papel não permite esta ação");
         }
       },
   );

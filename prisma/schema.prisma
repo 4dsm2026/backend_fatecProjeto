@@ -32,6 +32,12 @@ enum StatusChamado {
   ENCERRADO
 }
 
+/// Para que o token foi emitido. Um token só vale no fluxo para o qual foi criado.
+enum FinalidadeToken {
+  RESET_SENHA
+  PRIMEIRO_ACESSO
+}
+
 enum StatusSugestao {
   NAO_RESPONDIDO
   RESPONDIDO
@@ -222,13 +228,14 @@ model Sessao {
 }
 
 model TokenResetSenha {
-  id        String    @id @default(cuid())
-  usuarioId String
-  tokenHash String    @unique
-  expiraEm  DateTime
-  usadoEm   DateTime?
-  criadoEm  DateTime  @default(now())
-  usuario   Usuario   @relation("TokensDeUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  id         String          @id @default(cuid())
+  usuarioId  String
+  tokenHash  String          @unique
+  finalidade FinalidadeToken
+  expiraEm   DateTime
+  usadoEm    DateTime?
+  criadoEm   DateTime        @default(now())
+  usuario    Usuario         @relation("TokensDeUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@index([usuarioId])
   @@index([expiraEm])
@@ -300,6 +307,7 @@ model Chamado {
   atualizadoEm DateTime  @updatedAt
   encerradoEm  DateTime?
   deletadoEm   DateTime?
+  arquivadoEm  DateTime?
 
   catalogoServicoId     String?
   catalogoCategoriaId   String?
@@ -364,9 +372,10 @@ model Mensagem {
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
   deletadoEm   DateTime?
+  lidaEm       DateTime?
   chamado      Chamado   @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
   autor        Usuario   @relation(fields: [autorId], references: [id])
-
+  
   notificacoes Notificacao[] @relation("NotificacoesDaMensagem")
 
   @@index([chamadoId])
@@ -533,7 +542,7 @@ model Sugestao {
   usuarioId    String
   emailContato String
   conteudo     String         @db.Text
-    documento    Json?
+  documento    Json?
   status       StatusSugestao @default(NAO_RESPONDIDO)
   resposta     String?        @db.VarChar(1000)
   respostaDocumento Json?

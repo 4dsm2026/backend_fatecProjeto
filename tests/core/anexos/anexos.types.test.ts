@@ -3,9 +3,9 @@ import { describe, it, expect } from 'vitest';
 import {
     ParamsWithTicketIdSchema,
     ParamsWithAnexoIdSchema,
-    ListAnexosSchema,
-    DownloadAnexoSchema,
-    UploadAnexoSchema,
+    TicketIdParamsSchema,
+    AnexoIdParamsSchema,
+    ListAnexosQuerySchema,
 } from '../../../src/core/anexos/anexos.types';
 
 describe('AnexosTypes', () => {
@@ -44,12 +44,13 @@ describe('AnexosTypes', () => {
 
 })
 
-    describe('ListAnexosSchema', () => {
+    describe('ListAnexosQuerySchema', () => {
 
     it('deve validar os parâmetros da listagem', () => {
-        const resultado = ListAnexosSchema.safeParse({
-            params: {
-                id: 'ticket-001',
+        const resultado = ListAnexosQuerySchema.safeParse({
+            query: {
+                page: '0',
+                size: '20',
             },
         })
 
@@ -58,10 +59,10 @@ describe('AnexosTypes', () => {
 
 })
 
-    describe('DownloadAnexoSchema', () => {
+    describe('AnexoIdParamsSchema', () => {
 
     it('deve validar os parâmetros do download', () => {
-        const resultado = DownloadAnexoSchema.safeParse({
+        const resultado = AnexoIdParamsSchema.safeParse({
             params: {
                 anexoId: 'cmj1234567890123456789012',
             },
@@ -73,7 +74,7 @@ describe('AnexosTypes', () => {
 })
 
     it('deve validar os parâmetros do upload', () => {
-        const resultado = UploadAnexoSchema.safeParse({
+        const resultado = TicketIdParamsSchema.safeParse({
             params: {
                 id: 'ticket-001',
             },
