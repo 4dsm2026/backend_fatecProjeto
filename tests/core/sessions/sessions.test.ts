@@ -233,7 +233,10 @@ describe('GET /users/me', () => {
   it('404 problem+json — o usuário do token não existe mais', async () => {
     prismaMock.usuario.findUnique.mockResolvedValue(null)
 
-    expectProblem(await call(tokenWith('USUARIO')), 404)
+    const res = await call(tokenWith('USUARIO'))
+
+    expectProblem(res, 404)
+    expect(res.statusCode).toBe(404)
   })
 
   it('401 — sem token', async () => {

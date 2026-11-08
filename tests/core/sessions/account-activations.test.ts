@@ -351,6 +351,7 @@ describe('contrato: login → link activate → ativação', () => {
     })
     prismaMock.usuario.findUnique.mockResolvedValueOnce(makeLoginUser({ precisaTrocarSenha: true }))
 
+    // eslint-disable-next-line sonarjs/no-hardcoded-passwords -- dado fictício de teste
     const login = await app.inject({ method: 'POST', url: '/sessions', payload: { email: 'joao@example.com', password: 'Fatec@2026' } })
     expectProblem(login, 403)
     const activate = login.json<{ _links: { activate: { href: string; method: string } } }>()._links.activate

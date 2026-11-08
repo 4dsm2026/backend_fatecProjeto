@@ -13,9 +13,9 @@ function parseExpires(v?: string | number) {
   if (typeof v === "number") return Number(v);
   const s = String(v).trim();
   if (/^\d+$/.test(s)) return Number(s);
-  const m = /^([0-9]+)m$/.exec(s);
+  const m = /^(\d+)m$/.exec(s);
   if (m) return Number(m[1]) * 60;
-  const h = /^([0-9]+)h$/.exec(s);
+  const h = /^(\d+)h$/.exec(s);
   if (h) return Number(h[1]) * 3600;
   return DEFAULT_ACCESS_EXPIRES;
 }
@@ -26,7 +26,9 @@ export function setAuthCookies(res: FastifyReply, accessToken: string, refreshTo
   if (typeof r.setCookie !== "function") {
     try {
       (res as any).request?.log?.warn?.("setCookie não disponível no FastifyReply — pulando setAuthCookies");
-    } catch {}
+    } catch {
+      // log é opcional: falhar ao logar não pode derrubar o login
+    }
     return;
   }
   const maxAge = parseExpires(process.env.JWT_ACCESS_EXPIRES);

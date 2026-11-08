@@ -50,12 +50,14 @@ describe('o logger REAL do app usa o redator (ligação)', () => {
       url: '/password-resets/segredo-do-token',
       headers: { 'accept-version': '1.0.0' },
       host: 'localhost',
+      // eslint-disable-next-line sonarjs/no-hardcoded-ip -- dado fictício de teste
       ip: '10.0.0.7',
       socket: { remotePort: 5555 },
     })
 
     expect(linha.url).toBe(`/password-resets/${REDACTED}`)
     expect(JSON.stringify(linha)).not.toContain('segredo-do-token')
+    // eslint-disable-next-line sonarjs/no-hardcoded-ip -- dado fictício de teste
     expect(linha).toMatchObject({ method: 'PUT', host: 'localhost', remoteAddress: '10.0.0.7', remotePort: 5555 })
     await app.close()
   })

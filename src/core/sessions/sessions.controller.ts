@@ -39,13 +39,16 @@ function sessionIdOf(req: FastifyRequest): string {
  * qualquer um, então todo usuário logado pode editar o PRÓPRIO cadastro.
  * Se a regra do módulo users mudar, mude aqui.
  */
-function canUpdateOwnProfile(_viewer: Viewer): boolean {
+function canUpdateOwnProfile(): boolean {
   return true;
 }
 
 /** Links de menu por papel, sem repetir os que `/users/me` já tem por conta própria. */
 function menuLinks(viewer: Viewer): Links {
-  const { self: _self, "current-user": _currentUser, session: _session, ...menu } = entryLinks(viewer);
+  const menu: Links = { ...entryLinks(viewer) };
+  delete menu.self;
+  delete menu["current-user"];
+  delete menu.session;
   return menu;
 }
 
@@ -95,7 +98,7 @@ export const getCurrentUser = async (req: FastifyRequest, res: FastifyReply): Pr
   await res.send(
     toResource(
       user,
-      buildCurrentUserLinks(viewer, { canUpdate: canUpdateOwnProfile(viewer), extra: menuLinks(viewer) }),
+      buildCurrentUserLinks(viewer, { canUpdate: canUpdateOwnProfile(), extra: menuLinks(viewer) }),
     ),
   );
 };

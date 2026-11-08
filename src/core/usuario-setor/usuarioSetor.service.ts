@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { toSkipTake } from "../../hateoas/pagination.js";
 import type {
   VincularBody, AlterarPapelBody,

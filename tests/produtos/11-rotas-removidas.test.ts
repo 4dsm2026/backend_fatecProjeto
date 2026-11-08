@@ -37,6 +37,7 @@ beforeEach(() => {
   prismaMock.sessao.create.mockResolvedValue({ id: 's1' })
 })
 
+// eslint-disable-next-line sonarjs/no-hardcoded-passwords -- dado fictício de teste
 const ataque = { email: 'atacante@example.com', password: 'Qualquer123!', role: 'ADMINISTRADOR', name: 'Atacante' }
 
 describe('POST /auth/register não existe (era uma porta aberta para criar ADMINISTRADOR)', () => {
@@ -99,6 +100,7 @@ describe('as rotas legadas de /auth foram substituídas e não existem mais', ()
       method,
       url,
       headers: bearerAuth(makeUserToken({ role: 'ADMINISTRADOR' })),
+      // eslint-disable-next-line sonarjs/no-hardcoded-passwords -- dado fictício de teste
       payload: method === 'POST' ? { email: 'a@example.com', password: 'Qualquer123!', token: 'x'.repeat(20) } : undefined,
     })
 

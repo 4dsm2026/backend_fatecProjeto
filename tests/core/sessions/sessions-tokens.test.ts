@@ -264,7 +264,7 @@ describe("POST /tokens", () => {
 
     const res = await call({ refreshToken });
     const setCookie = res.headers["set-cookie"];
-    const cookies = Array.isArray(setCookie) ? setCookie : setCookie ? [setCookie] : [];
+    const cookies = ([] as string[]).concat(setCookie ?? []);
 
     expect(cookies.some((cookie) => cookie.startsWith("accessToken="))).toBe(true);
     expect(cookies.some((cookie) => cookie.startsWith("refreshToken="))).toBe(true);

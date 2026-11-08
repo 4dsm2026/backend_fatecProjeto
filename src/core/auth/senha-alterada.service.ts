@@ -2,6 +2,14 @@
 import { getMailDriver } from "../../config/mail";
 import { escapeHtml } from "../../utils/escape-html";
 
+
+/** Remove as "/" do fim da URL sem regex (evita backtracking super-linear). */
+function removerBarrasFinais(url?: string): string | undefined {
+  if (!url) return url;
+  let fim = url.length;
+  while (fim > 0 && url[fim - 1] === "/") fim--;
+  return url.slice(0, fim);
+}
 export type MotivoSenhaAlterada = "troca" | "reset";
 
 export interface DadosAvisoSenhaAlterada {
@@ -50,10 +58,9 @@ export function montarAvisoSenhaAlterada(dados: DadosAvisoSenhaAlterada): AvisoS
     detalhes.push(`<li>Dispositivo/navegador: ${escapeHtml(dados.userAgent.slice(0, USER_AGENT_MAX))}</li>`);
   }
 
-  const base = process.env.APP_WEB_URL?.replace(/\/+$/, "");
-  const linkRedefinir = base
-    ? `<p><a href="${escapeHtml(`${base}/esqueci-senha`)}">Redefinir minha senha agora</a></p>`
-    : "";
+  const base = removerBarrasFinais(process.env.APP_WEB_URL);
+  const hrefRedefinir = base ? escapeHtml(`${base}/esqueci-senha`) : "";
+  const linkRedefinir = base ? `<p><a href="${hrefRedefinir}">Redefinir minha senha agora</a></p>` : "";
 
   return {
     to,
