@@ -49,9 +49,22 @@ export async function listSugestoes(
       orderBy: { criadoEm: 'desc' },
       skip,
       take,
-      include: staff
-        ? { usuario: { select: { id: true, nome: true, ra: true } } }
-        : undefined,
+      // Resumo: NÃO carrega `documento`/`respostaDocumento` (JSON com imagens base64).
+      // O detalhe completo vem de GET /suggestions/:id.
+      select: {
+        id: true,
+        usuarioId: true,
+        emailContato: true,
+        conteudo: true,
+        status: true,
+        resposta: true,
+        respondidoPorId: true,
+        respondidoEm: true,
+        criadoEm: true,
+        usuario: staff
+          ? { select: { id: true, nome: true, ra: true } }
+          : false,
+      },
     }),
   ])
 

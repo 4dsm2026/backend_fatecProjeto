@@ -72,6 +72,7 @@ const CollectionSchema = {
   },
 } as const;
 
+const SUGGESTION_BODY_LIMIT = 10 * 1024 * 1024;
 const security = [{ bearerAuth: [] }];
 const commonProblems = {
   400: problemResponse("Dados inválidos."),
@@ -90,6 +91,8 @@ export async function sugestoesRoutes(app: FastifyInstance) {
   app.post(
     "/",
     {
+      // Documento com até 3 imagens em base64 pode passar de 1 MB (padrão do Fastify)
+      bodyLimit: SUGGESTION_BODY_LIMIT,
       schema: {
         tags: ["Suggestions"],
         summary: "Criar sugestão",
@@ -164,6 +167,7 @@ export async function sugestoesRoutes(app: FastifyInstance) {
   app.patch(
     "/:id",
     {
+      bodyLimit: SUGGESTION_BODY_LIMIT,
       preHandler: app.authorize([...STAFF_ROLES]),
       schema: {
         tags: ["Suggestions"],
