@@ -19,7 +19,7 @@ export async function getTemplate(prisma: Ctx, chave: string): Promise<Comunicac
 }
 
 /** Cria ou atualiza um template pela chave. */
-export async function upsertTemplate(
+export function upsertTemplate(
   prisma: Ctx,
   chave: string,
   data: {

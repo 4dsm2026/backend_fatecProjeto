@@ -48,7 +48,7 @@ export async function alterarPapelNoSetor(
 
 export const alterarPapelUsuarioSetor = alterarPapelNoSetor;
 
-export async function desvincularUsuarioSetor(
+export function desvincularUsuarioSetor(
   prisma: PrismaClient,
   usuarioSetorId: string
 ) {
