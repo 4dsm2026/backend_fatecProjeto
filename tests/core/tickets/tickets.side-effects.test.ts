@@ -133,3 +133,39 @@ describe('updateTicket: notificações', () => {
     expect(erroNoLog).toHaveBeenCalledWith(expect.stringContaining('[notificar-status-alterado]'), expect.any(Error))
   })
 })
+
+describe('updateTicket: data de encerramento (#127)', () => {
+  const resolvidoEm = new Date('2026-10-01T12:00:00Z')
+
+  function ctxCom(antes: Record<string, unknown>) {
+    const ctx = makeCtx()
+    ctx.chamado.findFirst.mockResolvedValue({ ...chamadoAntes, ...antes })
+    return ctx
+  }
+  const dataGravada = (ctx: ReturnType<typeof makeCtx>) => ctx.chamado.update.mock.calls[0][0].data.encerradoEm
+
+  it('ao resolver, grava a data de agora', async () => {
+    const ctx = ctxCom({ status: 'EM_ATENDIMENTO', encerradoEm: null })
+    const antes = Date.now()
+    await updateTicket(ctx, 'c1', { status: 'RESOLVIDO' }, { feitoPorId: 'func-1' })
+    expect(dataGravada(ctx).getTime()).toBeGreaterThanOrEqual(antes)
+  })
+
+  it('de RESOLVIDO para ENCERRADO mantém a data em que foi resolvido', async () => {
+    const ctx = ctxCom({ status: 'RESOLVIDO', encerradoEm: resolvidoEm })
+    await updateTicket(ctx, 'c1', { status: 'ENCERRADO' }, { feitoPorId: 'func-1' })
+    expect(dataGravada(ctx)).toEqual(resolvidoEm)
+  })
+
+  it('ao reabrir, limpa a data', async () => {
+    const ctx = ctxCom({ status: 'RESOLVIDO', encerradoEm: resolvidoEm })
+    await updateTicket(ctx, 'c1', { status: 'EM_ATENDIMENTO' }, { feitoPorId: 'func-1' })
+    expect(dataGravada(ctx)).toBeNull()
+  })
+
+  it('não reaproveita data antiga de um chamado que não estava fechado', async () => {
+    const ctx = ctxCom({ status: 'EM_ATENDIMENTO', encerradoEm: resolvidoEm })
+    await updateTicket(ctx, 'c1', { status: 'ENCERRADO' }, { feitoPorId: 'func-1' })
+    expect(dataGravada(ctx)).not.toEqual(resolvidoEm)
+  })
+})

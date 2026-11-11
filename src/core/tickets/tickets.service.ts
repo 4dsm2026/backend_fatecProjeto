@@ -340,8 +340,11 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
   const fechando   = novoStatus === StatusChamado.ENCERRADO || novoStatus === StatusChamado.RESOLVIDO;
   const reabrindo  = !!novoStatus && isReopen(before.status, novoStatus);
 
+  // encerradoEm guarda quando o atendimento foi concluído pela primeira vez. Passar de
+  // RESOLVIDO para ENCERRADO não muda a data: ela conta o prazo de reabertura e o SLA.
+  const jaFechado = before.status === StatusChamado.RESOLVIDO || before.status === StatusChamado.ENCERRADO;
   let encerradoEm: Date | null | undefined;
-  if (fechando) encerradoEm = new Date();
+  if (fechando) encerradoEm = jaFechado && before.encerradoEm ? before.encerradoEm : new Date();
   else if (reabrindo) encerradoEm = null;
 
   let arquivadoEm: Date | null | undefined;
