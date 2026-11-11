@@ -133,3 +133,14 @@ describe('updateTicket: notificações', () => {
     expect(erroNoLog).toHaveBeenCalledWith(expect.stringContaining('[notificar-status-alterado]'), expect.any(Error))
   })
 })
+
+describe('updateTicket: texto da notificação sem protocolo (#102)', () => {
+  it('não expõe o id interno do chamado', async () => {
+    const ctx = makeCtx()
+    ctx.chamado.findUnique.mockResolvedValue({ ...chamadoAntes, protocolo: null })
+    await updateTicket(ctx, 'c1', { status: 'EM_ATENDIMENTO' }, { feitoPorId: 'func-1' })
+    const payload = notifyMock.mock.calls[0][2] as { mensagem: string }
+    expect(payload.mensagem).toBe('Chamado sem protocolo mudou para EM_ATENDIMENTO.')
+    expect(payload.mensagem).not.toContain('c1')
+  })
+})

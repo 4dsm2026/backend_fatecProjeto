@@ -7,6 +7,7 @@ import { toSkipTake } from '../../hateoas';
 import { isReopen } from './ticket-rules'
 import { bestEffort } from '../../utils/best-effort'
 import { countUnreadByTicket } from '../ticket-messages/messages.service'
+import { rotuloChamado } from '../../utils/protocolo';
 
 type Ctx = PrismaClient;
 
@@ -410,7 +411,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
 
     await bestEffort('notificar-status-alterado', notifyMany(prisma, Array.from(alvos), {
       titulo: 'Status atualizado',
-      mensagem: `Chamado ${alvoInfo?.protocolo ?? id} mudou para ${data.status}.`,
+      mensagem: `Chamado ${rotuloChamado(alvoInfo?.protocolo)} mudou para ${data.status}.`,
       tipo: 'STATUS_ALTERADO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,
@@ -421,7 +422,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
     const alvoInfo = await prisma.chamado.findUnique({ where: { id }, select: { protocolo: true, organizacaoId: true } });
     await bestEffort('notificar-chamado-atribuido', notifyMany(prisma, [data.responsavelId], {
       titulo: 'Chamado atribuído',
-      mensagem: `Você foi atribuído ao chamado ${alvoInfo?.protocolo ?? id}.`,
+      mensagem: `Você foi atribuído ao chamado ${rotuloChamado(alvoInfo?.protocolo)}.`,
       tipo: 'CHAMADO_ATRIBUIDO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,

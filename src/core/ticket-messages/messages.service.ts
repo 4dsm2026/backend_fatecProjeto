@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { toSkipTake } from "../../hateoas";
 import { appGlobals } from "../../types/app-globals";
 import type { ListMessagesQuery } from "./messages.types";
+import { rotuloChamado } from "../../utils/protocolo";
 
 type Ctx = PrismaClient;
 
@@ -68,7 +69,7 @@ export async function createTicketMessage(
       Array.from(userIds),
       {
         titulo: "Nova mensagem no chamado",
-        mensagem: `O chamado ${chamado?.protocolo ?? chamadoId} recebeu uma nova mensagem.`,
+        mensagem: `O chamado ${rotuloChamado(chamado?.protocolo)} recebeu uma nova mensagem.`,
         tipo: "MENSAGEM_NOVA",
         canal: "IN_APP",
         meta: {
