@@ -18,7 +18,7 @@ export function generateRefreshToken() {
   return { token };
 }
 
-export async function createSession({
+export function createSession({
   usuarioId,
   refreshToken,
   ip,
@@ -37,7 +37,7 @@ export async function createSession({
   });
 }
 
-export async function createSessionWithClient(
+export function createSessionWithClient(
   tx: any,
   args: {
     usuarioId: string;
@@ -63,14 +63,14 @@ export async function createSessionWithClient(
  * Lookup O(1) via índice no banco — sem scan nem Argon2.
  * Só devolve sessão não revogada E não expirada: o refresh vence por tempo.
  */
-export async function verifyAndGetSession(refreshToken: string) {
+export function verifyAndGetSession(refreshToken: string) {
   const refreshHash = hashToken(refreshToken);
   return prisma.sessao.findFirst({
     where: { refreshHash, revogadaEm: null, expiraEm: { gt: new Date() } },
   });
 }
 
-export async function rotateSession(sessaoId: string, novoRefreshToken: string) {
+export function rotateSession(sessaoId: string, novoRefreshToken: string) {
   const novoHash = hashToken(novoRefreshToken);
   return prisma.sessao.update({
     where: { id: sessaoId },

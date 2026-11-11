@@ -286,7 +286,7 @@ export async function alunoSemAcessoAoChamado(
   return donoId !== authUser.sub;
 }
 
-export async function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
+export function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
   return prisma.chamado.findFirst({
     where: { id, deletadoEm: null },
     include: {

@@ -124,7 +124,7 @@ export async function createUser(
   return created;
 }
 
-export async function getUserById(
+export function getUserById(
   prisma: PrismaClient,
   id: string,
 ): Promise<(UserResponse & { deletadoEm: Date | null }) | null> {
