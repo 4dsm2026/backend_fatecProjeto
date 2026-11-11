@@ -6,3 +6,5 @@ coverage
 dist
 .prisma
 package-lock.json
+# Saída do analytics/report.py
+reports/

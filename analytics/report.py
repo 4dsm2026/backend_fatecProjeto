@@ -4,15 +4,17 @@ Relatório de análise de chamados - Fatec Secretaria
 =====================================================
 Uso:
     python report.py --api-url http://localhost:3000 --email admin@fatec.sp.gov.br --senha Mudar123#
-    python report.py --api-url http://localhost:3000 --token <jwt>  --output relatorio.json
+    python report.py --api-url http://localhost:3000 --token <jwt>  --output relatorio.json   # grava em ./reports/
 """
 
 import argparse
 import json
+import os
 import sys
 import math
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+from pathlib import Path
 from urllib.parse import urlparse
 
 try:
@@ -33,6 +35,21 @@ def validar_api_url(api_url: str) -> str:
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise ValueError(f"URL da API inválida: {api_url!r}")
     return api_url.rstrip("/")
+
+
+def validar_saida(caminho: str, base: str | None = None) -> Path:
+    """Resolve o caminho de --output e só aceita arquivos .json dentro do diretório base.
+
+    O diretório base vem de REPORT_OUTPUT_DIR (padrão: ./reports). Caminhos com ../,
+    absolutos fora da base e links simbólicos que apontam para fora são recusados.
+    """
+    raiz = Path(base or os.environ.get("REPORT_OUTPUT_DIR") or "reports").resolve()
+    destino = (raiz / caminho).resolve()  # resolve() segue links simbólicos
+    if not destino.is_relative_to(raiz):
+        raise ValueError(f"--output precisa ficar dentro de {raiz}: {caminho!r}")
+    if destino.suffix.lower() != ".json":
+        raise ValueError(f"--output precisa terminar em .json: {caminho!r}")
+    return destino
 
 
 def obter_token(api_url: str, email: str, senha: str) -> str:
@@ -287,7 +304,7 @@ def main():
     parser.add_argument("--email",    help="E-mail para autenticação")
     parser.add_argument("--senha",    help="Senha para autenticação")
     parser.add_argument("--token",    help="JWT já obtido (dispensa --email/--senha)")
-    parser.add_argument("--output",   help="Arquivo de saída JSON (padrão: stdout)")
+    parser.add_argument("--output",   help="Arquivo .json de saída, dentro de REPORT_OUTPUT_DIR (padrão: ./reports). Sem ele, usa stdout")
     parser.add_argument("--ttr-limite", type=float, default=120,
                         help="Limite (horas) para anomalia de TTR alto (padrão: 120)")
     args = parser.parse_args()
@@ -296,6 +313,14 @@ def main():
         api_url = validar_api_url(args.api_url)
     except ValueError as e:
         parser.error(str(e))
+
+    # Valida antes de qualquer chamada à API: nada é gravado se o caminho for recusado.
+    saida_path = None
+    if args.output:
+        try:
+            saida_path = validar_saida(args.output)
+        except ValueError as e:
+            parser.error(str(e))
 
     # --- autenticação ---
     if args.token:
@@ -338,10 +363,10 @@ def main():
     # --- output ---
     saida = json.dumps(relatorio, ensure_ascii=False, indent=2)
 
-    if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(saida)
-        print(f"[OK] Relatório salvo em {args.output}", file=sys.stderr)
+    if saida_path:
+        saida_path.parent.mkdir(parents=True, exist_ok=True)
+        saida_path.write_text(saida, encoding="utf-8")
+        print(f"[OK] Relatório salvo em {saida_path}", file=sys.stderr)
     else:
         print(saida)
 
