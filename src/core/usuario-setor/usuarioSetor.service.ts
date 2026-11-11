@@ -34,7 +34,7 @@ export async function vincularUsuarioSetor(
   });
 }
 
-export async function alterarPapelNoSetor(
+export function alterarPapelNoSetor(
   prisma: PrismaClient,
   usuarioSetorId: string,
   body: AlterarPapelBody
