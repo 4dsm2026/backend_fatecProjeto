@@ -1,19 +1,19 @@
-FROM node:20-alpine AS deps
+# pnpm fixado: o pnpm 11 exige Node 22. O pnpm-workspace.yaml traz o allowBuilds,
+# sem ele o pnpm recusa os builds nativos (prisma, argon2).
+FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml* package-lock.json* yarn.lock* ./
-RUN if [ -f pnpm-lock.yaml ]; then npm i -g pnpm && pnpm i --frozen-lockfile; \
-elif [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-else npm ci; fi
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN npm i -g pnpm@11.20.0 && pnpm i --frozen-lockfile
 
 
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate && npm run build
 
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -30,7 +30,8 @@ USER appuser
 
 EXPOSE 3333
 
+# 127.0.0.1 e não localhost: no Alpine, localhost resolve para IPv6 e o servidor escuta só IPv4.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3333/health || exit 1
+  CMD wget -qO- http://127.0.0.1:3333/health || exit 1
 
 CMD ["node", "dist/server.js"]

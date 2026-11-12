@@ -206,9 +206,9 @@ analytics/report.py    # relatório de análise de chamados (Python, usa a API)
 
 ## Deploy
 
-- `Dockerfile`: imagem de produção (Node 20).
-- `.github/workflows/deploy.yml`: deploy na AWS ECS, disparado **manualmente** em *Actions → Deploy to AWS ECS*.
-- ⚠️ No ECS Fargate o disco do container é temporário: enquanto o driver S3 não existir, **os anexos se perdem a cada deploy ou reinício** ([#121](https://github.com/4dsm2026/backend_fatecProjeto/issues/121)).
+- `Dockerfile`: imagem de produção.
+- A produção roda numa instância EC2 com Docker Compose atrás do nginx. O compose, a configuração do nginx e os scripts de atualização, ensaio e backup ficam no repositório [`infra_fatecProjeto`](https://github.com/4dsm2026/infra_fatecProjeto) (acesso restrito).
+- Só versões publicadas vão para produção: a mesma tag `vX.Y.Z` da `main` no backend e no frontend.
 - Versões: cada merge em `main` gera uma release automática (veja [Releases](https://github.com/4dsm2026/backend_fatecProjeto/releases)).
 
    ## 📚 Documentação
