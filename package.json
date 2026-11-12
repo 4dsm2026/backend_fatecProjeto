@@ -20,7 +20,7 @@
     "prisma:seed": "prisma db seed",
     "seed": "node prisma/seed.js",
     "backfill:outros": "node scripts/backfill-outros-setor.js",
-    "backfill:setores": "dotenv -e .env -- tsx scripts/backfill-setores.ts"
+    "backfill:protocolos": "dotenv -e .env -- node scripts/backfill-protocolos.js"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.978.0",

@@ -134,38 +134,26 @@ describe('updateTicket: notificações', () => {
   })
 })
 
-describe('updateTicket: data de encerramento (#127)', () => {
-  const resolvidoEm = new Date('2026-10-01T12:00:00Z')
-
-  function ctxCom(antes: Record<string, unknown>) {
+describe('updateTicket: texto da notificação sem protocolo (#102)', () => {
+  it('não expõe o id interno do chamado', async () => {
     const ctx = makeCtx()
-    ctx.chamado.findFirst.mockResolvedValue({ ...chamadoAntes, ...antes })
-    return ctx
-  }
-  const dataGravada = (ctx: ReturnType<typeof makeCtx>) => ctx.chamado.update.mock.calls[0][0].data.encerradoEm
-
-  it('ao resolver, grava a data de agora', async () => {
-    const ctx = ctxCom({ status: 'EM_ATENDIMENTO', encerradoEm: null })
-    const antes = Date.now()
-    await updateTicket(ctx, 'c1', { status: 'RESOLVIDO' }, { feitoPorId: 'func-1' })
-    expect(dataGravada(ctx).getTime()).toBeGreaterThanOrEqual(antes)
-  })
-
-  it('de RESOLVIDO para ENCERRADO mantém a data em que foi resolvido', async () => {
-    const ctx = ctxCom({ status: 'RESOLVIDO', encerradoEm: resolvidoEm })
-    await updateTicket(ctx, 'c1', { status: 'ENCERRADO' }, { feitoPorId: 'func-1' })
-    expect(dataGravada(ctx)).toEqual(resolvidoEm)
-  })
-
-  it('ao reabrir, limpa a data', async () => {
-    const ctx = ctxCom({ status: 'RESOLVIDO', encerradoEm: resolvidoEm })
+    ctx.chamado.findUnique.mockResolvedValue({ ...chamadoAntes, protocolo: null })
     await updateTicket(ctx, 'c1', { status: 'EM_ATENDIMENTO' }, { feitoPorId: 'func-1' })
-    expect(dataGravada(ctx)).toBeNull()
+    const payload = notifyMock.mock.calls[0][2] as { mensagem: string }
+    expect(payload.mensagem).toBe('Chamado sem protocolo: em análise pelo setor responsável.')
+    expect(payload.mensagem).not.toContain('c1')
   })
+})
 
-  it('não reaproveita data antiga de um chamado que não estava fechado', async () => {
-    const ctx = ctxCom({ status: 'EM_ATENDIMENTO', encerradoEm: resolvidoEm })
-    await updateTicket(ctx, 'c1', { status: 'ENCERRADO' }, { feitoPorId: 'func-1' })
-    expect(dataGravada(ctx)).not.toEqual(resolvidoEm)
+describe('updateTicket: status legível na notificação (#118)', () => {
+  it.each([
+    ['AGUARDANDO_USUARIO', 'Chamado TCK-TESTE1: aguardando documento ou resposta do aluno.'],
+    ['RESOLVIDO', 'Chamado TCK-TESTE1: solicitação respondida.'],
+  ] as const)('%s vira texto da interface', async (status, esperado) => {
+    const ctx = makeCtx()
+    await updateTicket(ctx, 'c1', { status }, { feitoPorId: 'func-1' })
+    const payload = notifyMock.mock.calls[0][2] as { mensagem: string }
+    expect(payload.mensagem).toBe(esperado)
+    expect(payload.mensagem).not.toContain(status)
   })
 })
