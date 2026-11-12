@@ -8,6 +8,7 @@ import { isReopen } from './ticket-rules'
 import { bestEffort } from '../../utils/best-effort'
 import { countUnreadByTicket } from '../ticket-messages/messages.service'
 import { rotuloChamado } from '../../utils/protocolo';
+import { textoMudancaStatus } from '../../utils/status-chamado';
 
 type Ctx = PrismaClient;
 
@@ -411,7 +412,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
 
     await bestEffort('notificar-status-alterado', notifyMany(prisma, Array.from(alvos), {
       titulo: 'Status atualizado',
-      mensagem: `Chamado ${rotuloChamado(alvoInfo?.protocolo)} mudou para ${data.status}.`,
+      mensagem: textoMudancaStatus(rotuloChamado(alvoInfo?.protocolo), data.status as StatusChamado),
       tipo: 'STATUS_ALTERADO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,

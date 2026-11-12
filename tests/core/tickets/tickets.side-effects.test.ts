@@ -140,7 +140,20 @@ describe('updateTicket: texto da notificação sem protocolo (#102)', () => {
     ctx.chamado.findUnique.mockResolvedValue({ ...chamadoAntes, protocolo: null })
     await updateTicket(ctx, 'c1', { status: 'EM_ATENDIMENTO' }, { feitoPorId: 'func-1' })
     const payload = notifyMock.mock.calls[0][2] as { mensagem: string }
-    expect(payload.mensagem).toBe('Chamado sem protocolo mudou para EM_ATENDIMENTO.')
+    expect(payload.mensagem).toBe('Chamado sem protocolo: em análise pelo setor responsável.')
     expect(payload.mensagem).not.toContain('c1')
+  })
+})
+
+describe('updateTicket: status legível na notificação (#118)', () => {
+  it.each([
+    ['AGUARDANDO_USUARIO', 'Chamado TCK-TESTE1: aguardando documento ou resposta do aluno.'],
+    ['RESOLVIDO', 'Chamado TCK-TESTE1: solicitação respondida.'],
+  ] as const)('%s vira texto da interface', async (status, esperado) => {
+    const ctx = makeCtx()
+    await updateTicket(ctx, 'c1', { status }, { feitoPorId: 'func-1' })
+    const payload = notifyMock.mock.calls[0][2] as { mensagem: string }
+    expect(payload.mensagem).toBe(esperado)
+    expect(payload.mensagem).not.toContain(status)
   })
 })
