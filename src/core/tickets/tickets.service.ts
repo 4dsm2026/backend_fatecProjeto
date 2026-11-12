@@ -349,6 +349,22 @@ export async function listTickets(prisma: Ctx, q: TicketsListQuery, viewerId?: s
   return { total, page, size, items: comContagem };
 }
 
+/**
+ * encerradoEm guarda quando o atendimento foi concluído pela primeira vez. Passar de
+ * RESOLVIDO para ENCERRADO não muda a data: ela conta o prazo de reabertura e o SLA.
+ * Devolve undefined quando o campo não deve mudar.
+ */
+function novaDataEncerramento(
+  before: { status: StatusChamado; encerradoEm: Date | null },
+  fechando: boolean,
+  reabrindo: boolean,
+): Date | null | undefined {
+  if (reabrindo) return null;
+  if (!fechando) return undefined;
+  const jaFechado = before.status === StatusChamado.RESOLVIDO || before.status === StatusChamado.ENCERRADO;
+  return jaFechado && before.encerradoEm ? before.encerradoEm : new Date();
+}
+
 export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateInput, opts: { feitoPorId?: string }) {
   const { feitoPorId } = opts;
   const before = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } });
@@ -360,9 +376,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
   const fechando   = novoStatus === StatusChamado.ENCERRADO || novoStatus === StatusChamado.RESOLVIDO;
   const reabrindo  = !!novoStatus && isReopen(before.status, novoStatus);
 
-  let encerradoEm: Date | null | undefined;
-  if (fechando) encerradoEm = new Date();
-  else if (reabrindo) encerradoEm = null;
+  const encerradoEm = novaDataEncerramento(before, fechando, reabrindo);
 
   let arquivadoEm: Date | null | undefined;
   if (data.arquivado === true) arquivadoEm = new Date();
