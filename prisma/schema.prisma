@@ -221,6 +221,8 @@ model Usuario {
   passesEscolares      PasseEscolar[]           @relation("PassesDoAluno")
   passesCadastrados    PasseEscolar[]           @relation("PassesCadastradosPor")
   passesHistorico      PasseEscolarHistorico[]  @relation("HistoricoPassePorUsuario")
+  pesquisasCriadas     Pesquisa[]               @relation("PesquisasCriadasPor")
+  pesquisaParticipacoes PesquisaParticipacao[]
 
   @@index([emailPessoal])
   @@index([organizacaoId])
@@ -644,4 +646,91 @@ model PasseEscolarHistorico {
 
   @@index([passeId, criadoEm])
   @@map("passes_escolares_historico")
+}
+
+/// Pesquisa institucional (CPA). Funcionalidade em beta.
+enum StatusPesquisa {
+  RASCUNHO  // em montagem: perguntas ainda podem mudar
+  ABERTA    // alunos respondem
+  ENCERRADA // só resultados
+}
+
+enum TipoPerguntaPesquisa {
+  ESCALA   // 1 (péssimo) a 5 (ótimo); 0 = não sei / não se aplica
+  MULTIPLA // uma opção entre as de `opcoes`
+  TEXTO    // resposta aberta
+}
+
+/// Uma edição da pesquisa, por semestre (ex.: "2026-2").
+model Pesquisa {
+  id          String         @id @default(cuid())
+  titulo      String         @db.VarChar(160)
+  descricao   String?        @db.Text
+  semestre    String         @db.VarChar(6)
+  status      StatusPesquisa @default(RASCUNHO)
+  /// Lista de cursos (cursoNome) que respondem. null = todos os cursos.
+  cursos      Json?
+  /// Prazo: depois desta data não aceita respostas, mesmo com status ABERTA.
+  fechaEm     DateTime?
+  abertaEm    DateTime?
+  encerradaEm DateTime?
+  criadoPorId String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  criadoPor     Usuario?               @relation("PesquisasCriadasPor", fields: [criadoPorId], references: [id])
+  perguntas     PesquisaPergunta[]
+  participacoes PesquisaParticipacao[]
+  respostas     PesquisaResposta[]
+
+  @@index([semestre])
+  @@index([status])
+  @@map("pesquisas")
+}
+
+model PesquisaPergunta {
+  id          String               @id @default(cuid())
+  pesquisaId  String
+  ordem       Int
+  secao       String?              @db.VarChar(80)
+  texto       String               @db.VarChar(300)
+  tipo        TipoPerguntaPesquisa
+  opcoes      Json?
+  obrigatoria Boolean              @default(true)
+
+  pesquisa Pesquisa @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
+
+  @@index([pesquisaId, ordem])
+  @@map("pesquisas_perguntas")
+}
+
+/// QUEM respondeu (para impedir resposta dupla). Não guarda o que foi respondido.
+model PesquisaParticipacao {
+  id         String @id @default(cuid())
+  pesquisaId String
+  usuarioId  String
+
+  pesquisa Pesquisa @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
+  usuario  Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([pesquisaId, usuarioId])
+  @@map("pesquisas_participacoes")
+}
+
+/// O QUE foi respondido, sem ligação com o aluno: sem usuarioId, sem data/hora,
+/// e com id aleatório (uuid v4; cuid embute o horário e permitiria cruzar com a
+/// participação). Guarda só curso e turno, para os recortes dos resultados.
+model PesquisaResposta {
+  id         String  @id @default(uuid())
+  pesquisaId String
+  curso      String  @db.VarChar(128)
+  turno      String? @db.VarChar(40)
+  /// { [perguntaId]: número (escala) | texto }
+  respostas  Json
+
+  pesquisa Pesquisa @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
+
+  @@index([pesquisaId, curso])
+  @@map("pesquisas_respostas")
 }
