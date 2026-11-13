@@ -131,6 +131,32 @@ export async function getUserById(
   return prisma.usuario.findUnique({ where: { id }, select: userPublicSelect });
 }
 
+const CURSO_NAO_INFORMADO = 'Curso não informado';
+
+/** Mesmo critério de curso da pesquisa CPA e do trancamento: cursoNome, senão curso. */
+function filtroCurso(curso?: string): Prisma.UsuarioWhereInput[] {
+  if (!curso) return [];
+  if (curso === CURSO_NAO_INFORMADO) {
+    return [{ OR: [{ cursoNome: null }, { cursoNome: '' }] }, { OR: [{ curso: null }, { curso: '' }] }];
+  }
+  return [{ OR: [{ cursoNome: curso }, { AND: [{ OR: [{ cursoNome: null }, { cursoNome: '' }] }, { curso }] }] }];
+}
+
+/** Trancada/Cancelada pelo começo do texto (o campo é livre); Regular é todo o resto, inclusive vazio. */
+function filtroSituacao(situacao?: 'Regular' | 'Trancada' | 'Cancelada'): Prisma.UsuarioWhereInput[] {
+  if (!situacao) return [];
+  if (situacao === 'Trancada') return [{ situacaoAcademica: { startsWith: 'Tranc' } }];
+  if (situacao === 'Cancelada') return [{ situacaoAcademica: { startsWith: 'Cancel' } }];
+  return [
+    {
+      OR: [
+        { situacaoAcademica: null },
+        { AND: [{ NOT: { situacaoAcademica: { startsWith: 'Tranc' } } }, { NOT: { situacaoAcademica: { startsWith: 'Cancel' } } }] },
+      ],
+    },
+  ];
+}
+
 export async function listUsers(
   prisma: PrismaClient,
   q: UsersListQuery,
@@ -151,6 +177,8 @@ export async function listUsers(
         }
       : {}),
   };
+  const extras = [...filtroCurso(q.curso), ...filtroSituacao(q.situacao)];
+  if (extras.length) where.AND = extras;
   const { skip, take } = toSkipTake(q);
 
   const [items, total] = await Promise.all([
