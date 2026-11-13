@@ -17,6 +17,7 @@ export function entryLinks(viewer: Viewer): Links {
     notifications: link("/notifications"),
     suggestions: link("/suggestions"),
     catalog: link("/catalog"),
+    "school-passes": link("/school-passes"),
     users: staff && link("/users"),
     "ticket-stats": staff && link("/ticket-stats"),
     sectors: admin && link("/admin/sectors"),

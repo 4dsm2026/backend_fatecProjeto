@@ -115,6 +115,18 @@ function buildMock() {
       count: vi.fn(),
       findMany: vi.fn(),
     },
+    passeEscolar: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    passeEscolarHistorico: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
   }
   // $transaction passes the mock itself as the tx client so inner calls work
 

@@ -43,6 +43,27 @@ enum StatusSugestao {
   RESPONDIDO
 }
 
+/// Passe Escolar (EMTU/ARTESP) — etapas do pedido entre aluno, Fatec e EMTU.
+enum StatusPasseEscolar {
+  SOLICITADO // aluno pediu à Fatec o cadastro no portal da EMTU
+  PENDENTE_ALUNO // a Fatec pediu correção ou dado faltante
+  CADASTRADO_PORTAL // a Fatec cadastrou o aluno no Portal de Relacionamento (ARTESP/EMTU)
+  REQUISITADO_EMTU // o aluno preencheu o formulário da EMTU e pagou o boleto
+  CONCLUIDO // benefício aprovado pela EMTU
+  INDEFERIDO // recusado pela Fatec (não elegível) ou pela EMTU
+  CANCELADO // desistência do aluno ou exclusão do portal
+}
+
+enum ModalidadePasseEscolar {
+  PASSE_LIVRE // isenção total (renda per capita até 1,5 salário mínimo)
+  MEIA_TARIFA // 50% de desconto
+}
+
+enum TipoPedidoPasseEscolar {
+  NOVO
+  REVALIDACAO
+}
+
 enum PrioridadeChamado {
   BAIXA
   MEDIA
@@ -197,6 +218,9 @@ model Usuario {
   notificacoes       Notificacao[]            @relation("NotificacoesDoUsuario")
   sugestoes          Sugestao[]
   sugestoesRespondidas Sugestao[]             @relation("SugestoesRespondidas")
+  passesEscolares      PasseEscolar[]           @relation("PassesDoAluno")
+  passesCadastrados    PasseEscolar[]           @relation("PassesCadastradosPor")
+  passesHistorico      PasseEscolarHistorico[]  @relation("HistoricoPassePorUsuario")
 
   @@index([emailPessoal])
   @@index([organizacaoId])
@@ -558,4 +582,66 @@ model Sugestao {
   @@index([criadoEm])
   @@index([status])
   @@map("sugestoes")
+}
+
+/// Pedido de Passe Escolar (EMTU/ARTESP). Funcionalidade em beta.
+/// Guarda os dados que a Fatec precisa lançar no Portal de Relacionamento e
+/// o andamento das etapas, para o aluno acompanhar sem perguntar à secretaria.
+model PasseEscolar {
+  id            String                 @id @default(cuid())
+  usuarioId     String
+  anoReferencia Int
+  tipo          TipoPedidoPasseEscolar @default(NOVO)
+  modalidade    ModalidadePasseEscolar
+  status        StatusPasseEscolar     @default(SOLICITADO)
+
+  // Dados exigidos pelo portal (a Fatec só pode incluir quem tiver todos).
+  nomeCompleto        String  @db.VarChar(120)
+  rg                  String  @db.VarChar(20)
+  cpf                 String  @db.VarChar(11)
+  cep                 String  @db.VarChar(8)
+  municipioResidencia String  @db.VarChar(80)
+  curso               String  @db.VarChar(120)
+  periodo             String  @db.VarChar(40)
+  mesConclusao        Int
+  anoConclusao        Int
+  declaraBaixaRenda   Boolean @default(false)
+  observacaoAluno     String? @db.Text
+
+  // Lado da Fatec e da EMTU
+  orientacaoFatec    String?   @db.Text // última orientação dada ao aluno (pendência, indeferimento…)
+  cadastradoPortalEm DateTime?
+  cadastradoPorId    String?
+  protocoloEmtu      String?   @db.VarChar(40) // número do formulário/requisição na EMTU, informado pelo aluno
+  encerradoEm        DateTime?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  usuario       Usuario  @relation("PassesDoAluno", fields: [usuarioId], references: [id], onDelete: Cascade)
+  cadastradoPor Usuario? @relation("PassesCadastradosPor", fields: [cadastradoPorId], references: [id])
+
+  historico PasseEscolarHistorico[]
+
+  @@index([usuarioId, anoReferencia])
+  @@index([anoReferencia, status])
+  @@index([status])
+  @@index([criadoEm])
+  @@map("passes_escolares")
+}
+
+model PasseEscolarHistorico {
+  id         String              @id @default(cuid())
+  passeId    String
+  de         StatusPasseEscolar?
+  para       StatusPasseEscolar
+  comentario String?             @db.Text
+  autorId    String?
+  criadoEm   DateTime            @default(now())
+
+  passe PasseEscolar @relation(fields: [passeId], references: [id], onDelete: Cascade)
+  autor Usuario?     @relation("HistoricoPassePorUsuario", fields: [autorId], references: [id])
+
+  @@index([passeId, criadoEm])
+  @@map("passes_escolares_historico")
 }
