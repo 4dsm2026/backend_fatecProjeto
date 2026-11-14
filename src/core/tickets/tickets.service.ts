@@ -7,6 +7,8 @@ import { toSkipTake } from '../../hateoas';
 import { isReopen } from './ticket-rules'
 import { bestEffort } from '../../utils/best-effort'
 import { countUnreadByTicket } from '../ticket-messages/messages.service'
+import { rotuloChamado } from '../../utils/protocolo';
+import { textoMudancaStatus } from '../../utils/status-chamado';
 
 type Ctx = PrismaClient;
 
@@ -166,6 +168,26 @@ async function resolveSetorIdByKeyword(
   return found?.id ?? null;
 }
 
+/** Setor de quem não tem para onde ir: a Secretaria, ou o primeiro setor por nome se não houver uma. */
+async function resolveSetorPadrao(prisma: Ctx): Promise<string | null> {
+  const secretaria = await prisma.setor.findFirst({
+    where: { nome: { contains: 'Secretaria' } },
+    orderBy: { nome: 'asc' },
+    select: { id: true },
+  });
+  if (secretaria) return secretaria.id;
+  const primeiro = await prisma.setor.findFirst({ orderBy: { nome: 'asc' }, select: { id: true } });
+  return primeiro?.id ?? null;
+}
+
+/**
+ * Setor de um chamado aberto pelo catálogo: o que tiver o nome parecido com o "setor provável"
+ * do serviço ou, se nenhum combinar, o setor padrão. Sem setor, ninguém da equipe é notificado.
+ */
+export async function resolverSetorDoChamado(prisma: Ctx, setorProvavel?: string | null): Promise<string | null> {
+  return (await resolveSetorIdByKeyword(prisma, setorProvavel)) ?? resolveSetorPadrao(prisma);
+}
+
 async function resolveTicketRelations(prisma: Ctx, data: TicketCreateInput) {
   const servicoIdIsSlug = isCatalogSlug(data.servicoId);
   const dbServicoId = servicoIdIsSlug ? null : (data.servicoId ?? null);
@@ -175,7 +197,7 @@ async function resolveTicketRelations(prisma: Ctx, data: TicketCreateInput) {
   const resolvedCatNome = data.catalogoCategoriaNome ?? data.categoriaNome ?? null;
 
   let dbSetorId = data.setorId && !isCatalogSlug(data.setorId) ? data.setorId : null;
-  dbSetorId ??= await resolveSetorIdByKeyword(prisma, data.setorProvavel);
+  dbSetorId ??= await resolverSetorDoChamado(prisma, data.setorProvavel);
 
   return {
     dbServicoId,
@@ -286,7 +308,7 @@ export async function alunoSemAcessoAoChamado(
   return donoId !== authUser.sub;
 }
 
-export async function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
+export function getTicketById(prisma: Ctx, id: string, include?: TicketsListQuery['include']) {
   return prisma.chamado.findFirst({
     where: { id, deletadoEm: null },
     include: {
@@ -329,6 +351,22 @@ export async function listTickets(prisma: Ctx, q: TicketsListQuery, viewerId?: s
   return { total, page, size, items: comContagem };
 }
 
+/**
+ * encerradoEm guarda quando o atendimento foi concluído pela primeira vez. Passar de
+ * RESOLVIDO para ENCERRADO não muda a data: ela conta o prazo de reabertura e o SLA.
+ * Devolve undefined quando o campo não deve mudar.
+ */
+function novaDataEncerramento(
+  before: { status: StatusChamado; encerradoEm: Date | null },
+  fechando: boolean,
+  reabrindo: boolean,
+): Date | null | undefined {
+  if (reabrindo) return null;
+  if (!fechando) return undefined;
+  const jaFechado = before.status === StatusChamado.RESOLVIDO || before.status === StatusChamado.ENCERRADO;
+  return jaFechado && before.encerradoEm ? before.encerradoEm : new Date();
+}
+
 export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateInput, opts: { feitoPorId?: string }) {
   const { feitoPorId } = opts;
   const before = await prisma.chamado.findFirst({ where: { id, deletadoEm: null } });
@@ -340,9 +378,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
   const fechando   = novoStatus === StatusChamado.ENCERRADO || novoStatus === StatusChamado.RESOLVIDO;
   const reabrindo  = !!novoStatus && isReopen(before.status, novoStatus);
 
-  let encerradoEm: Date | null | undefined;
-  if (fechando) encerradoEm = new Date();
-  else if (reabrindo) encerradoEm = null;
+  const encerradoEm = novaDataEncerramento(before, fechando, reabrindo);
 
   let arquivadoEm: Date | null | undefined;
   if (data.arquivado === true) arquivadoEm = new Date();
@@ -410,7 +446,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
 
     await bestEffort('notificar-status-alterado', notifyMany(prisma, Array.from(alvos), {
       titulo: 'Status atualizado',
-      mensagem: `Chamado ${alvoInfo?.protocolo ?? id} mudou para ${data.status}.`,
+      mensagem: textoMudancaStatus(rotuloChamado(alvoInfo?.protocolo), data.status as StatusChamado),
       tipo: 'STATUS_ALTERADO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,
@@ -421,7 +457,7 @@ export async function updateTicket(prisma: Ctx, id: string, data: TicketUpdateIn
     const alvoInfo = await prisma.chamado.findUnique({ where: { id }, select: { protocolo: true, organizacaoId: true } });
     await bestEffort('notificar-chamado-atribuido', notifyMany(prisma, [data.responsavelId], {
       titulo: 'Chamado atribuído',
-      mensagem: `Você foi atribuído ao chamado ${alvoInfo?.protocolo ?? id}.`,
+      mensagem: `Você foi atribuído ao chamado ${rotuloChamado(alvoInfo?.protocolo)}.`,
       tipo: 'CHAMADO_ATRIBUIDO',
       chamadoId: id,
       organizacaoId: alvoInfo?.organizacaoId ?? null,

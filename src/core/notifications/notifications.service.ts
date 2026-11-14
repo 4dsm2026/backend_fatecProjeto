@@ -92,7 +92,7 @@ export async function markAllNotificationsAsRead(
   return { updatedCount: result.count };
 }
 
-export async function createTestNotification(
+export function createTestNotification(
   prisma: PrismaClient,
   userId: string
 ) {

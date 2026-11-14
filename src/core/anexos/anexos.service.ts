@@ -8,6 +8,7 @@ import type { Role, Viewer } from "../../hateoas";
 import { canInteractWithTicket, canViewTicket } from "../tickets/ticket-rules";
 import type { TicketContext } from "../tickets/ticket-rules";
 import { notifyMany } from "../notifications/notify";
+import { rotuloChamado } from "../../utils/protocolo";
 
 type Ctx = PrismaClient;
 
@@ -201,7 +202,7 @@ export async function createAnexo(
   if (alvos.size > 0) {
     notifyMany(prisma, Array.from(alvos), {
       titulo: "Novo anexo no chamado",
-      mensagem: `Um novo arquivo (${anexo.nomeArquivo}) foi adicionado ao chamado ${ticket.protocolo ?? ticket.id}.`,
+      mensagem: `Um novo arquivo (${anexo.nomeArquivo}) foi adicionado ao chamado ${rotuloChamado(ticket.protocolo)}.`,
       tipo: "ANEXO_NOVO",
       canal: "IN_APP",
       chamadoId: ticket.id,

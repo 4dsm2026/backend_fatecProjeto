@@ -691,7 +691,8 @@ export async function ticketsRoutes(app: FastifyInstance) {
           "- Notificações são enviadas aos envolvidos (criador, responsável, " +
           "membros do setor).\n" +
           "- Se o novo status for `RESOLVIDO` ou `ENCERRADO`, `encerradoEm` é " +
-          "preenchido automaticamente com a data/hora atual.\n\n" +
+          "preenchido com a data/hora atual. De `RESOLVIDO` para `ENCERRADO` a data " +
+          "não muda (vale a do primeiro encerramento), e reabrir limpa o campo.\n\n" +
           "**Atribuição de responsável:** se `responsavelId` mudar, uma notificação " +
           "de `CHAMADO_ATRIBUIDO` é enviada ao novo responsável.\n\n" +
           "**Campos de SLA:** `slaHoras`, `slaDias` e `vencimentoSla` podem ser " +
