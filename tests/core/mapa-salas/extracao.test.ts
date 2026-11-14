@@ -116,6 +116,19 @@ describe("Busca segura (SSRF)", () => {
     await expect(buscar("https://site.exemplo/", { maxBytes: 1000, maxRedirecionamentos: 2 }, { fetch: loop, lookup: publico })).rejects.toThrow(/Redirecionamentos demais/);
   });
 
+  it("tempo estourado (na conexão ou no meio do download) vira mensagem em português", async () => {
+    const lento = vi.fn().mockRejectedValue(Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" }));
+    await expect(buscar("https://site.exemplo/", { maxBytes: 1000 }, { fetch: lento, lookup: publico })).rejects.toMatchObject({ detail: "site.exemplo: o site demorou demais para responder" });
+
+    const corpoQueTrava = new ReadableStream({
+      pull(c) {
+        c.error(Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" }));
+      },
+    });
+    const meio = vi.fn().mockResolvedValue(new Response(corpoQueTrava));
+    await expect(buscar("https://site.exemplo/", { maxBytes: 1000 }, { fetch: meio, lookup: publico })).rejects.toMatchObject({ detail: "site.exemplo: o site demorou demais para responder" });
+  });
+
   it("corta arquivo maior que o limite e trata erro HTTP", async () => {
     const grande = vi.fn().mockResolvedValue(resposta(Buffer.alloc(2048)));
     await expect(buscar("https://site.exemplo/a.pdf", { maxBytes: 1024 }, { fetch: grande, lookup: publico })).rejects.toThrow(/grande demais/);

@@ -14,6 +14,11 @@ type Ctx = PrismaClient;
 
 export const MAX_PDF_BYTES = 10 * 1024 * 1024; // mesmo limite do upload multipart
 const MAX_HTML_BYTES = 3 * 1024 * 1024;
+/**
+ * Tempo por requisição. Sites institucionais oscilam muito (a página da Fatec Cotia
+ * levou de 2 a 40 s em 14/11/2026). Página + PDF precisam caber nos 60 s do nginx.
+ */
+const TIMEOUT_MS = 25_000;
 const FONTE_ID = "padrao";
 
 /** Onde os PDFs ficam: a mesma área dos anexos (volume com backup na produção). */
@@ -152,13 +157,13 @@ export async function salvarFonte(
 
 /** Baixa a página, acha o PDF pelo XPath e baixa o PDF. Não grava nada. */
 export async function buscarPdfDaFonte(url: string, expressao: string, deps: BuscaDeps = {}) {
-  const pagina = await buscar(url, { maxBytes: MAX_HTML_BYTES }, deps);
+  const pagina = await buscar(url, { maxBytes: MAX_HTML_BYTES, timeoutMs: TIMEOUT_MS }, deps);
   if (parecePdf(pagina.corpo)) {
     // A URL já é o próprio PDF: o XPath não é necessário.
     return { urlPdf: pagina.urlFinal, corpo: pagina.corpo };
   }
   const urlPdf = extrairUrlPdf(pagina.corpo.toString("utf8"), expressao, pagina.urlFinal);
-  const pdf = await buscar(urlPdf, { maxBytes: MAX_PDF_BYTES }, deps);
+  const pdf = await buscar(urlPdf, { maxBytes: MAX_PDF_BYTES, timeoutMs: TIMEOUT_MS }, deps);
   if (!parecePdf(pdf.corpo)) {
     throw new ApiError("unprocessable", "O endereço encontrado não é um PDF", `${urlPdf} (${pdf.contentType || "tipo desconhecido"})`);
   }

@@ -115,6 +115,33 @@ async function lerComLimite(resposta: Response, maxBytes: number): Promise<Buffe
   return Buffer.concat(partes);
 }
 
+function falhaDeConexao(url: URL, e: unknown): ApiError {
+  const nome = e instanceof Error ? e.name : "";
+  const motivo = nome === "TimeoutError" || nome === "AbortError" ? "o site demorou demais para responder" : "não foi possível conectar";
+  return new ApiError("bad-request", "Falha ao acessar o endereço", `${url.hostname}: ${motivo}`);
+}
+
+async function requisitar(url: URL, opcoes: BuscaOpcoes, fetchFn: FetchFn): Promise<Response> {
+  try {
+    return await fetchFn(url.toString(), {
+      redirect: "manual",
+      headers: { "user-agent": USER_AGENT, accept: "text/html,application/pdf;q=0.9,*/*;q=0.5" },
+      signal: AbortSignal.timeout(opcoes.timeoutMs ?? 15_000),
+    });
+  } catch (e) {
+    throw falhaDeConexao(url, e);
+  }
+}
+
+async function lerCorpo(resposta: Response, url: URL, maxBytes: number): Promise<Buffer> {
+  try {
+    return await lerComLimite(resposta, maxBytes);
+  } catch (e) {
+    // O tempo também pode estourar no meio do download.
+    throw e instanceof ApiError ? e : falhaDeConexao(url, e);
+  }
+}
+
 /** GET seguro: https, host público a cada redirecionamento, tempo e tamanho limitados. */
 export async function buscar(endereco: string, opcoes: BuscaOpcoes, deps: BuscaDeps = {}): Promise<Resposta> {
   const fetchFn: FetchFn = deps.fetch ?? ((u, i) => fetch(u, i));
@@ -124,30 +151,18 @@ export async function buscar(endereco: string, opcoes: BuscaOpcoes, deps: BuscaD
 
   for (let salto = 0; ; salto++) {
     await exigirHostPublico(url, lookup);
-    let resposta: Response;
-    try {
-      resposta = await fetchFn(url.toString(), {
-        redirect: "manual",
-        headers: { "user-agent": USER_AGENT, accept: "text/html,application/pdf;q=0.9,*/*;q=0.5" },
-        signal: AbortSignal.timeout(opcoes.timeoutMs ?? 15_000),
-      });
-    } catch (e) {
-      const motivo = e instanceof Error && e.name === "TimeoutError" ? "o site demorou demais para responder" : "não foi possível conectar";
-      throw new ApiError("bad-request", "Falha ao acessar o endereço", `${url.hostname}: ${motivo}`);
-    }
+    const resposta = await requisitar(url, opcoes, fetchFn);
+    const destino = resposta.status >= 300 && resposta.status < 400 ? resposta.headers.get("location") : null;
 
-    if (resposta.status >= 300 && resposta.status < 400 && resposta.headers.get("location")) {
+    if (destino) {
       if (salto >= maxRedir) throw new ApiError("bad-request", "Redirecionamentos demais", url.toString());
-      url = validarFormatoUrl(new URL(resposta.headers.get("location") as string, url).toString());
+      url = validarFormatoUrl(new URL(destino, url).toString());
       continue;
     }
     if (!resposta.ok) {
       throw new ApiError("bad-request", "O site respondeu com erro", `${url.toString()} → HTTP ${resposta.status}`);
     }
-    return {
-      urlFinal: url.toString(),
-      contentType: (resposta.headers.get("content-type") ?? "").toLowerCase(),
-      corpo: await lerComLimite(resposta, opcoes.maxBytes),
-    };
+    const corpo = await lerCorpo(resposta, url, opcoes.maxBytes);
+    return { urlFinal: url.toString(), contentType: (resposta.headers.get("content-type") ?? "").toLowerCase(), corpo };
   }
 }

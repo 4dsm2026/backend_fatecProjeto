@@ -38,7 +38,8 @@ async function enviarArquivo(req: FastifyRequest, reply: FastifyReply, id?: stri
   const modo = (req.query as { download?: string } | undefined)?.download === "1" ? "attachment" : "inline";
   reply.header("Content-Type", "application/pdf");
   reply.header("Content-Disposition", contentDisposition(nomeArquivo, modo));
-  reply.header("Cache-Control", "private, max-age=300");
+  // O mapa atual muda de conteúdo no mesmo endereço; uma versão específica nunca muda.
+  reply.header("Cache-Control", id ? "private, max-age=86400, immutable" : "private, no-cache");
   reply.header("X-Content-Type-Options", "nosniff");
   return reply.send(fs.createReadStream(caminho));
 }
