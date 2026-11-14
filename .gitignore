@@ -8,3 +8,7 @@ dist
 package-lock.json
 # Saída do analytics/report.py
 reports/
+
+# Cache do Python (analytics/)
+__pycache__/
+*.pyc
