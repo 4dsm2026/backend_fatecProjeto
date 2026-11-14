@@ -20,6 +20,7 @@ export function entryLinks(viewer: Viewer): Links {
     "school-passes": link("/school-passes"),
     surveys: link("/surveys"),
     "enrollment-requests": link("/enrollment-requests"),
+    "room-maps": link("/room-maps/current"),
     users: staff && link("/users"),
     "ticket-stats": staff && link("/ticket-stats"),
     sectors: admin && link("/admin/sectors"),

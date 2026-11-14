@@ -226,6 +226,8 @@ model Usuario {
   solicitacoesMatricula SolicitacaoMatricula[]  @relation("SolicitacoesMatriculaDoAluno")
   solicitacoesMatriculaDecididas SolicitacaoMatricula[] @relation("SolicitacoesMatriculaDecididasPor")
   solicitacoesMatriculaHistorico SolicitacaoMatriculaHistorico[] @relation("HistoricoMatriculaPorUsuario")
+  mapasSalaPublicados   MapaSalaVersao[]         @relation("MapasSalaPublicadosPor")
+  mapaSalaFonteEditada  MapaSalaFonte[]          @relation("MapaSalaFonteEditadaPor")
 
   @@index([emailPessoal])
   @@index([organizacaoId])
@@ -798,4 +800,49 @@ model SolicitacaoMatriculaHistorico {
 
   @@index([solicitacaoId, criadoEm])
   @@map("solicitacoes_matricula_historico")
+}
+
+/// Mapa de salas (beta): o PDF publicado pela Fatec no site institucional.
+enum OrigemMapaSala {
+  AUTOMATICA // baixado da página configurada (URL + XPath)
+  MANUAL     // enviado por um administrador
+}
+
+/// De onde buscar o mapa automaticamente. Uma linha só (id "padrao").
+model MapaSalaFonte {
+  id                    String    @id @default("padrao")
+  url                   String?   @db.VarChar(500)
+  /// XPath que aponta o PDF na página (atributo href/src ou texto).
+  xpath                 String?   @db.VarChar(500)
+  atualizacaoAutomatica Boolean   @default(false)
+  ultimaVerificacaoEm   DateTime?
+  /// Resumo da última verificação (ex.: "sem mudança", "nova versão").
+  ultimoResultado       String?   @db.VarChar(300)
+  ultimoErro            String?   @db.VarChar(500)
+  atualizadoPorId       String?
+  atualizadoEm          DateTime  @updatedAt
+
+  atualizadoPor Usuario? @relation("MapaSalaFonteEditadaPor", fields: [atualizadoPorId], references: [id])
+
+  @@map("mapa_sala_fonte")
+}
+
+/// Cada PDF diferente vira uma versão. A mais recente é o mapa atual.
+model MapaSalaVersao {
+  id             String         @id @default(cuid())
+  origem         OrigemMapaSala
+  nomeArquivo    String         @db.VarChar(255)
+  caminhoArquivo String         @db.VarChar(255)
+  tamanhoBytes   Int
+  checksumSha256 String         @db.VarChar(64)
+  /// Endereço do PDF baixado (só na origem AUTOMATICA).
+  urlOrigem      String?        @db.VarChar(1000)
+  publicadoPorId String?
+  publicadoEm    DateTime       @default(now())
+
+  publicadoPor Usuario? @relation("MapasSalaPublicadosPor", fields: [publicadoPorId], references: [id])
+
+  @@index([publicadoEm])
+  @@index([checksumSha256])
+  @@map("mapa_sala_versoes")
 }
