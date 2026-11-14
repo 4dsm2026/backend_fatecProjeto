@@ -53,6 +53,10 @@ export const UsersListQuerySchema = PaginationQuerySchema.extend({
 	papel: PapelEnum.optional(),
 	organizacaoId: z.string().min(1).optional(),
 	ativo: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+	/** Curso do cadastro (cursoNome; sem ele, o curso informado). "Curso não informado" = nenhum dos dois. */
+	curso: z.string().trim().min(1).max(128).optional(),
+	/** Situação acadêmica: Regular (inclui vazio), Trancada ou Cancelada. */
+	situacao: z.enum(["Regular", "Trancada", "Cancelada"]).optional(),
 });
 
 export type UsersListQuery = z.infer<typeof UsersListQuerySchema>;

@@ -141,6 +141,15 @@ function buildMock() {
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    solicitacaoMatricula: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      update: vi.fn(),
+      groupBy: vi.fn(),
+    },
     pesquisaResposta: {
       create: vi.fn(),
       findMany: vi.fn(),

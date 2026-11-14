@@ -82,7 +82,7 @@ export async function list(req: FastifyRequest, reply: FastifyReply) {
     page: query.page,
     size: query.size,
     total: result.total,
-    filters: pickFilters(query, ['q', 'papel', 'ativo', 'organizacaoId']),
+    filters: pickFilters(query, ['q', 'papel', 'ativo', 'organizacaoId', 'curso', 'situacao']),
     links: buildLinks({
       create: isUserAdmin(viewer.role) && link('/users', 'POST'),
     }),

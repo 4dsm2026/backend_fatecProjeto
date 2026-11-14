@@ -27,6 +27,7 @@ import { anexoRoutes } from "./core/anexos/anexos.routes";
 import { sugestoesRoutes } from "./core/sugestoes/sugestoes.routes";
 import { passeEscolarRoutes } from "./core/passe-escolar/passe-escolar.routes";
 import { pesquisasRoutes } from "./core/pesquisas/pesquisas.routes";
+import { matriculaRoutes } from "./core/matricula/matricula.routes";
 import { verifyAccessToken } from "./utils/jwt";
 import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
 import { entryLinks, registerProblemHandler, toResource } from "./hateoas";
@@ -162,6 +163,7 @@ export async function buildApp() {
   app.register(sugestoesRoutes, { prefix: "/suggestions" });
   app.register(passeEscolarRoutes, { prefix: "/school-passes" }); // beta
   app.register(pesquisasRoutes, { prefix: "/surveys" }); // beta
+  app.register(matriculaRoutes, { prefix: "/enrollment-requests" }); // beta
   app.register(auditoriaRoutes);
 
   // ---------------------------------------------------------
