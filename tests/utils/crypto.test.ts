@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { hashValue, verifyHash } from '../../src/utils/crypto'
-import { verify } from 'crypto'
 
 
 describe('Crypto utils', () => {

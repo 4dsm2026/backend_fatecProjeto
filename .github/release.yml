@@ -1,0 +1,24 @@
+# Categorias das notas geradas automaticamente nas releases.
+# Fonte: https://github.com/4dsm2026/.github/blob/main/templates/release.yml
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+  categories:
+    - title: 🚀 Novas funcionalidades
+      labels: ["[Feature]"]
+    - title: 🐛 Correções
+      labels: ["[Bug]", "[Fix]"]
+    - title: 🔒 Segurança
+      labels: ["[Security]"]
+    - title: ♿ Acessibilidade e visual
+      labels: ["[A11y]", "[Style]"]
+    - title: 🧹 Refatoração e limpeza
+      labels: ["[Refactor]", "[Cleanup]"]
+    - title: 🧪 Testes
+      labels: ["[Test]"]
+    - title: 📚 Documentação
+      labels: ["[Docs]"]
+    - title: Outras mudanças
+      labels: ["*"]

@@ -2,7 +2,7 @@ import { NivelChamado, PrioridadeChamado, StatusChamado } from '@prisma/client'
 
 export type TicketsListQuery = {
   page?: number
-  pageSize?: number
+  size?: number
   search?: string
   status?: StatusChamado | StatusChamado[]
   nivel?: NivelChamado | NivelChamado[]
@@ -17,8 +17,9 @@ export type TicketsListQuery = {
   criadoAte?: string
   orderBy?: 'criadoEm' | 'atualizadoEm'
   orderDir?: 'asc' | 'desc'
+  arquivados?: 'excluir' | 'incluir' | 'somente'
   criadoPorId?: string
-  include?: ('cliente' | 'contrato' | 'servico' | 'setor' | 'responsavel' | 'criadoPor' | 'historico')[]
+  include?: ('naoLidas' | 'cliente' | 'contrato' | 'servico' | 'setor' | 'responsavel' | 'criadoPor' | 'historico')[]
 }
 
 export type TicketCreateInput = {
@@ -48,4 +49,9 @@ export type TicketCreateInput = {
 
 export type TicketUpdateInput = Partial<TicketCreateInput> & {
   status?: StatusChamado
+  arquivado?: boolean
+  observacaoInterna?: string | null
+  slaHoras?: number | null
+  slaDias?: number | null
+  vencimentoSla?: string | null
 }

@@ -1,11 +1,12 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { toSkipTake } from "../../hateoas/pagination";
 import type { SetorCreateBody, SetoresListQuery, SetorUpdateBody } from "./setores.types";
 
-export async function createSetor(prisma: PrismaClient, data: SetorCreateBody) {
+export function createSetor(prisma: PrismaClient, data: SetorCreateBody) {
   return prisma.setor.create({ data });
 }
 
-export async function getSetorById(prisma: PrismaClient, id: string) {
+export function getSetorById(prisma: PrismaClient, id: string) {
   return prisma.setor.findUnique({
     where: { id },
     include: {
@@ -15,27 +16,29 @@ export async function getSetorById(prisma: PrismaClient, id: string) {
 }
 
 export async function listSetores(prisma: PrismaClient, q: SetoresListQuery) {
-  const { page = 1, perPage = 20, search, organizacaoId } = q;
-  const where: any = {
+  const { page = 0, size = 20, search, organizacaoId } = q;
+  const { skip, take } = toSkipTake({ page, size });
+  const where: Prisma.SetorWhereInput = {
     ...(organizacaoId ? { organizacaoId } : {}),
-    ...(search ? { nome: { contains: search, mode: "insensitive" as const } } : {}),
+    // MySQL: a collation padrão já é case-insensitive (não existe `mode`).
+    ...(search ? { nome: { contains: search } } : {}),
   };
   const [data, total] = await Promise.all([
     prisma.setor.findMany({
       where,
       orderBy: { nome: "asc" },
-      skip: (page - 1) * perPage,
-      take: perPage,
+      skip,
+      take,
     }),
     prisma.setor.count({ where }),
   ]);
-  return { data, total, page, perPage };
+  return { data, total, page, size };
 }
 
-export async function updateSetor(prisma: PrismaClient, id: string, data: SetorUpdateBody) {
+export function updateSetor(prisma: PrismaClient, id: string, data: SetorUpdateBody) {
   return prisma.setor.update({ where: { id }, data });
 }
 
-export async function deleteSetor(prisma: PrismaClient, id: string) {
+export function deleteSetor(prisma: PrismaClient, id: string) {
   return prisma.setor.delete({ where: { id } });
 }

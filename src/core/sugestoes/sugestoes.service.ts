@@ -1,20 +1,10 @@
 import { PrismaClient } from '@prisma/client'
-import {
-  SugestaoCreateInput,
-  SugestaoResponderInput,
-  SugestoesListQuery,
-} from './sugestoes.types'
+import { ApiError, fieldErrorsFromZod, isStaff, toSkipTake } from '../../hateoas'
+import type { Role } from '../../hateoas'
+import { SugestaoRespostaSchema } from '../../validators/sugestoes'
+import { SugestaoCreateInput, SugestaoResponderInput, SugestoesListQuery } from './sugestoes.types'
 
 type Ctx = PrismaClient
-
-const MAX_PAGE_SIZE = 100
-const DEFAULT_PAGE_SIZE = 20
-
-const STAFF_ROLES = ['ADMINISTRADOR', 'BACKOFFICE', 'TECNICO']
-
-export function isStaffRole(role?: string) {
-  return !!role && STAFF_ROLES.includes(role)
-}
 
 export async function createSugestao(
   prisma: Ctx,
@@ -22,10 +12,7 @@ export async function createSugestao(
   opts: { usuarioId?: string },
 ) {
   const { usuarioId } = opts
-
-  if (!usuarioId) {
-    throw Object.assign(new Error('Não autenticado'), { code: 'UNAUTH' })
-  }
+  if (!usuarioId) throw new ApiError('unauthorized', 'Não autenticado')
 
   return prisma.sugestao.create({
     data: {
@@ -44,11 +31,11 @@ export async function createSugestao(
 export async function listSugestoes(
   prisma: Ctx,
   query: SugestoesListQuery,
-  opts: { usuarioId: string; role?: string },
+  opts: { usuarioId: string; role: Role },
 ) {
-  const page = query.page ?? 1
-  const pageSize = Math.min(query.pageSize ?? DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
-  const staff = isStaffRole(opts.role)
+  const { page, size } = query
+  const { skip, take } = toSkipTake(query)
+  const staff = isStaff({ id: opts.usuarioId, role: opts.role })
 
   const where = {
     ...(staff ? {} : { usuarioId: opts.usuarioId }),
@@ -60,12 +47,19 @@ export async function listSugestoes(
     prisma.sugestao.findMany({
       where,
       orderBy: { criadoEm: 'desc' },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-           select: {
+      skip,
+      take,
+      // Resumo: NÃO carrega `documento`/`respostaDocumento` (JSON com imagens base64).
+      // O detalhe completo vem de GET /suggestions/:id.
+      select: {
         id: true,
+        usuarioId: true,
+        emailContato: true,
         conteudo: true,
         status: true,
+        resposta: true,
+        respondidoPorId: true,
+        respondidoEm: true,
         criadoEm: true,
         usuario: staff
           ? { select: { id: true, nome: true, ra: true } }
@@ -74,13 +68,13 @@ export async function listSugestoes(
     }),
   ])
 
-  return { total, page, pageSize, items }
+  return { total, page, size, items }
 }
 
 export async function getSugestaoById(
   prisma: Ctx,
   id: string,
-  opts: { usuarioId: string; role?: string },
+  opts: { usuarioId: string; role: Role },
 ) {
   const sugestao = await prisma.sugestao.findUnique({
     where: { id },
@@ -91,10 +85,7 @@ export async function getSugestaoById(
   })
 
   if (!sugestao) return null
-
-  if (!isStaffRole(opts.role) && sugestao.usuarioId !== opts.usuarioId) {
-    return null
-  }
+  if (!isStaff({ id: opts.usuarioId, role: opts.role }) && sugestao.usuarioId !== opts.usuarioId) return null
 
   return sugestao
 }
@@ -103,41 +94,55 @@ export async function responderSugestao(
   prisma: Ctx,
   id: string,
   data: SugestaoResponderInput,
-  opts: { staffId: string },
+  opts: { staffId: string; role: Role },
 ) {
+  if (!isStaff({ id: opts.staffId, role: opts.role })) {
+    throw new ApiError("forbidden", "Somente a equipe pode responder sugestões");
+  }
+  const parsedResponse = SugestaoRespostaSchema.safeParse(data.resposta);
+  if (!parsedResponse.success) {
+    throw new ApiError(
+      "bad-request",
+      "Resposta inválida",
+      undefined,
+      fieldErrorsFromZod(parsedResponse.error.issues),
+    );
+  }
+
   const atual = await prisma.sugestao.findUnique({
     where: { id },
-    select: { status: true, resposta: true },
-  })
-
-  if (!atual) {
-    throw Object.assign(new Error('Sugestão não encontrada'), {
-      code: 'NOT_FOUND',
-    })
-  }
-
-  if (atual.status === 'RESPONDIDO') {
-    throw Object.assign(
-      new Error('Sugestão já respondida: resposta e status não podem mais ser alterados'),
-      { code: 'LOCKED' },
+    select: { id: true, status: true, resposta: true },
+  });
+  if (!atual) throw new ApiError("not-found", "Sugestão não encontrada");
+  if (atual.status === "RESPONDIDO" || atual.resposta) {
+    throw new ApiError(
+      'conflict',
+      'Sugestão já respondida',
+      'A resposta não pode ser alterada após ser registrada',
     )
   }
 
-  if (data.resposta !== undefined && atual.resposta) {
-    throw Object.assign(
-      new Error('A resposta já foi salva e não pode ser editada'),
-      { code: 'LOCKED' },
-    )
-  }
-
-  return prisma.sugestao.update({
-    where: { id },
+  const updated = await prisma.sugestao.updateMany({
+    where: { id, status: "NAO_RESPONDIDO", resposta: null },
     data: {
-      ...(data.resposta !== undefined ? { resposta: data.resposta } : {}),
+      resposta: parsedResponse.data,
       ...(data.respostaDocumento !== undefined ? { respostaDocumento: data.respostaDocumento } : {}),
-      ...(data.status !== undefined ? { status: data.status } : {}),
+      status: "RESPONDIDO",
       respondidoPorId: opts.staffId,
       respondidoEm: new Date(),
     },
-  })
+  });
+  if (updated.count !== 1) {
+    throw new ApiError("conflict", "Sugestão já respondida");
+  }
+
+  const suggestion = await prisma.sugestao.findUnique({
+    where: { id },
+    include: {
+      usuario: { select: { id: true, nome: true, ra: true } },
+      respondidoPor: { select: { id: true, nome: true } },
+    },
+  });
+  if (!suggestion) throw new ApiError("not-found", "Sugestão não encontrada");
+  return suggestion;
 }

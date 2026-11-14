@@ -13,6 +13,7 @@ function buildMock() {
       update: vi.fn(),
       count: vi.fn(),
       delete: vi.fn(),
+      groupBy: vi.fn(),
     },
     chamado: {
       create: vi.fn(),
@@ -25,8 +26,11 @@ function buildMock() {
     },
     mensagem: {
       create: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
+      groupBy: vi.fn(),
+      updateMany: vi.fn(),
     },
     setor: {
       create: vi.fn(),
@@ -48,6 +52,7 @@ function buildMock() {
       create: vi.fn(),
       createMany: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -70,6 +75,7 @@ function buildMock() {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
+      update: vi.fn(),
       delete: vi.fn(),
       count: vi.fn(),
     },
@@ -87,6 +93,7 @@ function buildMock() {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     anexo: {
       create: vi.fn(),
@@ -109,9 +116,51 @@ function buildMock() {
       count: vi.fn(),
       findMany: vi.fn(),
     },
+    passeEscolar: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    pesquisa: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
+    pesquisaPergunta: {
+      deleteMany: vi.fn(),
+      createMany: vi.fn(),
+    },
+    pesquisaParticipacao: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
+    solicitacaoMatricula: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      update: vi.fn(),
+      groupBy: vi.fn(),
+    },
+    pesquisaResposta: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
+    passeEscolarHistorico: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+    },
   }
   // $transaction passes the mock itself as the tx client so inner calls work
-  
+
   // $transaction passes the mock itself as the tx client so inner calls work
   mock.$transaction = vi.fn().mockImplementation((fnOrArr: any) =>
     typeof fnOrArr === 'function' ? fnOrArr(mock) : Promise.all(fnOrArr),

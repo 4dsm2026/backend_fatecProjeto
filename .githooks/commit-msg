@@ -1,0 +1,34 @@
+#!/bin/sh
+# Confere se a mensagem de commit segue o padrão Conventional Commits.
+# Guia: https://github.com/4dsm2026/.github/blob/main/CONTRIBUTING.md#7-commits
+
+titulo=$(grep -v '^#' "$1" | grep -m 1 -v '^[[:space:]]*$')
+
+case "$titulo" in
+  "Merge "* | "Revert \""* | "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+
+tipos='feat|fix|refactor|test|docs|style|chore|perf|ci|build|revert'
+if ! printf '%s\n' "$titulo" | grep -Eq "^($tipos)(\([^)]+\))?!?: [^ ]"; then
+  cat >&2 <<EOF
+
+✖ Mensagem de commit fora do padrão:
+    $titulo
+
+  Formato: <tipo>(escopo opcional): descrição
+  Tipos:   feat, fix, refactor, test, docs, style, chore, perf, ci, build, revert
+  Exemplos:
+    feat(sugestoes): adiciona filtro por status
+    fix: corrige redirecionamento após o login
+
+  Guia: https://github.com/4dsm2026/.github/blob/main/CONTRIBUTING.md#7-commits
+
+EOF
+  exit 1
+fi
+
+tamanho=$(printf '%s' "$titulo" | wc -m | tr -d ' ')
+if [ "$tamanho" -gt 50 ]; then
+  echo "⚠ Título com $tamanho caracteres. O recomendado é até 50." >&2
+fi
+exit 0

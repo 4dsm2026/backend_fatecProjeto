@@ -9,13 +9,12 @@ export type SugestaoCreateInput = {
 }
 
 export type SugestoesListQuery = {
-  page?: number
-  pageSize?: number
+  page: number
+  size: number
   status?: StatusSugestao
 }
 
 export type SugestaoResponderInput = {
-  resposta?: string
+  resposta: string
   respostaDocumento?: SugestaoDocumento
-  status?: StatusSugestao
 }

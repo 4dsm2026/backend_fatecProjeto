@@ -1,0 +1,15 @@
+# Cria a tag e a release com a próxima versão. Regras de versão:
+# https://github.com/4dsm2026/.github/blob/main/CONTRIBUTING.md#6-sprints-e-versões
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: 4dsm2026/.github/.github/workflows/release.yml@main

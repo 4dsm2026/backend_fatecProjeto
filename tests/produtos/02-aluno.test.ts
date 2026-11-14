@@ -40,14 +40,14 @@ beforeEach(() => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('POST /usuarios — Criar Aluno (com RA)', () => {
+describe('POST /users — Criar Aluno (com RA)', () => {
   it('201 — cria aluno com RA e e-mail educacional', async () => {
     const aluno = makeAluno()
     prismaMock.usuario.create.mockResolvedValueOnce(aluno)
 
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(adminToken),
       payload: {
         nome: 'Maria Aluna',
@@ -72,7 +72,7 @@ describe('POST /usuarios — Criar Aluno (com RA)', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(adminToken),
       payload: {
         nome: 'Maria Aluna 2',
@@ -88,7 +88,7 @@ describe('POST /usuarios — Criar Aluno (com RA)', () => {
   it('400 — aluno sem nenhum e-mail', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(adminToken),
       payload: {
         nome: 'Sem E-mail',
@@ -102,14 +102,14 @@ describe('POST /usuarios — Criar Aluno (com RA)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('POST /usuarios — Criar Funcionário (sem RA)', () => {
+describe('POST /users — Criar Funcionário (sem RA)', () => {
   it('201 — cria funcionário com e-mail pessoal e senha', async () => {
     const staff = makeUser({ papel: 'BACKOFFICE', nome: 'Carlos Backoffice' })
     prismaMock.usuario.create.mockResolvedValueOnce(staff)
 
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(adminToken),
       payload: {
         nome: 'Carlos Backoffice',
@@ -126,7 +126,7 @@ describe('POST /usuarios — Criar Funcionário (sem RA)', () => {
   it('400 — funcionário sem senha', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(adminToken),
       payload: {
         nome: 'Sem Senha',
@@ -142,7 +142,7 @@ describe('POST /usuarios — Criar Funcionário (sem RA)', () => {
   it('400 — funcionário sem e-mail pessoal', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(adminToken),
       payload: {
         nome: 'Sem Email',
@@ -156,11 +156,11 @@ describe('POST /usuarios — Criar Funcionário (sem RA)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('POST /usuarios — Controle de Acesso', () => {
+describe('POST /users — Controle de Acesso', () => {
   it('401 — requisição sem autenticação', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       payload: { nome: 'Alguém', emailPessoal: 'x@x.com', senha: 'Abc@1234' },
     })
     expect(res.statusCode).toBe(401)
@@ -169,7 +169,7 @@ describe('POST /usuarios — Controle de Acesso', () => {
   it('403 — usuário comum não pode criar usuários', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(userToken),
       payload: {
         nome: 'Proibido',
@@ -188,7 +188,7 @@ describe('POST /usuarios — Controle de Acesso', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(adminToken),
       payload: {
         nome: 'Duplicado',
@@ -203,7 +203,7 @@ describe('POST /usuarios — Controle de Acesso', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('GET /usuarios — Listar', () => {
+describe('GET /users — Listar', () => {
   it('200 — retorna lista paginada', async () => {
     const aluno = makeAluno()
     prismaMock.usuario.findMany.mockResolvedValueOnce([aluno])
@@ -211,15 +211,15 @@ describe('GET /usuarios — Listar', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(adminToken),
     })
 
     expect(res.statusCode).toBe(200)
     const body = res.json()
-    expect(body).toHaveProperty('items')
-    expect(body).toHaveProperty('total', 1)
-    expect(body.items).toHaveLength(1)
+    expect(body).toHaveProperty('_embedded.users')
+    expect(body.page.totalElements).toBe(1)
+    expect(body._embedded.users).toHaveLength(1)
   })
 
   it('200 — filtra por papel=USUARIO', async () => {
@@ -228,12 +228,18 @@ describe('GET /usuarios — Listar', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/usuarios?papel=USUARIO',
+      url: '/users?papel=USUARIO',
       headers: bearerAuth(adminToken),
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json().items[0]).toMatchObject({ papel: 'USUARIO' })
+    expect(res.json()._embedded.users[0]).toMatchObject({ papel: 'USUARIO' })
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ deletadoEm: null, papel: 'USUARIO' }),
+    }))
+    expect(prismaMock.usuario.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ deletadoEm: null, papel: 'USUARIO' }),
+    })
   })
 
   it('200 — busca por texto (q=)', async () => {
@@ -242,22 +248,33 @@ describe('GET /usuarios — Listar', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/usuarios?q=Maria',
+      url: '/users?q=Maria',
       headers: bearerAuth(adminToken),
     })
 
     expect(res.statusCode).toBe(200)
+    const where = expect.objectContaining({
+      deletadoEm: null,
+      OR: expect.arrayContaining([
+        { nome: { contains: 'Maria' } },
+        { emailPessoal: { contains: 'Maria' } },
+        { emailEducacional: { contains: 'Maria' } },
+        { ra: { contains: 'Maria' } },
+      ]),
+    })
+    expect(prismaMock.usuario.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }))
+    expect(prismaMock.usuario.count).toHaveBeenCalledWith({ where })
   })
 
   it('401 — sem autenticação', async () => {
-    const res = await app.inject({ method: 'GET', url: '/usuarios' })
+    const res = await app.inject({ method: 'GET', url: '/users' })
     expect(res.statusCode).toBe(401)
   })
 
   it('403 — papel USUARIO não tem acesso à listagem', async () => {
     const res = await app.inject({
       method: 'GET',
-      url: '/usuarios',
+      url: '/users',
       headers: bearerAuth(userToken),
     })
     expect(res.statusCode).toBe(403)
@@ -265,13 +282,13 @@ describe('GET /usuarios — Listar', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('GET /usuarios/:id — Buscar por ID', () => {
+describe('GET /users/:id — Buscar por ID', () => {
   it('200 — retorna usuário existente', async () => {
     prismaMock.usuario.findUnique.mockResolvedValueOnce(makeAluno())
 
     const res = await app.inject({
       method: 'GET',
-      url: `/usuarios/${IDS.aluno}`,
+      url: `/users/${IDS.aluno}`,
       headers: bearerAuth(adminToken),
     })
 
@@ -284,7 +301,7 @@ describe('GET /usuarios/:id — Buscar por ID', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/usuarios/id-inexistente',
+      url: '/users/id-inexistente',
       headers: bearerAuth(adminToken),
     })
 
@@ -293,7 +310,7 @@ describe('GET /usuarios/:id — Buscar por ID', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('PATCH /usuarios/:id — Atualizar', () => {
+describe('PATCH /users/:id — Atualizar', () => {
   it('200 — atualiza campos do aluno', async () => {
     const before = makeAluno()
     const after = { ...makeAluno(), turma: '4SEM', semestreAtual: '4' }
@@ -302,7 +319,7 @@ describe('PATCH /usuarios/:id — Atualizar', () => {
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.aluno}`,
+      url: `/users/${IDS.aluno}`,
       headers: bearerAuth(adminToken),
       payload: { turma: '4SEM', semestreAtual: '4' },
     })
@@ -319,7 +336,7 @@ describe('PATCH /usuarios/:id — Atualizar', () => {
 
     const res = await app.inject({
       method: 'PATCH',
-      url: '/usuarios/ghost-id',
+      url: '/users/ghost-id',
       headers: bearerAuth(adminToken),
       payload: { nome: 'Ghost' },
     })
@@ -329,8 +346,8 @@ describe('PATCH /usuarios/:id — Atualizar', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('DELETE /usuarios/:id — Soft Delete (Anonimização)', () => {
-  it('200 — anonimiza e inativa o usuário', async () => {
+describe('DELETE /users/:id — Soft Delete (Anonimização)', () => {
+  it('204 — anonimiza e inativa o usuário', async () => {
     const before = makeAluno()
     const anonimizado = {
       ...makeAluno(),
@@ -347,13 +364,12 @@ describe('DELETE /usuarios/:id — Soft Delete (Anonimização)', () => {
 
     const res = await app.inject({
       method: 'DELETE',
-      url: `/usuarios/${IDS.aluno}`,
+      url: `/users/${IDS.aluno}`,
       headers: bearerAuth(adminToken),
     })
 
-    expect(res.statusCode).toBe(200)
-    const body = res.json()
-    expect(body).toMatchObject({ anonimizado: true, ativo: false })
+    expect(res.statusCode).toBe(204)
+    expect(res.body).toBe('')
   })
 
   it('404 — usuário não existe para exclusão', async () => {
@@ -361,7 +377,7 @@ describe('DELETE /usuarios/:id — Soft Delete (Anonimização)', () => {
 
     const res = await app.inject({
       method: 'DELETE',
-      url: '/usuarios/ghost-id',
+      url: '/users/ghost-id',
       headers: bearerAuth(adminToken),
     })
 
@@ -369,14 +385,14 @@ describe('DELETE /usuarios/:id — Soft Delete (Anonimização)', () => {
   })
 
   it('401 — sem autenticação', async () => {
-    const res = await app.inject({ method: 'DELETE', url: `/usuarios/${IDS.aluno}` })
+    const res = await app.inject({ method: 'DELETE', url: `/users/${IDS.aluno}` })
     expect(res.statusCode).toBe(401)
   })
 
   it('403 — papel não autorizado', async () => {
     const res = await app.inject({
       method: 'DELETE',
-      url: `/usuarios/${IDS.aluno}`,
+      url: `/users/${IDS.aluno}`,
       headers: bearerAuth(userToken),
     })
     expect(res.statusCode).toBe(403)

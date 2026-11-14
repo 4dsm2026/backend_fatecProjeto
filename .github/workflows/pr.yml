@@ -1,0 +1,13 @@
+name: PR
+
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  pr:
+    uses: 4dsm2026/.github/.github/workflows/pr-check.yml@main

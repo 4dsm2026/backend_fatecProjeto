@@ -14,8 +14,8 @@ export interface MailDriver {
 
 // ---------- AWS SES ----------
 class SESMailDriver implements MailDriver {
-  private client: SESClient;
-  private from: string;
+  private readonly client: SESClient;
+  private readonly from: string;
 
   constructor(from: string) {
     this.from = from;
@@ -46,8 +46,8 @@ class SESMailDriver implements MailDriver {
 
 // ---------- Resend (fallback) ----------
 class ResendMailDriver implements MailDriver {
-  private from: string;
-  private resend: any;
+  private readonly from: string;
+  private readonly resend: any;
 
   constructor(from: string) {
     this.from = from;

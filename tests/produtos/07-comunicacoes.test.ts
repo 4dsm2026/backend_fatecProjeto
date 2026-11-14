@@ -23,6 +23,8 @@ import { prismaMock } from '../../src/lib/__mocks__/prisma'
 import { makeAdminToken, makeUserToken, bearerAuth } from '../helpers/auth'
 import { resetMocks } from '../helpers/reset'
 
+Object.assign(prismaMock.comunicacaoTemplate, { count: vi.fn(), findUnique: vi.fn() })
+
 let app: FastifyInstance
 let adminToken: string
 let alunoToken: string
@@ -40,43 +42,56 @@ afterAll(async () => {
 
 beforeEach(() => {
   resetMocks()
+  prismaMock.comunicacaoTemplate.count.mockResolvedValue(1)
+  prismaMock.comunicacaoTemplate.findUnique.mockResolvedValue(null)
   sendMock.mockClear()
   sendMock.mockResolvedValue(undefined)
 })
 
-describe('GET /admin/comunicacoes', () => {
-  it('200 — retorna os templates persistidos', async () => {
+describe('GET /admin/communication-templates', () => {
+  it('200 — retorna coleção HAL com os templates persistidos', async () => {
     prismaMock.comunicacaoTemplate.findMany.mockResolvedValue([
-      { id: 't1', chave: 'TICKET_OPENED', nome: 'Chamado aberto', habilitado: true, assunto: 'x', corpo: 'y' },
+      {
+        id: 't1', chave: 'TICKET_OPENED', nome: 'Chamado aberto', descricao: null, habilitado: true,
+        assunto: 'x', corpo: 'y', variaveis: [], criadoEm: new Date(), atualizadoEm: new Date(),
+      },
     ])
-    const res = await app.inject({ method: 'GET', url: '/admin/comunicacoes', headers: bearerAuth(adminToken) })
+    const res = await app.inject({ method: 'GET', url: '/admin/communication-templates', headers: bearerAuth(adminToken) })
     expect(res.statusCode).toBe(200)
-    expect(res.json().data).toHaveLength(1)
+    expect(res.json()._embedded['communication-templates']).toHaveLength(1)
+    expect(res.json()._embedded['communication-templates'][0]._links.self.href)
+      .toBe('/admin/communication-templates/TICKET_OPENED')
   })
 
   it('403 — aluno não acessa', async () => {
-    const res = await app.inject({ method: 'GET', url: '/admin/comunicacoes', headers: bearerAuth(alunoToken) })
+    const res = await app.inject({ method: 'GET', url: '/admin/communication-templates', headers: bearerAuth(alunoToken) })
     expect(res.statusCode).toBe(403)
   })
 })
 
-describe('PUT /admin/comunicacoes/:chave', () => {
-  it('200 — salva (upsert) um template', async () => {
-    prismaMock.comunicacaoTemplate.upsert.mockResolvedValue({ id: 't1', chave: 'TICKET_OPENED', nome: 'Chamado aberto' })
+describe('PUT /admin/communication-templates/:chave', () => {
+  it('201 — cria template HAL com Location quando a chave ainda não existe', async () => {
+    prismaMock.comunicacaoTemplate.upsert.mockResolvedValue({
+      id: 't1', chave: 'TICKET_OPENED', nome: 'Chamado aberto', descricao: null, habilitado: true,
+      assunto: 'Chamado {{chamado.protocolo}}', corpo: 'Olá {{aluno.nome}}', variaveis: [],
+      criadoEm: new Date(), atualizadoEm: new Date(),
+    })
     const res = await app.inject({
       method: 'PUT',
-      url: '/admin/comunicacoes/TICKET_OPENED',
+      url: '/admin/communication-templates/TICKET_OPENED',
       headers: bearerAuth(adminToken),
       payload: { nome: 'Chamado aberto', habilitado: true, assunto: 'Chamado {{chamado.protocolo}}', corpo: 'Olá {{aluno.nome}}' },
     })
-    expect(res.statusCode).toBe(200)
+    expect(res.statusCode).toBe(201)
+    expect(res.headers.location).toBe('/admin/communication-templates/TICKET_OPENED')
+    expect(res.json()._links.self.href).toBe('/admin/communication-templates/TICKET_OPENED')
     expect(prismaMock.comunicacaoTemplate.upsert).toHaveBeenCalled()
   })
 
   it('400 — corpo vazio é rejeitado', async () => {
     const res = await app.inject({
       method: 'PUT',
-      url: '/admin/comunicacoes/TICKET_OPENED',
+      url: '/admin/communication-templates/TICKET_OPENED',
       headers: bearerAuth(adminToken),
       payload: { nome: 'x', assunto: 'y', corpo: '' },
     })
@@ -84,11 +99,11 @@ describe('PUT /admin/comunicacoes/:chave', () => {
   })
 })
 
-describe('POST /admin/comunicacoes/teste', () => {
+describe('POST /admin/communication-tests', () => {
   it('200 — envia e-mail de teste com placeholders resolvidos', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/admin/comunicacoes/teste',
+      url: '/admin/communication-tests',
       headers: bearerAuth(adminToken),
       payload: { to: 'admin@fatec.sp.gov.br', assunto: 'Chamado {{chamado.protocolo}}', corpo: 'Olá {{aluno.nome}}' },
     })
@@ -103,7 +118,7 @@ describe('POST /admin/comunicacoes/teste', () => {
   it('403 — aluno não pode disparar teste', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/admin/comunicacoes/teste',
+      url: '/admin/communication-tests',
       headers: bearerAuth(alunoToken),
       payload: { to: 'x@y.com', assunto: 'a', corpo: 'b' },
     })

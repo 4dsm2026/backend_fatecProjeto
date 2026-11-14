@@ -31,7 +31,7 @@ export async function createTicketMessage(prisma: Ctx, chamadoId: string, autorI
   if (chamado?.setorId) { /* busca usuários do setor e adiciona também */ }
 
   const app: any = (global as any).fastifyAppInstance;
-  if ((globalThis as any).sendToUsersWS) { /* WebSocket só para os participantes */ }
+  if ((globalThis as any).sendToTicketViewersWS) { /* WebSocket só para os participantes */ }
   if (app?.notifyUsers && userIds.size > 0) { await app.notifyUsers(Array.from(userIds), {...}, prisma); }
 
   return msg;
@@ -40,7 +40,7 @@ export async function createTicketMessage(prisma: Ctx, chamadoId: string, autorI
 
 **Teste 1 — "Cria uma nova mensagem vinculada a um chamado"**: caminho simples, `criadoPorId` igual ao autor (ninguém a notificar). Confirma que `mensagem.create` foi chamado com os dados e `include` corretos, e que o retorno bate com a mensagem criada.
 
-**Teste 2 — "deve notificar os usuários envolvidos quando a mensagem é criada"**: `criadoPorId` diferente do autor. Simula `global.fastifyAppInstance` e `globalThis.sendToUsersWS` com `vi.fn()` (atribuição direta no objeto global, sem `vi.mock`). Confirma que `app.notifyUsers` **foi chamado**.
+**Teste 2 — "deve notificar os usuários envolvidos quando a mensagem é criada"**: `criadoPorId` diferente do autor. Simula `global.fastifyAppInstance` e `globalThis.sendToTicketViewersWS` com `vi.fn()` (atribuição direta no objeto global, sem `vi.mock`). Confirma que `app.notifyUsers` **foi chamado**.
 
 **Teste 3 — "Não deve notificar os usuários envolvidos quando a mensagem é criada"**: o oposto do teste 2 — `criadoPorId` igual ao autor. Confirma que `app.notifyUsers` **não foi chamado** (`.not.toHaveBeenCalled()`), provando as duas pontas do `if`.
 
