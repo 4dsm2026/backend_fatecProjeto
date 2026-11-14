@@ -19,6 +19,7 @@ export function entryLinks(viewer: Viewer): Links {
     catalog: link("/catalog"),
     "school-passes": link("/school-passes"),
     surveys: link("/surveys"),
+    "enrollment-requests": link("/enrollment-requests"),
     users: staff && link("/users"),
     "ticket-stats": staff && link("/ticket-stats"),
     sectors: admin && link("/admin/sectors"),

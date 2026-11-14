@@ -5,7 +5,7 @@ import type { Role } from "../../src/hateoas";
 const viewer = (role: Role) => ({ id: "u1", role });
 const rels = (role: Role) => Object.keys(entryLinks(viewer(role))).sort((a, b) => a.localeCompare(b));
 
-const BASE = ["catalog", "current-user", "notifications", "school-passes", "self", "session", "suggestions", "surveys", "tickets"];
+const BASE = ["catalog", "current-user", "enrollment-requests", "notifications", "school-passes", "self", "session", "suggestions", "surveys", "tickets"];
 const STAFF = ["ticket-stats", "users"];
 const ADMIN = ["audit-logs", "communication-templates", "roles", "sectors"];
 
