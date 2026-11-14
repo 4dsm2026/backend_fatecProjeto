@@ -54,9 +54,10 @@ export async function createTicketMessage(
 
   const globals = appGlobals();
 
-  // 🔥 1. Broadcast WebSocket (para atualizar os chats de todos conectados).
+  // 🔥 1. Tempo real: só para quem pode ver o chamado (o aluno dono e a equipe),
+  // nunca para todos os conectados (GHSA-mgm4-3jqg-fx5j).
   // Exceção ao REST: o canal em tempo real não tem `_links`; o payload da mensagem é o mesmo de antes.
-  globals.broadcastWS?.({
+  globals.sendToTicketViewersWS?.(chamado?.criadoPorId, {
     type: "nova_mensagem",
     chamadoId,
     mensagem: msg,

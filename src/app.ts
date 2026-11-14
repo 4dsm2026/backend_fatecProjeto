@@ -38,6 +38,7 @@ import { redactUrl } from "./utils/redact-url";
 import type { RawData, WebSocket } from "ws";
 import type { Prisma } from "@prisma/client";
 import { appGlobals } from "./types/app-globals";
+import { WsHub } from "./realtime/ws-hub";
 import type { NotifyPayload } from "./types/app-globals";
 
 
@@ -175,7 +176,8 @@ export async function buildApp() {
   // o JWT na query string (que vaza em logs de acesso/proxy).
   // O token via ?token= ainda é aceito como fallback de compatibilidade.
   // ---------------------------------------------------------
-  const connections = new Map<string, WebSocket>();
+  // Conexões por usuário (várias abas). Sem envio para todos: ver realtime/ws-hub.ts.
+  const hub = new WsHub();
   const AUTH_TIMEOUT_MS = 10_000;
 
   /** Frame que o cliente manda pelo WebSocket. Os campos chegam sem garantia de tipo. */
@@ -201,8 +203,9 @@ export async function buildApp() {
     function authenticate(token: unknown): boolean {
       if (typeof token !== "string" || !token) return false;
       try {
-        userId = verifyAccessToken(token).sub;
-        connections.set(userId, socket);
+        const payload = verifyAccessToken(token);
+        userId = payload.sub;
+        hub.add(userId, payload.role as Role, socket);
         app.log.info(`WS conectado: userId=${userId}`);
         return true;
       } catch {
@@ -243,7 +246,7 @@ export async function buildApp() {
 
       // Depois do handshake o cliente não envia nada que o servidor aceite:
       // `nova_mensagem` nasce só no POST /tickets/:id/messages e é emitida pelo
-      // servidor (broadcastWS). Repassar frames de clientes permitia forjar
+      // servidor (sendToTicketViewersWS). Repassar frames de clientes permitia forjar
       // mensagens de outra pessoa.
       if (!userId) handshake(frame);
     });
@@ -251,7 +254,7 @@ export async function buildApp() {
     socket.on("close", () => {
       stopAuthTimer();
       if (userId) {
-        connections.delete(userId);
+        hub.remove(userId, socket);
         app.log.info(`WS desconectado: userId=${userId}`);
       }
     });
@@ -261,11 +264,7 @@ export async function buildApp() {
     });
   });
 
-  appGlobals().broadcastWS = (data: unknown) => {
-    for (const [, socket] of connections) {
-      if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
-    }
-  };
+  appGlobals().sendToTicketViewersWS = (ownerId, data) => hub.sendToTicketViewers(ownerId, data);
 
   async function getInAppOptInUserIds(userIds: string[]): Promise<Set<string>> {
     if (!userIds.length) return new Set();
@@ -284,8 +283,7 @@ export async function buildApp() {
     for (const userId of userIds) {
       if (!alvos.has(userId)) continue;
 
-      const socket = connections.get(userId);
-      if (socket && socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
+      hub.sendToUsers([userId], data);
 
       await app.prisma.notificacao.create({
         data: {

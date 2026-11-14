@@ -19,9 +19,13 @@ declare module "fastify" {
 }
 
 export type AppGlobals = typeof globalThis & {
-  broadcastWS?: (data: unknown) => void;
+  /**
+   * Evento de chamado em tempo real: vai só para o dono do chamado e para a equipe.
+   * Não há "enviar para todos" (GHSA-mgm4-3jqg-fx5j).
+   */
+  sendToTicketViewersWS?: (ownerId: string | null | undefined, data: unknown) => void;
   fastifyAppInstance?: { notifyUsers?: NotifyUsers };
 };
 
-/** `globalThis` com o que o app.ts publica: o broadcast do WebSocket e a instância do Fastify. */
+/** `globalThis` com o que o app.ts publica: o envio pelo WebSocket e a instância do Fastify. */
 export const appGlobals = (): AppGlobals => globalThis as AppGlobals;
