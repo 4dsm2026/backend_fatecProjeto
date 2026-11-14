@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { HalLinksSchema, PageInfoSchema, STAFF_ROLES } from "../../hateoas";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
+import { commonProblemResponses } from "../../utils/openapi-problem";
 import { create, eligibility, getOne, list, respond, summary, transition } from "./matricula.controller";
 import { MAX_TRANCAMENTOS, MOTIVOS, STATUS_VALUES, TIPO_VALUES } from "./matricula.rules";
 
@@ -9,23 +10,6 @@ import { MAX_TRANCAMENTOS, MOTIVOS, STATUS_VALUES, TIPO_VALUES } from "./matricu
  * Os schemas abaixo são só para o Swagger (a validação real é Zod, no controller).
  */
 
-const ProblemSchema = {
-  type: "object",
-  required: ["type", "title", "status", "instance"],
-  properties: {
-    type: { type: "string" },
-    title: { type: "string" },
-    status: { type: "integer" },
-    detail: { type: "string" },
-    instance: { type: "string" },
-    errors: { type: "array", items: { type: "object" } },
-  },
-} as const;
-
-const problemResponse = (description: string) => ({
-  description,
-  content: { "application/problem+json": { schema: ProblemSchema } },
-});
 
 const STATUS_ENUM = [...STATUS_VALUES];
 const TIPO_ENUM = [...TIPO_VALUES];
@@ -67,15 +51,7 @@ const CollectionSchema = {
 
 const IdParams = { type: "object", required: ["id"], properties: { id: { type: "string", minLength: 1 } } } as const;
 const security = [{ bearerAuth: [] }];
-const commonProblems = {
-  400: problemResponse("Dados inválidos."),
-  401: problemResponse("Autenticação obrigatória."),
-  403: problemResponse("Papel sem permissão para a ação."),
-  404: problemResponse("Solicitação não encontrada (ou de outro aluno)."),
-  409: problemResponse("Situação não permite a ação."),
-  429: problemResponse("Limite de requisições excedido."),
-  500: problemResponse("Erro inesperado."),
-} as const;
+const commonProblems = commonProblemResponses("Solicitação não encontrada (ou de outro aluno).", "Situação não permite a ação.");
 
 const TAG = "Enrollment requests (beta)";
 
