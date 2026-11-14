@@ -38,7 +38,7 @@ export async function createPapel(prisma: PrismaClient, body: PapelCreateBody): 
   }
 }
 
-export async function getPapel(prisma: PrismaClient, id: string): Promise<PapelWithUsage | null> {
+export function getPapel(prisma: PrismaClient, id: string): Promise<PapelWithUsage | null> {
   return prisma.papelCatalogo.findUnique({ where: { id }, include: papelUsageInclude });
 }
 

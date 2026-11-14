@@ -34,7 +34,7 @@ export async function vincularUsuarioSetor(
   });
 }
 
-export async function alterarPapelNoSetor(
+export function alterarPapelNoSetor(
   prisma: PrismaClient,
   usuarioSetorId: string,
   body: AlterarPapelBody
@@ -48,7 +48,7 @@ export async function alterarPapelNoSetor(
 
 export const alterarPapelUsuarioSetor = alterarPapelNoSetor;
 
-export async function desvincularUsuarioSetor(
+export function desvincularUsuarioSetor(
   prisma: PrismaClient,
   usuarioSetorId: string
 ) {

@@ -4,7 +4,7 @@ import { ApiError, toSkipTake } from "../../hateoas";
 import type { AuditoriaListQuery, RegistrarAuditoriaDTO } from "./auditoria.types";
 
 export class AuditoriaService {
-  async registrar(data: RegistrarAuditoriaDTO, actorId: string) {
+  registrar(data: RegistrarAuditoriaDTO, actorId: string) {
     return prisma.auditoria.create({
       data: {
         acao: data.acao,
