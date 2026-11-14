@@ -30,6 +30,8 @@ import { pesquisasRoutes } from "./core/pesquisas/pesquisas.routes";
 import { matriculaRoutes } from "./core/matricula/matricula.routes";
 import { mapaSalasRoutes } from "./core/mapa-salas/mapa-salas.routes";
 import { agendarSincronizacaoMapaSalas } from "./jobs/sincronizarMapaSalas";
+import { roteamentoRoutes } from "./core/roteamento/roteamento.routes";
+import { agendarEscalonamento } from "./jobs/escalonarChamados";
 import { verifyAccessToken } from "./utils/jwt";
 import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
 import { entryLinks, registerProblemHandler, toResource } from "./hateoas";
@@ -160,6 +162,7 @@ export async function buildApp() {
   app.register(papeisRoutes, { prefix: "/admin" });
   app.register(usuarioSetorRoutes, { prefix: "/admin" });
   app.register(comunicacoesRoutes, { prefix: "/admin" });
+  app.register(roteamentoRoutes, { prefix: "/admin" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(anexoRoutes, { prefix: "/" });
   app.register(sugestoesRoutes, { prefix: "/suggestions" });
@@ -305,7 +308,10 @@ export async function buildApp() {
   appGlobals().fastifyAppInstance = app;
 
   scheduleCleanupAnexos(app.prisma, UPLOADS_DIR);
-  if (env.NODE_ENV !== "test") agendarSincronizacaoMapaSalas(app.prisma);
+  if (env.NODE_ENV !== "test") {
+    agendarSincronizacaoMapaSalas(app.prisma);
+    agendarEscalonamento(app.prisma);
+  }
 
   return app;
 }
