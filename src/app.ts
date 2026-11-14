@@ -28,6 +28,8 @@ import { sugestoesRoutes } from "./core/sugestoes/sugestoes.routes";
 import { passeEscolarRoutes } from "./core/passe-escolar/passe-escolar.routes";
 import { pesquisasRoutes } from "./core/pesquisas/pesquisas.routes";
 import { matriculaRoutes } from "./core/matricula/matricula.routes";
+import { mapaSalasRoutes } from "./core/mapa-salas/mapa-salas.routes";
+import { agendarSincronizacaoMapaSalas } from "./jobs/sincronizarMapaSalas";
 import { verifyAccessToken } from "./utils/jwt";
 import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
 import { entryLinks, registerProblemHandler, toResource } from "./hateoas";
@@ -164,6 +166,7 @@ export async function buildApp() {
   app.register(passeEscolarRoutes, { prefix: "/school-passes" }); // beta
   app.register(pesquisasRoutes, { prefix: "/surveys" }); // beta
   app.register(matriculaRoutes, { prefix: "/enrollment-requests" }); // beta
+  app.register(mapaSalasRoutes, { prefix: "/room-maps" }); // beta
   app.register(auditoriaRoutes);
 
   // ---------------------------------------------------------
@@ -302,6 +305,7 @@ export async function buildApp() {
   appGlobals().fastifyAppInstance = app;
 
   scheduleCleanupAnexos(app.prisma, UPLOADS_DIR);
+  if (env.NODE_ENV !== "test") agendarSincronizacaoMapaSalas(app.prisma);
 
   return app;
 }

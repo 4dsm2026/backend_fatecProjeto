@@ -141,6 +141,18 @@ function buildMock() {
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    mapaSalaVersao: {
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+    },
+    mapaSalaFonte: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
     solicitacaoMatricula: {
       create: vi.fn(),
       findFirst: vi.fn(),
