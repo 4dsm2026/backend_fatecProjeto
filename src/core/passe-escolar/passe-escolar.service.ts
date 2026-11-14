@@ -3,6 +3,7 @@ import { ApiError, isStaff, toSkipTake } from "../../hateoas";
 import type { Viewer } from "../../hateoas";
 import { registrarAuditoria } from "../../lib/auditoria";
 import { notifyMany } from "../notifications/notify";
+import { alvosDaSecretaria } from "../notifications/alvos";
 import { bestEffort } from "../../utils/best-effort";
 import {
   STATUS_ATIVOS,
@@ -67,31 +68,6 @@ async function exigirDetalhe(prisma: Ctx, id: string) {
 }
 
 /* ===================== Notificações ===================== */
-
-/**
- * Quem, na Fatec, cuida do Passe Escolar: os membros do setor "Secretaria".
- * Sem esse setor (ou sem membros), avisa os administradores.
- */
-async function alvosDaSecretaria(prisma: Ctx): Promise<string[]> {
-  const setor = await prisma.setor.findFirst({
-    where: { nome: { contains: "Secretaria" } },
-    select: { id: true },
-    orderBy: { nome: "asc" },
-  });
-  if (setor) {
-    const vinculos = await prisma.usuarioSetor.findMany({
-      where: { setorId: setor.id, usuario: { ativo: true, deletadoEm: null } },
-      select: { usuarioId: true },
-    });
-    const ids = vinculos.map((v) => v.usuarioId);
-    if (ids.length) return ids;
-  }
-  const admins = await prisma.usuario.findMany({
-    where: { papel: "ADMINISTRADOR", ativo: true, deletadoEm: null },
-    select: { id: true },
-  });
-  return admins.map((a) => a.id);
-}
 
 async function notificar(
   prisma: Ctx,

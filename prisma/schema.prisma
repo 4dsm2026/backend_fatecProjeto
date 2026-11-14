@@ -223,6 +223,9 @@ model Usuario {
   passesHistorico      PasseEscolarHistorico[]  @relation("HistoricoPassePorUsuario")
   pesquisasCriadas     Pesquisa[]               @relation("PesquisasCriadasPor")
   pesquisaParticipacoes PesquisaParticipacao[]
+  solicitacoesMatricula SolicitacaoMatricula[]  @relation("SolicitacoesMatriculaDoAluno")
+  solicitacoesMatriculaDecididas SolicitacaoMatricula[] @relation("SolicitacoesMatriculaDecididasPor")
+  solicitacoesMatriculaHistorico SolicitacaoMatriculaHistorico[] @relation("HistoricoMatriculaPorUsuario")
 
   @@index([emailPessoal])
   @@index([organizacaoId])
@@ -733,4 +736,66 @@ model PesquisaResposta {
 
   @@index([pesquisaId, curso])
   @@map("pesquisas_respostas")
+}
+
+/// Trancamento e cancelamento de matrícula. Funcionalidade em beta.
+enum TipoSolicitacaoMatricula {
+  TRANCAMENTO  // suspende o curso por um semestre letivo; a vaga é mantida
+  CANCELAMENTO // encerra o vínculo com o curso; definitivo
+}
+
+enum StatusSolicitacaoMatricula {
+  SOLICITADO     // aluno pediu
+  EM_ANALISE     // a Secretaria está analisando
+  PENDENTE_ALUNO // a Secretaria pediu correção ou documento
+  DEFERIDO       // aceito: a situação acadêmica do aluno muda
+  INDEFERIDO     // recusado
+  CANCELADO      // o aluno desistiu do pedido
+}
+
+model SolicitacaoMatricula {
+  id        String                     @id @default(cuid())
+  usuarioId String
+  tipo      TipoSolicitacaoMatricula
+  status    StatusSolicitacaoMatricula @default(SOLICITADO)
+  /// Semestre letivo a que o pedido se refere (ex.: "2026-2").
+  semestre  String                     @db.VarChar(6)
+  /// Um dos motivos de `matricula.rules.ts` (para os recortes de evasão).
+  motivo        String  @db.VarChar(40)
+  justificativa String? @db.Text
+
+  /// Curso do aluno na hora do pedido (o cadastro pode mudar depois).
+  curso String @db.VarChar(128)
+
+  orientacaoFatec String?   @db.Text
+  decididoEm      DateTime?
+  decididoPorId   String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  usuario     Usuario                         @relation("SolicitacoesMatriculaDoAluno", fields: [usuarioId], references: [id], onDelete: Cascade)
+  decididoPor Usuario?                        @relation("SolicitacoesMatriculaDecididasPor", fields: [decididoPorId], references: [id])
+  historico   SolicitacaoMatriculaHistorico[]
+
+  @@index([usuarioId])
+  @@index([status, criadoEm])
+  @@index([semestre, tipo])
+  @@map("solicitacoes_matricula")
+}
+
+model SolicitacaoMatriculaHistorico {
+  id            String                      @id @default(cuid())
+  solicitacaoId String
+  de            StatusSolicitacaoMatricula?
+  para          StatusSolicitacaoMatricula
+  comentario    String?                     @db.Text
+  autorId       String?
+  criadoEm      DateTime                    @default(now())
+
+  solicitacao SolicitacaoMatricula @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
+  autor       Usuario?             @relation("HistoricoMatriculaPorUsuario", fields: [autorId], references: [id])
+
+  @@index([solicitacaoId, criadoEm])
+  @@map("solicitacoes_matricula_historico")
 }

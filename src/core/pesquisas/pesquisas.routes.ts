@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { HalLinksSchema, PageInfoSchema, STAFF_ROLES } from "../../hateoas";
 import { useDocsOnlySchemas } from "../../utils/openapi-docs-only";
+import { commonProblemResponses } from "../../utils/openapi-problem";
 import { copy, courses, create, getOne, list, remove, respond, results, transition, update } from "./pesquisas.controller";
 import { PESQUISA_MIN_RESPOSTAS, STATUS_PESQUISA_VALUES, TIPO_PERGUNTA_VALUES } from "./pesquisas.rules";
 
@@ -9,23 +10,6 @@ import { PESQUISA_MIN_RESPOSTAS, STATUS_PESQUISA_VALUES, TIPO_PERGUNTA_VALUES } 
  * Os schemas abaixo são só para o Swagger (a validação real é Zod, no controller).
  */
 
-const ProblemSchema = {
-  type: "object",
-  required: ["type", "title", "status", "instance"],
-  properties: {
-    type: { type: "string" },
-    title: { type: "string" },
-    status: { type: "integer" },
-    detail: { type: "string" },
-    instance: { type: "string" },
-    errors: { type: "array", items: { type: "object" } },
-  },
-} as const;
-
-const problemResponse = (description: string) => ({
-  description,
-  content: { "application/problem+json": { schema: ProblemSchema } },
-});
 
 const STATUS_ENUM = [...STATUS_PESQUISA_VALUES];
 
@@ -87,15 +71,7 @@ const CollectionSchema = {
 const IdParams = { type: "object", required: ["id"], properties: { id: { type: "string", minLength: 1 } } } as const;
 
 const security = [{ bearerAuth: [] }];
-const commonProblems = {
-  400: problemResponse("Dados inválidos."),
-  401: problemResponse("Autenticação obrigatória."),
-  403: problemResponse("Papel sem permissão para a ação."),
-  404: problemResponse("Pesquisa não encontrada (ou fora do público do aluno)."),
-  409: problemResponse("Estado não permite a ação."),
-  429: problemResponse("Limite de requisições excedido."),
-  500: problemResponse("Erro inesperado."),
-} as const;
+const commonProblems = commonProblemResponses("Pesquisa não encontrada (ou fora do público do aluno).", "Estado não permite a ação.");
 
 const TAG = "Surveys (beta)";
 const ADMIN = ["ADMINISTRADOR"] as const;

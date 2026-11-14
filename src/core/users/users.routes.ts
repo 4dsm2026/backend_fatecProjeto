@@ -220,6 +220,8 @@ export async function usersRoutes(app: FastifyInstance) {
             papel: { type: "string", enum: ["USUARIO", "BACKOFFICE", "TECNICO", "ADMINISTRADOR"] },
             organizacaoId: { type: "string", minLength: 1 },
             ativo: { type: "string", enum: ["true", "false"] },
+            curso: { type: "string", description: "Curso do cadastro (cursoNome; sem ele, curso). \"Curso não informado\" = sem curso." },
+            situacao: { type: "string", enum: ["Regular", "Trancada", "Cancelada"], description: "Situação acadêmica" },
           },
         },
         response: {
