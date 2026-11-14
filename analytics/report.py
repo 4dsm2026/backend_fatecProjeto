@@ -349,8 +349,9 @@ def main():
 
     # --- montagem do relatório ---
     relatorio = {
+        # Sem a URL da API: ela vem da linha de comando e não deve ser gravada em arquivo
+        # (SonarCloud S8707). A origem aparece no stderr, abaixo.
         "geradoEm":   datetime.now(timezone.utc).isoformat(),
-        "fonte":      api_url,
         "resumo":     stats,
         "ttr":        ttr_analise,
         "sla":        sla_analise,
@@ -371,6 +372,7 @@ def main():
         print(saida)
 
     # Imprime resumo no stderr
+    print(f"\n[INFO] Fonte dos dados: {api_url}", file=sys.stderr)
     print("\n=== RESUMO ===", file=sys.stderr)
     print(f"  Total de chamados : {stats.get('total', 0)}", file=sys.stderr)
     print(f"  Abertos           : {stats.get('porStatus',{}).get('ABERTO',0)}", file=sys.stderr)
