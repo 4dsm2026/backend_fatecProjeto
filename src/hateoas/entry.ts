@@ -18,6 +18,7 @@ export function entryLinks(viewer: Viewer): Links {
     suggestions: link("/suggestions"),
     catalog: link("/catalog"),
     "school-passes": link("/school-passes"),
+    surveys: link("/surveys"),
     users: staff && link("/users"),
     "ticket-stats": staff && link("/ticket-stats"),
     sectors: admin && link("/admin/sectors"),

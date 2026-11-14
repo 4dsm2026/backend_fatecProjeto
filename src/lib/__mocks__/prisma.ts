@@ -13,6 +13,7 @@ function buildMock() {
       update: vi.fn(),
       count: vi.fn(),
       delete: vi.fn(),
+      groupBy: vi.fn(),
     },
     chamado: {
       create: vi.fn(),
@@ -122,6 +123,27 @@ function buildMock() {
       findMany: vi.fn(),
       update: vi.fn(),
       count: vi.fn(),
+    },
+    pesquisa: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
+    pesquisaPergunta: {
+      deleteMany: vi.fn(),
+      createMany: vi.fn(),
+    },
+    pesquisaParticipacao: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
+    pesquisaResposta: {
+      create: vi.fn(),
+      findMany: vi.fn(),
     },
     passeEscolarHistorico: {
       create: vi.fn(),
