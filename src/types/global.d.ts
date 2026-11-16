@@ -1,14 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import type WebSocket from "ws";
+import type { NotifyUsers } from "./app-globals";
 
 declare global {
   var app: FastifyInstance & {
     wsClients?: Map<string, WebSocket>;
-    notifyUsers?: (
-      userIds: string[],
-      payload: Record<string, any>,
-      prisma: any
-    ) => Promise<void>;
+    notifyUsers?: NotifyUsers;
   };
 }
 

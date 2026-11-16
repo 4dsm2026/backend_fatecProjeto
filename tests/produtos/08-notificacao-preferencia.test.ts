@@ -1,7 +1,7 @@
 /**
  * Preferência de notificações in-app (usuario.notificacoesInApp).
  * - notifyMany só cria notificação para quem optou por receber.
- * - PATCH /usuarios/:id permite o aluno ligar/desligar a própria preferência.
+ * - PATCH /users/:id permite o aluno ligar/desligar a própria preferência.
  */
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 
@@ -64,14 +64,14 @@ describe('notifyMany — respeita a preferência', () => {
   })
 })
 
-describe('PATCH /usuarios/:id — aluno gerencia a própria preferência', () => {
+describe('PATCH /users/:id — aluno gerencia a própria preferência', () => {
   it('200 — aluno desliga notificacoesInApp no próprio cadastro', async () => {
     prismaMock.usuario.findUnique.mockResolvedValue(makeUser({ id: IDS.user }))
     prismaMock.usuario.update.mockResolvedValue(makeUser({ id: IDS.user, notificacoesInApp: false }))
 
     const res = await app.inject({
       method: 'PATCH',
-      url: `/usuarios/${IDS.user}`,
+      url: `/users/${IDS.user}`,
       headers: bearerAuth(alunoToken),
       payload: { notificacoesInApp: false },
     })

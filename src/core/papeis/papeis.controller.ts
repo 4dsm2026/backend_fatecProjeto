@@ -1,86 +1,80 @@
-import { FastifyRequest, FastifyReply } from "fastify";
-import { buildRouteValidator } from "../../utils/zod-helpers";
-import { parseRoute, sendNotFound, sendReply } from "../../utils/http";
-import { PapelCreateSchema, PapelUpdateSchema, PapelIdSchema } from "../../validators/papeis";
-import { listPapeis, createPapel, getPapel, updatePapel, deletePapel } from "./papeis.service";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { z } from "zod";
+import { ApiError, buildLinks, fieldErrorsFromZod, link, path, toCollection, toResource } from "../../hateoas";
+import type { Viewer } from "../../hateoas";
+import { PapelCreateSchema, PapelIdSchema, PapelUpdateSchema } from "../../validators/papeis";
+import { createPapel, deletePapel, getPapel, listPapeis, updatePapel } from "./papeis.service";
+import { buildPapelLinks, PapeisListQuerySchema } from "./papeis.types";
+import type { PapelPublic, PapelWithUsage } from "./papeis.types";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-const createValidator = buildRouteValidator({ body:   PapelCreateSchema.shape.body });
-const idValidator     = buildRouteValidator({ params: PapelIdSchema.shape.params });
-const updateValidator = buildRouteValidator({
-  params: PapelUpdateSchema.shape.params,
-  body:   PapelUpdateSchema.shape.body,
-});
-
-/* GET /papeis */
-export async function list(_req: FastifyRequest, res: FastifyReply) {
-  const prisma = _req.server.prisma;
-  try {
-    const data = await listPapeis(prisma);
-    await res.send(data);
-  } catch (e) {
-    _req.log.error({ e }, "💥 Erro ao listar papéis");
-    await res.code(500).send({ error: errMsg(e) });
+function parseOrThrow<T extends z.ZodType<unknown>>(schema: T, input: unknown): z.output<T> {
+  const result = schema.safeParse(input);
+  if (!result.success) {
+    throw new ApiError("bad-request", "Dados inválidos", undefined, fieldErrorsFromZod(result.error.issues));
   }
+  return result.data as z.output<T>;
 }
 
-/* POST /papeis */
-export async function create(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ body?: typeof PapelCreateSchema.shape.body._output }>(createValidator, req, res);
-  if (!data) return;
-  const prisma = req.server.prisma;
-  try {
-    const papel = await createPapel(prisma, data.body!);
-    await res.code(201).send(papel);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao criar papel");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+function requestViewer(req: FastifyRequest): Viewer {
+  if (!req.user?.sub) throw new ApiError("unauthorized", "Não autenticado");
+  if (req.user.role !== "ADMINISTRADOR") throw new ApiError("forbidden", "Acesso negado");
+  return { id: req.user.sub, role: "ADMINISTRADOR" };
 }
 
-/* GET /papeis/:id */
-export async function getOne(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ params?: typeof PapelIdSchema.shape.params._output }>(idValidator, req, res);
-  if (!data) return;
-  const prisma = req.server.prisma;
-  try {
-    const papel = await getPapel(prisma, data.params!.id);
-    if (!papel) return sendNotFound(res, "Papel");
-    await res.send(papel);
-  } catch (e) {
-    req.log.error({ e }, "💥 Erro ao buscar papel");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+function publicPapel(papel: PapelWithUsage): PapelPublic {
+  const { id, nome, descricao } = papel;
+  return { id, nome, descricao };
 }
 
-/* PATCH /papeis/:id */
-export async function patch(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ params?: typeof PapelUpdateSchema.shape.params._output; body?: typeof PapelUpdateSchema.shape.body._output }>(updateValidator, req, res);
-  if (!data) return;
-  const prisma = req.server.prisma;
-  try {
-    const papel = await updatePapel(prisma, data.params!.id, data.body!);
-    await res.send(papel);
-  } catch (e: any) {
-    if (e?.code === "P2025") return sendNotFound(res, "Papel");
-    req.log.error({ e }, "💥 Erro ao atualizar papel");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+export async function list(req: FastifyRequest, reply: FastifyReply) {
+  const query = parseOrThrow(PapeisListQuerySchema, req.query);
+  const viewer = requestViewer(req);
+  const result = await listPapeis(req.server.prisma, query);
+  const items = result.items.map((papel) => toResource(publicPapel(papel), buildPapelLinks(papel, viewer)));
+
+  return reply.send(toCollection({
+    rel: "roles",
+    basePath: "/admin/roles",
+    items,
+    page: query.page,
+    size: query.size,
+    total: result.total,
+    links: buildLinks({ create: viewer.role === "ADMINISTRADOR" && link("/admin/roles", "POST") }),
+  }));
 }
 
-/* DELETE /papeis/:id */
-export async function removeHard(req: FastifyRequest, res: FastifyReply) {
-  const data = parseRoute<{ params?: typeof PapelIdSchema.shape.params._output }>(idValidator, req, res);
-  if (!data) return;
-  const prisma = req.server.prisma;
-  try {
-    await deletePapel(prisma, data.params!.id);
-    await res.code(204).send();
-  } catch (e: any) {
-    if (e?.statusCode === 409) return sendReply(res, 409, { error: e.message });
-    if (e?.code === "P2025")   return sendNotFound(res, "Papel");
-    req.log.error({ e }, "💥 Erro ao remover papel");
-    await res.code(500).send({ error: errMsg(e) });
-  }
+export async function create(req: FastifyRequest, reply: FastifyReply) {
+  const body = parseOrThrow(PapelCreateSchema.shape.body, req.body);
+  const viewer = requestViewer(req);
+  const papel = await createPapel(req.server.prisma, body);
+  const location = path`/admin/roles/${papel.id}`;
+
+  return reply.header("Location", location).code(201).send(
+    toResource(publicPapel(papel), buildPapelLinks(papel, viewer)),
+  );
+}
+
+export async function getOne(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = parseOrThrow(PapelIdSchema.shape.params, req.params);
+  const viewer = requestViewer(req);
+  const papel = await getPapel(req.server.prisma, id);
+  if (!papel) throw new ApiError("not-found", "Papel não encontrado");
+
+  return reply.send(toResource(publicPapel(papel), buildPapelLinks(papel, viewer)));
+}
+
+export async function patch(req: FastifyRequest, reply: FastifyReply) {
+  const params = parseOrThrow(PapelUpdateSchema.shape.params, req.params);
+  const body = parseOrThrow(PapelUpdateSchema.shape.body, req.body);
+  const viewer = requestViewer(req);
+  const papel = await updatePapel(req.server.prisma, params.id, body);
+
+  return reply.send(toResource(publicPapel(papel), buildPapelLinks(papel, viewer)));
+}
+
+export async function removeHard(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = parseOrThrow(PapelIdSchema.shape.params, req.params);
+  requestViewer(req);
+  await deletePapel(req.server.prisma, id);
+  return reply.code(204).send();
 }

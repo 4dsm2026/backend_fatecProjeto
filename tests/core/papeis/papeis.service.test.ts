@@ -1,118 +1,102 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  listPapeis,
-  createPapel,
-  getPapel,
-  updatePapel,
-  deletePapel,
-} from "../../../src/core/papeis/papeis.service.ts";
+import type { PrismaClient } from "@prisma/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createPapel, deletePapel, listPapeis, updatePapel } from "../../../src/core/papeis/papeis.service";
 
-//mock
 const prismaMock = {
   papelCatalogo: {
     findMany: vi.fn(),
-    create: vi.fn(),
     findUnique: vi.fn(),
+    count: vi.fn(),
+    create: vi.fn(),
     update: vi.fn(),
-    delete: vi.fn(),
+    deleteMany: vi.fn(),
   },
   usuarioSetor: {
     count: vi.fn(),
   },
-} as any;
+} as unknown as PrismaClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-//Testes de sucesso
+describe("papeis service", () => {
+  it("paginates the catalog and includes relation counts in the item query", async () => {
+    const items = [{
+      id: "role-1",
+      nome: "Coordenador",
+      descricao: null,
+      _count: { usuarioSetores: 0 },
+    }];
+    vi.mocked(prismaMock.papelCatalogo.findMany).mockResolvedValue(items);
+    vi.mocked(prismaMock.papelCatalogo.count).mockResolvedValue(1);
 
-describe("Papeis service", () => {
-  it("listPapeis deve retornar lista ordenada", async () => {
-    prismaMock.papelCatalogo.findMany.mockResolvedValue([
-      { id: "1", nome: "Papel1" },
-    ]);
-    const result = await listPapeis(prismaMock);
-    expect(result).toEqual([{ id: "1", nome: "Papel1" }]);
+    const result = await listPapeis(prismaMock, { page: 2, size: 10 });
+
+    expect(result).toEqual({ items, total: 1 });
     expect(prismaMock.papelCatalogo.findMany).toHaveBeenCalledWith({
       orderBy: { nome: "asc" },
+      skip: 20,
+      take: 10,
+      include: { _count: { select: { usuarioSetores: true } } },
+    });
+    expect(prismaMock.papelCatalogo.count).toHaveBeenCalledWith();
+  });
+
+  it("conditionally deletes an unlinked role in one deleteMany operation", async () => {
+    vi.mocked(prismaMock.papelCatalogo.deleteMany).mockResolvedValue({ count: 1 });
+
+    await deletePapel(prismaMock, "role-1");
+
+    expect(prismaMock.papelCatalogo.deleteMany).toHaveBeenCalledWith({
+      where: { id: "role-1", usuarioSetores: { none: {} } },
+    });
+    expect(prismaMock.papelCatalogo.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns conflict when conditional delete finds a linked role", async () => {
+    vi.mocked(prismaMock.papelCatalogo.deleteMany).mockResolvedValue({ count: 0 });
+    vi.mocked(prismaMock.papelCatalogo.findUnique).mockResolvedValue({ id: "role-1" });
+
+    await expect(deletePapel(prismaMock, "role-1")).rejects.toMatchObject({
+      kind: "conflict",
+      status: 409,
+    });
+
+    expect(prismaMock.papelCatalogo.deleteMany).toHaveBeenCalledWith({
+      where: { id: "role-1", usuarioSetores: { none: {} } },
+    });
+    expect(prismaMock.papelCatalogo.findUnique).toHaveBeenCalledWith({
+      where: { id: "role-1" },
+      select: { id: true },
     });
   });
 
-  it("createPapel deve criar um papel", async () => {
-    const body = { nome: "Papel2" };
-    prismaMock.papelCatalogo.create.mockResolvedValue({ id: "2", ...body });
-    const result = await createPapel(prismaMock, body);
-    expect(result).toEqual({ id: "2", nome: "Papel2" });
-  });
+  it("returns not-found when conditional delete matches no existing role", async () => {
+    vi.mocked(prismaMock.papelCatalogo.deleteMany).mockResolvedValue({ count: 0 });
+    vi.mocked(prismaMock.papelCatalogo.findUnique).mockResolvedValue(null);
 
-  it("getPapel deve buscar por id", async () => {
-    prismaMock.papelCatalogo.findUnique.mockResolvedValue({
-      id: "3",
-      nome: "Papel3",
+    await expect(deletePapel(prismaMock, "role-1")).rejects.toMatchObject({
+      kind: "not-found",
+      status: 404,
     });
-    const result = await getPapel(prismaMock, "3");
-    expect(result).toEqual({ id: "3", nome: "Papel3" });
   });
 
-  it("updatePapel deve atualizar dados", async () => {
-    const body = { nome: "Papel4Upd" };
-    prismaMock.papelCatalogo.update.mockResolvedValue({ id: "4", ...body });
-    const result = await updatePapel(prismaMock, "4", body);
-    expect(result).toEqual({ id: "4", nome: "Papel4Upd" });
-  });
+  it("maps duplicate role names on create and update to conflict", async () => {
+    vi.mocked(prismaMock.papelCatalogo.create).mockRejectedValueOnce(
+      Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
+    );
+    vi.mocked(prismaMock.papelCatalogo.update).mockRejectedValueOnce(
+      Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
+    );
 
-  it("deletePapel deve excluir se não estiver em uso", async () => {
-    prismaMock.usuarioSetor.count.mockResolvedValue(0);
-    prismaMock.papelCatalogo.delete.mockResolvedValue({
-      id: "6",
-      nome: "Livre",
+    await expect(createPapel(prismaMock, { nome: "Duplicado" })).rejects.toMatchObject({
+      kind: "conflict",
+      status: 409,
     });
-    const result = await deletePapel(prismaMock, "6");
-    expect(result).toEqual({ id: "6", nome: "Livre" });
-  });
-
-  //Testes de falha
-
-  it("createPapel deve lançar erro se prisma falhar", async () => {
-    prismaMock.papelCatalogo.create.mockRejectedValue(
-      new Error("Erro no banco"),
-    );
-    await expect(createPapel(prismaMock, { nome: "Falha" })).rejects.toThrow(
-      "Erro no banco",
-    );
-  });
-
-  it("getPapel deve lançar erro se prisma falhar", async () => {
-    prismaMock.papelCatalogo.findUnique.mockRejectedValue(
-      new Error("Erro inesperado"),
-    );
-    await expect(getPapel(prismaMock, "99")).rejects.toThrow("Erro inesperado");
-  });
-
-  it("updatePapel deve lançar erro se prisma falhar", async () => {
-    prismaMock.papelCatalogo.update.mockRejectedValue(
-      new Error("Erro ao atualizar"),
-    );
-    await expect(
-      updatePapel(prismaMock, "10", { nome: "Teste" }),
-    ).rejects.toThrow("Erro ao atualizar");
-  });
-
-  it("deletePapel deve lançar erro genérico se prisma falhar", async () => {
-    prismaMock.usuarioSetor.count.mockResolvedValue(0);
-    prismaMock.papelCatalogo.delete.mockRejectedValue(
-      new Error("Erro ao excluir"),
-    );
-    await expect(deletePapel(prismaMock, "11")).rejects.toThrow(
-      "Erro ao excluir",
-    );
-  });
-
-  it("deletePapel deve lançar erro se papel estiver em uso", async () => {
-    prismaMock.usuarioSetor.count.mockResolvedValue(1);
-    await expect(deletePapel(prismaMock, "5")).rejects.toThrow(
-      "Papel em uso por vínculos de usuários.",
-    );
+    await expect(updatePapel(prismaMock, "role-1", { nome: "Duplicado" })).rejects.toMatchObject({
+      kind: "conflict",
+      status: 409,
+    });
   });
 });

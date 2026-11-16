@@ -16,6 +16,8 @@ async function main() {
 
   await app.listen({ port: env.PORT, host: "0.0.0.0" });
   app.log.info(`Server ouvindo na porta ${env.PORT}`);
+
+  app.log.info(`Documentacao disponivel em http://localhost:${env.PORT}/docs`);
 }
 
 main().catch((err) => {

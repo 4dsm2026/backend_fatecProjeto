@@ -99,6 +99,8 @@ export function makeTicket(overrides: Record<string, any> = {}) {
     categoriaId: null,
     categoriaNome: null,
     deletadoEm: null,
+    encerradoEm: null,
+    arquivadoEm: null,
     criadoEm: new Date('2024-01-01T00:00:00.000Z'),
     atualizadoEm: new Date('2024-01-01T00:00:00.000Z'),
     setor: null,

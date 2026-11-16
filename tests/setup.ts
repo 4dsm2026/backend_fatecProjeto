@@ -1,4 +1,7 @@
 import { randomBytes } from 'node:crypto'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 // Minimum env vars required before any src/ module is imported.
 // DATABASE_URL is required by env.ts validation but never used — Prisma is mocked.
@@ -13,7 +16,7 @@ process.env.JWT_REFRESH_EXPIRES = '7d'
 process.env.CORS_ORIGIN = 'http://localhost:3000'
 process.env.COOKIE_SECRET ??= randomBytes(32).toString('hex')
 process.env.STORAGE_DRIVER = 'local'
-process.env.LOCAL_STORAGE_DIR = '/tmp/test-uploads'
+process.env.LOCAL_STORAGE_DIR = mkdtempSync(join(tmpdir(), 'test-uploads-'))
 process.env.DEFAULT_TEMP_PASSWORD ??= `${randomBytes(24).toString('base64url')}A1!`
 process.env.ANON_EMAIL_DOMAIN = 'anon.local'
 process.env.ANON_EDU_DOMAIN = 'anon.edu.local'
