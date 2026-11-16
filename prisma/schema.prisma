@@ -96,8 +96,14 @@ model Setor {
   descricao     String?
   organizacao   Organizacao? @relation(fields: [organizacaoId], references: [id])
 
+  /// Horas úteis (seg–sex) sem ninguém assumir até avisar o 2º nível. Vazio = sem escalonamento.
+  prazoEscalonamentoHoras Int?
+
   usuarioSetores UsuarioSetor[]
   chamados       Chamado[]
+  contatos       SetorContato[]
+  regrasDestino  RegraRoteamento[] @relation("RegraDestino")
+  regrasCopia    RegraRoteamento[] @relation("RegraCopia")
 
   @@index([organizacaoId])
   @@map("setores")
@@ -228,6 +234,7 @@ model Usuario {
   solicitacoesMatriculaHistorico SolicitacaoMatriculaHistorico[] @relation("HistoricoMatriculaPorUsuario")
   mapasSalaPublicados   MapaSalaVersao[]         @relation("MapasSalaPublicadosPor")
   mapaSalaFonteEditada  MapaSalaFonte[]          @relation("MapaSalaFonteEditadaPor")
+  contatosDeSetor       SetorContato[]
 
   @@index([emailPessoal])
   @@index([organizacaoId])
@@ -354,9 +361,15 @@ model Chamado {
   slaDias            Int?
   vencimentoSla      DateTime?
 
+  /// Roteamento: regra que escolheu o setor, o porquê (para o painel) e quando escalonou.
+  regraRoteamentoId String?
+  roteamentoMotivo  String?   @db.VarChar(255)
+  escalonadoEm      DateTime?
+
   organizacao Organizacao? @relation(fields: [organizacaoId], references: [id])
   servico     Servico?     @relation(fields: [servicoId], references: [id])
   setor       Setor?       @relation(fields: [setorId], references: [id])
+  regraRoteamento RegraRoteamento? @relation(fields: [regraRoteamentoId], references: [id], onDelete: SetNull)
   cliente     Cliente?     @relation(fields: [clienteId], references: [id])
   contrato    Contrato?    @relation("ChamadosDoContrato", fields: [contratoId], references: [id])
   responsavel Usuario?     @relation("ChamadosAtribuidos", fields: [responsavelId], references: [id])
@@ -845,4 +858,54 @@ model MapaSalaVersao {
   @@index([publicadoEm])
   @@index([checksumSha256])
   @@map("mapa_sala_versoes")
+}
+
+/// Roteamento de chamados: quem recebe, em que ordem.
+enum NivelContatoSetor {
+  PRIMEIRO // atende: recebe o chamado assim que chega
+  SEGUNDO  // chefia: recebe se ninguém assumir no prazo do setor
+  COPIA    // só acompanha: recebe em cópia quando o chamado chega
+}
+
+/// Pessoa da hierarquia de um setor: um usuário do sistema OU um e-mail avulso
+/// (ex.: zeladoria terceirizada), que só recebe e-mail.
+model SetorContato {
+  id        String            @id @default(cuid())
+  setorId   String
+  nivel     NivelContatoSetor
+  usuarioId String?
+  email     String?           @db.VarChar(254)
+  nome      String?           @db.VarChar(120)
+  criadoEm  DateTime          @default(now())
+
+  setor   Setor    @relation(fields: [setorId], references: [id], onDelete: Cascade)
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([setorId, nivel])
+  @@map("setores_contatos")
+}
+
+/// Para onde vai o chamado de uma categoria/serviço do catálogo. A primeira regra
+/// ativa que combinar (menor `ordem`) vence; serviço tem prioridade sobre categoria.
+model RegraRoteamento {
+  id             String   @id @default(cuid())
+  nome           String   @db.VarChar(120)
+  ordem          Int      @default(100)
+  ativo          Boolean  @default(true)
+  /// Id da categoria do catálogo (ex.: "manutencao"). Vazio = qualquer.
+  categoriaChave String?  @db.VarChar(64)
+  /// Id do serviço do catálogo (ex.: "manutencao-equipamento"). Vazio = qualquer da categoria.
+  servicoChave   String?  @db.VarChar(64)
+  setorId        String
+  /// Setor que recebe em cópia (o 1º nível dele), ex.: Coordenação nos equipamentos.
+  setorCopiaId   String?
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+
+  setor      Setor     @relation("RegraDestino", fields: [setorId], references: [id], onDelete: Cascade)
+  setorCopia Setor?    @relation("RegraCopia", fields: [setorCopiaId], references: [id], onDelete: SetNull)
+  chamados   Chamado[]
+
+  @@index([ativo, ordem])
+  @@map("regras_roteamento")
 }

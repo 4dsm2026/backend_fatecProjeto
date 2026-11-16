@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Prisma, StatusChamado } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import type { TicketCreateInput, TicketUpdateInput, TicketsListQuery } from './tickets.types';
+import { avisarChegada, rotearChamado } from '../roteamento/roteamento.service';
 import { notifyMany } from '../notifications/notify';
 import { toSkipTake } from '../../hateoas';
 import { isReopen } from './ticket-rules'
@@ -142,50 +143,12 @@ function isCatalogSlug(id?: string | null): boolean {
   return typeof id === 'string' && id.includes('-');
 }
 
-async function resolveSetorIdByKeyword(
-  prisma: Ctx,
-  setorProvavel?: string | null,
-): Promise<string | null> {
-  if (!setorProvavel) return null;
-
-  const keyword = setorProvavel.split('/')[0].trim();
-  if (!keyword) return null;
-
-  const matched = await prisma.setor.findFirst({
-    where: { nome: { contains: keyword } },
-    select: { id: true },
-  });
-
-  if (matched) return matched.id;
-
-  const kw = keyword.toLowerCase();
-  const setores = await prisma.setor.findMany({ select: { id: true, nome: true } });
-  const found = setores.find((s) => {
-    const nome = s.nome.toLowerCase();
-    return kw.includes(nome) || nome.includes(kw);
-  });
-
-  return found?.id ?? null;
-}
-
-/** Setor de quem não tem para onde ir: a Secretaria, ou o primeiro setor por nome se não houver uma. */
-async function resolveSetorPadrao(prisma: Ctx): Promise<string | null> {
-  const secretaria = await prisma.setor.findFirst({
-    where: { nome: { contains: 'Secretaria' } },
-    orderBy: { nome: 'asc' },
-    select: { id: true },
-  });
-  if (secretaria) return secretaria.id;
-  const primeiro = await prisma.setor.findFirst({ orderBy: { nome: 'asc' }, select: { id: true } });
-  return primeiro?.id ?? null;
-}
-
 /**
- * Setor de um chamado aberto pelo catálogo: o que tiver o nome parecido com o "setor provável"
- * do serviço ou, se nenhum combinar, o setor padrão. Sem setor, ninguém da equipe é notificado.
+ * Setor de um chamado aberto pelo catálogo, pela mesma regra da abertura (roteamento).
+ * Mantida para o script de backfill dos chamados antigos sem setor (#114).
  */
 export async function resolverSetorDoChamado(prisma: Ctx, setorProvavel?: string | null): Promise<string | null> {
-  return (await resolveSetorIdByKeyword(prisma, setorProvavel)) ?? resolveSetorPadrao(prisma);
+  return (await rotearChamado(prisma, { setorProvavel })).setorId;
 }
 
 async function resolveTicketRelations(prisma: Ctx, data: TicketCreateInput) {
@@ -196,15 +159,21 @@ async function resolveTicketRelations(prisma: Ctx, data: TicketCreateInput) {
   const resolvedCatalogoCatId = catId && isCatalogSlug(catId) ? catId : (data.catalogoCategoriaId ?? null);
   const resolvedCatNome = data.catalogoCategoriaNome ?? data.categoriaNome ?? null;
 
-  let dbSetorId = data.setorId && !isCatalogSlug(data.setorId) ? data.setorId : null;
-  dbSetorId ??= await resolverSetorDoChamado(prisma, data.setorProvavel);
+  // Roteamento: setor explícito (equipe) → regra configurada → setor provável → Secretaria.
+  const destino = await rotearChamado(prisma, {
+    setorIdExplicito: data.setorId && !isCatalogSlug(data.setorId) ? data.setorId : null,
+    servico: resolvedCatalogoServId ?? dbServicoId,
+    categoria: catId ?? null,
+    setorProvavel: data.setorProvavel,
+  });
 
   return {
     dbServicoId,
     resolvedCatalogoServId,
     resolvedCatalogoCatId,
     resolvedCatNome,
-    dbSetorId,
+    dbSetorId: destino.setorId,
+    destino,
   };
 }
 
@@ -221,6 +190,7 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
     resolvedCatalogoCatId,
     resolvedCatNome,
     dbSetorId,
+    destino,
   } = await resolveTicketRelations(prisma, data);
 
   const ticket = await prisma.chamado.create({
@@ -246,6 +216,8 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
       camposEspecificos:     toJsonInput(data.camposEspecificos),
       origem:                data.origem           ?? null,
       precisaAcaoDoAluno:    data.precisaAcaoDoAluno ?? false,
+      regraRoteamentoId:     destino.regraId,
+      roteamentoMotivo:      destino.motivo,
     },
   });
 
@@ -272,6 +244,27 @@ export async function createTicket(prisma: Ctx, data: TicketCreateInput, opts: {
     chamadoId: ticket.id,
     organizacaoId: ticket.organizacaoId ?? null,
   }));
+
+  // Hierarquia do setor: e-mail ao 1º nível e às cópias (inclusive e-mails avulsos).
+  const solicitante = await Promise.resolve(
+    prisma.usuario.findUnique({ where: { id: feitoPorId }, select: { nome: true } }),
+  ).catch(() => null);
+  await avisarChegada(
+    prisma,
+    {
+      id: ticket.id,
+      protocolo,
+      titulo: ticket.titulo,
+      prioridade: ticket.prioridade,
+      setorId: ticket.setorId,
+      organizacaoId: ticket.organizacaoId ?? null,
+      catalogoCategoriaNome: resolvedCatNome,
+      servicoNome: data.titulo,
+      solicitante: solicitante?.nome ?? null,
+    },
+    destino.setorCopiaId,
+    alvos,
+  );
 
   return prisma.chamado.findFirst({
     where: { id: ticket.id },

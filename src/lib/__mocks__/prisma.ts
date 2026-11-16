@@ -21,6 +21,7 @@ function buildMock() {
       findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       count: vi.fn(),
       groupBy: vi.fn(),
     },
@@ -109,6 +110,7 @@ function buildMock() {
     },
     comunicacaoTemplate: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
       upsert: vi.fn(),
     },
      sugestao: {
@@ -140,6 +142,18 @@ function buildMock() {
       create: vi.fn(),
       findMany: vi.fn(),
       findUnique: vi.fn(),
+    },
+    regraRoteamento: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
+    setorContato: {
+      findMany: vi.fn(),
+      deleteMany: vi.fn(),
+      createMany: vi.fn(),
     },
     mapaSalaVersao: {
       create: vi.fn(),
