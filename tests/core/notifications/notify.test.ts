@@ -57,6 +57,7 @@ const prisma = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mockFindMany.mockResolvedValue([]);
 });
 
 describe("notifyMany", () => {

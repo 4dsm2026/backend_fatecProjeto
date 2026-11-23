@@ -67,6 +67,7 @@ async function buildUserPatch(data: UserUpdateDTO): Promise<Prisma.UsuarioUnchec
     tipoAcessibilidade: data.tipoAcessibilidade,
     observacoesAtendimento: data.observacoesAtendimento,
     notificacoesInApp: data.notificacoesInApp,
+    notificacoesEmail: data.notificacoesEmail,
   };
 
   if (data.senha) patch.senhaHash = await hashPassword(data.senha);

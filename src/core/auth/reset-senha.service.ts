@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../../security/password";
 import { getMailDriver } from "../../config/mail";
 import { ApiError } from "../../hateoas";
+import { escapeHtml } from "../../utils/escape-html";
 import { FINALIDADE_PRIMEIRO_ACESSO, FINALIDADE_RESET_SENHA } from "./token-finalidade";
 
 const APP_WEB_URL = process.env.APP_WEB_URL!;
@@ -50,7 +51,7 @@ export async function enviarLinkPrimeiroAcesso(
     to: email,
     subject: "Ative seu acesso e defina sua senha",
     html: `
-      <p>Olá ${usuario.nome ?? ""},</p>
+      <p>Olá ${escapeHtml(usuario.nome ?? "")},</p>
       <p>Seu acesso ao Workflow Fatec foi criado.</p>
       <p>Clique no link abaixo para definir sua senha (válido por 24h):</p>
       <p><a href="${link}">Definir senha</a></p>

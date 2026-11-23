@@ -13,6 +13,7 @@ jobs:
       contents: read
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
       DATABASE_URL: mysql://root:root@127.0.0.1:3306/workflow_fatec
       JWT_ACCESS_SECRET: ci-test-secret
       JWT_REFRESH_SECRET: ci-test-refresh-secret
@@ -42,17 +43,28 @@ jobs:
 
       - name: Lint
         run: pnpm lint
-        continue-on-error: true # TEMPORÁRIO: remover na Fase 3 (GUIA seção 10)
 
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Tests with coverage
-        run: pnpm exec vitest run --coverage
-        continue-on-error: true # TEMPORÁRIO: remover na Fase 3 (GUIA seção 10)
+      - name: Unit tests with coverage
+        run: pnpm test:unit
+
+      - name: Integration tests with coverage
+        run: pnpm test:integration
+
+      - name: Check Sonar project key
+        if: ${{ env.SONAR_TOKEN != '' }}
+        run: |
+          if [ -z "$SONAR_PROJECT_KEY" ]; then
+            echo "Configure a variável SONAR_PROJECT_KEY no repositório."
+            exit 1
+          fi
 
       - name: SonarQube scan
         if: ${{ env.SONAR_TOKEN != '' }}
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        with:
+          args: -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

@@ -26,7 +26,8 @@ export function createTestApp() {
         DEFAULT_TEMP_PASSWORD: `Test-${randomBytes(24).toString('hex')}aA1!`,
         STORAGE_DRIVER: 'local', LOCAL_STORAGE_DIR: storageDir,
         MAIL_DRIVER: 'resend', RESEND_API_KEY: 'test-only',
-        RESEND_BASE_URL: 'http://127.0.0.1:9',
+        RESEND_BASE_URL: inject('integrationMailboxUrl'),
+        APP_WEB_URL: 'http://127.0.0.1:3000',
       })
       const { buildApp } = await import('../../../src/app')
       app = await buildApp()
@@ -62,7 +63,8 @@ export function createTestApp() {
           lifecycleSocket.off('data', receive)
           lifecycleSocket.off('close', onClose)
           lifecycleSocket.setTimeout(0)
-          pending.slice(0, end) === 'ready' ? resolve() : reject(new Error('Lifecycle recusado'))
+          if (pending.slice(0, end) === 'ready') resolve()
+          else reject(new Error('Lifecycle recusado'))
         }
         lifecycleSocket.on('data', receive)
       })

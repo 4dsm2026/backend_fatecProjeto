@@ -1,4 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
+import { getMailDriver } from "../../config/mail";
+import { escapeHtml } from "../../utils/escape-html";
 
 /** unions de string iguais às do schema.prisma */
 export type TipoNotificacao =
@@ -38,9 +40,7 @@ export async function notifyMany(
     select: { id: true },
   });
   const alvos = optIn.map((u) => u.id);
-  if (!alvos.length) return;
-
-  await prisma.notificacao.createMany({
+  if (alvos.length) await prisma.notificacao.createMany({
     data: alvos.map((usuarioId) => ({
       usuarioId,
       titulo: data.titulo,
@@ -54,4 +54,24 @@ export async function notifyMany(
       meta: data.meta ?? null,
     })),
   });
+
+  await sendNotificationEmails(prisma, usuarios, data.titulo, data.mensagem);
+}
+
+/** Envia por e-mail independentemente da preferência de notificações internas. */
+export async function sendNotificationEmails(prisma: Ctx, usuarios: string[], titulo: string, mensagem: string) {
+  if (!usuarios.length) return;
+  const emailUsers = await prisma.usuario.findMany({
+    where: { id: { in: usuarios }, notificacoesEmail: true, ativo: true, deletadoEm: null },
+    select: { emailPessoal: true, emailEducacional: true },
+  });
+  const recipients = [...new Set(emailUsers.map(user => user.emailPessoal ?? user.emailEducacional).filter((email): email is string => Boolean(email)))];
+  const deliveries = await Promise.allSettled(recipients.map(to => Promise.resolve().then(() => getMailDriver().send({
+    to,
+    subject: titulo,
+    html: `<p>${escapeHtml(mensagem)}</p>`,
+  }))));
+  for (const delivery of deliveries) {
+    if (delivery.status === "rejected") console.error("Falha ao enviar notificação por e-mail", delivery.reason);
+  }
 }

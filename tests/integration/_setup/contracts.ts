@@ -160,8 +160,6 @@ export type SectorMemberResource = SectorBindingResource & {
   usuario: SectorMemberUser;
 };
 
-export type UserSectorResource = SectorBindingResource;
-
 export type CreatedResource = { id: string };
 export type CreatedHttpResource<T extends CreatedResource> = { resource: T; response: Response };
 

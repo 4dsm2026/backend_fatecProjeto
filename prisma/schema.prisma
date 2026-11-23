@@ -124,7 +124,7 @@ model UsuarioSetor {
   setor   Setor          @relation(fields: [setorId], references: [id], onDelete: Cascade)
   papel   PapelCatalogo? @relation(fields: [papelId], references: [id])
 
-  @@unique([usuarioId, setorId, papelId])
+  @@unique([usuarioId, setorId])
   @@index([setorId])
   @@map("usuarios_setores")
 }
@@ -202,6 +202,7 @@ model Usuario {
 
   // Preferência do usuário: receber notificações in-app (badge + lista).
   notificacoesInApp             Boolean  @default(true)
+  notificacoesEmail             Boolean  @default(false)
 
   organizacao Organizacao? @relation(fields: [organizacaoId], references: [id])
 

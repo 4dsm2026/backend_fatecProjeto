@@ -90,7 +90,7 @@ describe('WebSocket /ws — sem relay entre clientes', () => {
   it('controle: o broadcast legítimo do servidor continua chegando aos conectados', async () => {
     const cliente = await connectAs('user-legitimo')
 
-    appGlobals().broadcastWS?.({ type: 'nova_mensagem', chamadoId: 'chamado-1', mensagem: { id: 'm1' } })
+    appGlobals().broadcastWS?.({ type: 'nova_mensagem', chamadoId: 'chamado-1', mensagem: { id: 'm1' } }, 'user-legitimo')
 
     await vi.waitFor(() =>
       expect(cliente.received).toContainEqual({

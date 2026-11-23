@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import type { Papel, PrismaClient } from '@prisma/client'
 import { describe, expect, inject, it } from 'vitest'
 import { createSetor, vincularUsuarioAoSetor } from '../_helpers/setores'
@@ -5,11 +6,11 @@ import type {
   HalCollection,
   ProblemDetails,
   SectorMemberResource,
-  UserSectorResource,
+  SectorBindingResource,
 } from '../_setup/contracts'
 import { createTestApp } from '../_setup/createTestApp'
 
-const PASSWORD = 'Fixture-only-A1!23456789'
+const PASSWORD = `Fixture-${randomBytes(16).toString('hex')}aA1!`
 
 async function withDatabase(run: (prisma: PrismaClient, baseUrl: string) => Promise<void>) {
   const { PrismaClient } = await import('@prisma/client')
@@ -152,7 +153,7 @@ describe('Integração HTTP: vínculos usuário↔setor', () => {
         `/admin/users/${m1.user.id}/sectors?page=0&size=1`,
       )
       expect(userSectors0Res.status).toBe(200)
-      const userSectors0 = (await userSectors0Res.json()) as HalCollection<UserSectorResource, 'sectors'>
+      const userSectors0 = (await userSectors0Res.json()) as HalCollection<SectorBindingResource, 'sectors'>
       expect(userSectors0.page).toEqual({ size: 1, number: 0, totalElements: 2, totalPages: 2 })
       expect(userSectors0._links.next).toBeDefined()
 
@@ -162,14 +163,14 @@ describe('Integração HTTP: vínculos usuário↔setor', () => {
         (userSectors0._links.next as { href: string }).href,
       )
       expect(userSectors1Res.status).toBe(200)
-      const userSectors1 = (await userSectors1Res.json()) as HalCollection<UserSectorResource, 'sectors'>
+      const userSectors1 = (await userSectors1Res.json()) as HalCollection<SectorBindingResource, 'sectors'>
       const allUserBindings = [...userSectors0._embedded.sectors, ...userSectors1._embedded.sectors]
       expect(allUserBindings.map(item => item.id).sort()).toEqual([b1.resource.id, b1Other.resource.id].sort())
       expect(allUserBindings.map(item => item.setor?.id).sort()).toEqual([s1.resource.id, s2.resource.id].sort())
 
       const emptyUser = await request(baseUrl, admin.session.accessToken, '/admin/users/usuario-sem-vinculo/sectors')
       expect(emptyUser.status).toBe(200)
-      const emptyBody = (await emptyUser.json()) as HalCollection<UserSectorResource, 'sectors'>
+      const emptyBody = (await emptyUser.json()) as HalCollection<SectorBindingResource, 'sectors'>
       expect(emptyBody.page.totalElements).toBe(0)
       expect(emptyBody._embedded.sectors).toEqual([])
     }))
@@ -249,6 +250,8 @@ describe('Integração HTTP: vínculos usuário↔setor', () => {
     }))
 
   it('exige autenticação (401) e autoriza os quatro papéis diretamente em todas as rotas de vínculo', async () =>
+    // Matriz de autorização intencionalmente agrupada para comparar todos os papéis.
+    // eslint-disable-next-line sonarjs/cognitive-complexity
     withDatabase(async (db, baseUrl) => {
       const admin = await actor(db, baseUrl, 'ADMINISTRADOR', 'binding-matrix-owner')
       const sector = await createSetor({ baseUrl }, admin.session, { nome: 'Setor Matriz Vínculos' })
@@ -323,7 +326,7 @@ describe('Integração HTTP: vínculos usuário↔setor', () => {
       expect(await db.usuarioSetor.count({ where: { usuarioId: user.id, setorId: sector.resource.id } })).toBe(1)
     }))
 
-  it('impede alterar papel para combinação já existente e preserva ambos os vínculos', async () =>
+  it('impede segundo vínculo com papel diferente e permite alterar o papel existente', async () =>
     withDatabase(async (db, baseUrl) => {
       const { user, session } = await actor(db, baseUrl, 'ADMINISTRADOR', 'binding-role-conflict')
       const sector = await createSetor({ baseUrl }, session, { nome: 'Setor Conflito Papel' })
@@ -332,29 +335,25 @@ describe('Integração HTTP: vínculos usuário↔setor', () => {
         setorId: sector.resource.id,
         papelId: 'integration-reference-role',
       })
-      const second = await vincularUsuarioAoSetor({ baseUrl }, session, {
-        usuarioId: user.id,
-        setorId: sector.resource.id,
-        papelId: null,
+      const second = await request(baseUrl, session.accessToken, `/admin/users/${user.id}/sectors`, 'POST', {
+        setorId: sector.resource.id, papelId: null,
       })
+      expect(second.status).toBe(409)
       const response = await request(
         baseUrl,
         session.accessToken,
-        `/admin/user-sectors/${second.resource.id}`,
+        `/admin/user-sectors/${first.resource.id}`,
         'PATCH',
-        { papelId: 'integration-reference-role' },
+        { papelId: null },
       )
-      expect(response.status).toBe(409)
-      expect(response.headers.get('content-type')).toContain('application/problem+json')
+      expect(response.status).toBe(200)
       expect(await db.usuarioSetor.findUnique({ where: { id: first.resource.id } })).toMatchObject({
-        papelId: 'integration-reference-role',
-      })
-      expect(await db.usuarioSetor.findUnique({ where: { id: second.resource.id } })).toMatchObject({
         papelId: null,
       })
+      expect(await db.usuarioSetor.count({ where: { usuarioId: user.id, setorId: sector.resource.id } })).toBe(1)
     }))
 
-  // Regressões conhecidas em produção (BE-12): preservadas até decisão/correção da equipe.
+  // Regressões BE-12: concorrência, duplicidade e referências inválidas.
   it('rejeita criação concorrente de vínculo idêntico sem papel', async () =>
     withDatabase(async (db, baseUrl) => {
       const { session, user } = await actor(db, baseUrl, 'ADMINISTRADOR', 'concurrency-null-admin')
@@ -396,12 +395,9 @@ describe('Integração HTTP: vínculos usuário↔setor', () => {
         setorId: sector.resource.id,
         papelId: 'inexistente',
       })
-      expect.soft(invalidSector.status).toBeGreaterThanOrEqual(400)
-      expect.soft(invalidSector.status).toBeLessThan(500)
-      expect.soft(invalidUser.status).toBeGreaterThanOrEqual(400)
-      expect.soft(invalidUser.status).toBeLessThan(500)
-      expect.soft(invalidRole.status).toBeGreaterThanOrEqual(400)
-      expect.soft(invalidRole.status).toBeLessThan(500)
+      expect.soft(invalidSector.status).toBe(400)
+      expect.soft(invalidUser.status).toBe(400)
+      expect.soft(invalidRole.status).toBe(400)
       expect(await db.usuarioSetor.count({ where: { setorId: sector.resource.id } })).toBe(0)
     }))
 
@@ -420,8 +416,7 @@ describe('Integração HTTP: vínculos usuário↔setor', () => {
         'PATCH',
         { papelId: 'inexistente' },
       )
-      expect.soft(response.status).toBeGreaterThanOrEqual(400)
-      expect.soft(response.status).toBeLessThan(500)
+      expect.soft(response.status).toBe(400)
       expect(await db.usuarioSetor.findUnique({ where: { id: binding.resource.id } })).toMatchObject({
         papelId: null,
       })

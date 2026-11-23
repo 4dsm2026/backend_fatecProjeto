@@ -87,6 +87,7 @@ export const UserUpdateSchema = z.object({
     tipoAcessibilidade:            z.string().max(256).optional().nullable(),
     observacoesAtendimento:        z.string().max(2000).optional().nullable(),
     notificacoesInApp:             z.boolean().optional(),
+    notificacoesEmail:             z.boolean().optional(),
   })
 })
 

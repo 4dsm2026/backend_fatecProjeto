@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { describe, expect, inject, it } from 'vitest'
 import { access, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -17,7 +18,7 @@ describe('harness provisório', () => {
     const { hash } = await import('argon2')
     const prisma = new PrismaClient({ datasources: { db: { url: inject('integrationDatabaseUrl') } } })
     try {
-      const password = 'Smoke-only-A1!23456789'
+      const password = `Smoke-${randomBytes(16).toString('hex')}aA1!`
       const user = await prisma.usuario.create({ data: {
         nome: 'Smoke', emailPessoal: 'smoke@example.test',
         senhaHash: await hash(password), papel: 'USUARIO',
@@ -41,7 +42,8 @@ describe('harness provisório', () => {
     const { PrismaClient } = await import('@prisma/client')
     const prisma = new PrismaClient({ datasources: { db: { url: inject('integrationDatabaseUrl') } } })
     try {
-      await prisma.setor.create({ data: { nome: 'isolamento-anterior' } })
+      const sector = await prisma.setor.create({ data: { nome: 'isolamento-anterior' } })
+      expect(sector.nome).toBe('isolamento-anterior')
       await writeFile(join((await createTestApp()).storageDir, 'isolamento.txt'), 'teste')
     } finally { await prisma.$disconnect() }
   })

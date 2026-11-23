@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { ApiError, buildLinks, fieldErrorsFromZod, link, path, pickFilters, toCollection, toResource } from '../../hateoas'
 import type { Viewer } from '../../hateoas'
+import { enviarLinkPrimeiroAcesso } from '../auth/reset-senha.service'
 import { z } from 'zod'
 import {
   UserCreateSchema,
@@ -53,6 +54,13 @@ export async function create(req: FastifyRequest, reply: FastifyReply) {
   const viewer = requestViewer(req)
   const prisma = req.server.prisma
   const user = await createUser(prisma, parsed.body, { feitoPorId: viewer.id })
+  if (parsed.body.ra && user.ativo) {
+    try {
+      await enviarLinkPrimeiroAcesso(prisma, user)
+    } catch (error) {
+      req.log.error({ err: error, userId: user.id }, 'Falha ao enviar e-mail de primeiro acesso')
+    }
+  }
   const location = path`/users/${user.id}`
   return reply.header('Location', location).code(201).send(toResource(user, buildUserLinks(user, viewer)))
 }

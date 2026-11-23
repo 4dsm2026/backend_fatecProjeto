@@ -23,6 +23,7 @@ import { papeisRoutes } from "./core/papeis/papeis.routes";
 import { usuarioSetorRoutes } from "./core/usuario-setor/usuarioSetor.routes";
 import { comunicacoesRoutes } from "./core/comunicacoes/comunicacoes.routes";
 import { notificationsRoutes } from "./core/notifications/notifications.routes";
+import { sendNotificationEmails } from "./core/notifications/notify";
 import { anexoRoutes } from "./core/anexos/anexos.routes";
 import { sugestoesRoutes } from "./core/sugestoes/sugestoes.routes";
 import { passeEscolarRoutes } from "./core/passe-escolar/passe-escolar.routes";
@@ -30,7 +31,7 @@ import { pesquisasRoutes } from "./core/pesquisas/pesquisas.routes";
 import { matriculaRoutes } from "./core/matricula/matricula.routes";
 import { verifyAccessToken } from "./utils/jwt";
 import { scheduleCleanupAnexos } from "./jobs/cleanupAnexos";
-import { entryLinks, registerProblemHandler, toResource } from "./hateoas";
+import { entryLinks, registerProblemHandler, toResource, STAFF_ROLES } from "./hateoas";
 import type { Role } from "./hateoas";
 import { redactUrl } from "./utils/redact-url";
 import type { RawData, WebSocket } from "ws";
@@ -170,9 +171,8 @@ export async function buildApp() {
   // 🔌 WebSocket — autenticado por handshake no primeiro frame.
   // O cliente envia { type: "auth", token } logo após conectar, evitando
   // o JWT na query string (que vaza em logs de acesso/proxy).
-  // O token via ?token= ainda é aceito como fallback de compatibilidade.
   // ---------------------------------------------------------
-  const connections = new Map<string, WebSocket>();
+  const connections = new Map<string, { socket: WebSocket; role: string }>();
   const AUTH_TIMEOUT_MS = 10_000;
 
   /** Frame que o cliente manda pelo WebSocket. Os campos chegam sem garantia de tipo. */
@@ -198,8 +198,9 @@ export async function buildApp() {
     function authenticate(token: unknown): boolean {
       if (typeof token !== "string" || !token) return false;
       try {
-        userId = verifyAccessToken(token).sub;
-        connections.set(userId, socket);
+        const claims = verifyAccessToken(token);
+        userId = claims.sub;
+        connections.set(userId, { socket, role: claims.role });
         app.log.info(`WS conectado: userId=${userId}`);
         return true;
       } catch {
@@ -248,7 +249,7 @@ export async function buildApp() {
     socket.on("close", () => {
       stopAuthTimer();
       if (userId) {
-        connections.delete(userId);
+        if (connections.get(userId)?.socket === socket) connections.delete(userId);
         app.log.info(`WS desconectado: userId=${userId}`);
       }
     });
@@ -258,8 +259,9 @@ export async function buildApp() {
     });
   });
 
-  appGlobals().broadcastWS = (data: unknown) => {
-    for (const [, socket] of connections) {
+  appGlobals().broadcastWS = (data: unknown, ownerId: string) => {
+    for (const [id, { socket, role }] of connections) {
+      if (id !== ownerId && !STAFF_ROLES.includes(role as Role)) continue;
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
     }
   };
@@ -281,7 +283,7 @@ export async function buildApp() {
     for (const userId of userIds) {
       if (!alvos.has(userId)) continue;
 
-      const socket = connections.get(userId);
+      const socket = connections.get(userId)?.socket;
       if (socket && socket.readyState === socket.OPEN) socket.send(JSON.stringify(data));
 
       await app.prisma.notificacao.create({
@@ -295,6 +297,7 @@ export async function buildApp() {
         },
       });
     }
+    await sendNotificationEmails(app.prisma, userIds, data.titulo ?? "Nova notificação", data.mensagem ?? "Você tem uma atualização no chamado.");
   });
 
   // Referência global usada por messages.service. É uma limitação conhecida da arquitetura:

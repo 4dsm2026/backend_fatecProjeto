@@ -44,6 +44,7 @@ export const userPublicSelect = {
 	tipoAcessibilidade: true,
 	observacoesAtendimento: true,
 	notificacoesInApp: true,
+	notificacoesEmail: true,
 } satisfies Prisma.UsuarioSelect;
 
 export type UserPublic = Prisma.UsuarioGetPayload<{ select: typeof userPublicSelect }>;

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import type { Papel, PrismaClient } from '@prisma/client'
 import { describe, expect, inject, it } from 'vitest'
 import { createSetor, vincularUsuarioAoSetor } from '../_helpers/setores'
@@ -9,7 +10,7 @@ import type {
 } from '../_setup/contracts'
 import { createTestApp } from '../_setup/createTestApp'
 
-const PASSWORD = 'Fixture-only-A1!23456789'
+const PASSWORD = `Fixture-${randomBytes(16).toString('hex')}aA1!`
 
 async function withDatabase(run: (prisma: PrismaClient, baseUrl: string) => Promise<void>) {
   const { PrismaClient } = await import('@prisma/client')
@@ -218,6 +219,8 @@ describe('Integração HTTP: setores (/admin/sectors)', () => {
     }))
 
   it('exige autenticação (401) e restringe rotas de setores apenas a ADMINISTRADOR (403)', async () =>
+    // Matriz de autorização intencionalmente agrupada para comparar todos os papéis.
+    // eslint-disable-next-line sonarjs/cognitive-complexity
     withDatabase(async (db, baseUrl) => {
       const admin = await actor(db, baseUrl, 'ADMINISTRADOR', 'sector-matrix-admin')
       const baseSector = await createSetor({ baseUrl }, admin.session, { nome: 'Setor Protegido' })

@@ -19,7 +19,7 @@ declare module "fastify" {
 }
 
 export type AppGlobals = typeof globalThis & {
-  broadcastWS?: (data: unknown) => void;
+  broadcastWS?: (data: unknown, ownerId: string) => void;
   fastifyAppInstance?: { notifyUsers?: NotifyUsers };
 };
 

@@ -81,6 +81,7 @@ const UserPropertiesSchema = {
   tipoAcessibilidade: { type: "string", nullable: true },
   observacoesAtendimento: { type: "string", nullable: true },
   notificacoesInApp: { type: "boolean" },
+  notificacoesEmail: { type: "boolean" },
 } as const;
 
 const UserResourceSchema = {
@@ -157,6 +158,7 @@ const UserUpdateBodySchema = {
     tipoAcessibilidade: { type: "string", nullable: true },
     observacoesAtendimento: { type: "string", nullable: true },
     notificacoesInApp: { type: "boolean" },
+  notificacoesEmail: { type: "boolean" },
   },
 } as const;
 

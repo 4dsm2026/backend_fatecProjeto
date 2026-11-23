@@ -37,4 +37,5 @@ export const userPublicSelect = {
   tipoAcessibilidade: true,
   observacoesAtendimento: true,
   notificacoesInApp: true,
+  notificacoesEmail: true,
 } as const;

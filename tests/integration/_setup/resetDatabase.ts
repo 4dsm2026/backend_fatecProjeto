@@ -10,6 +10,14 @@ const PRESERVED_TABLES = new Set(['_prisma_migrations', '_integration_owner'])
 
 /** Ordem estrita de exclusão respeitando todas as FKs do schema.prisma. */
 const DELETE_ORDER = [
+  'pesquisas_respostas',
+  'pesquisas_participacoes',
+  'pesquisas_perguntas',
+  'pesquisas',
+  'passes_escolares_historico',
+  'passes_escolares',
+  'solicitacoes_matricula_historico',
+  'solicitacoes_matricula',
   'notificacoes',
   'email_envios',
   'anexos',

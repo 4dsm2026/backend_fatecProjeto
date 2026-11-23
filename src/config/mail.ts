@@ -55,12 +55,13 @@ class ResendMailDriver implements MailDriver {
   }
 
   async send({ to, subject, html }: SendMailOptions): Promise<void> {
-    await this.resend.emails.send({
+    const result = await this.resend.emails.send({
       from: this.from,
       to,
       subject,
       html,
     });
+    if (result.error) throw new Error(`Falha no serviço de e-mail: ${result.error.message}`);
   }
 }
 

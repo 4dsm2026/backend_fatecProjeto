@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { toSkipTake } from "../../hateoas/pagination.js";
+import { ApiError } from "../../hateoas";
 import type {
   VincularBody, AlterarPapelBody,
   ListUsuariosDoSetorQuery, ListSetoresDoUsuarioQuery
@@ -31,7 +32,14 @@ export async function vincularUsuarioSetor(
   return prisma.usuarioSetor.create({
     data: { usuarioId, setorId, papelId },
     include: { setor: true, papel: true },
-  });
+  }).catch(rejectInvalidReference);
+}
+
+function rejectInvalidReference(error: unknown): never {
+  if (typeof error === "object" && error !== null && "code" in error && error.code === "P2003") {
+    throw new ApiError("bad-request", "Referência inválida", "Usuário, setor ou papel não existe.");
+  }
+  throw error;
 }
 
 export function alterarPapelNoSetor(
@@ -43,7 +51,7 @@ export function alterarPapelNoSetor(
     where: { id: usuarioSetorId },
     data: { papelId: body.papelId ?? null },
     include: { setor: true, papel: true },
-  });
+  }).catch(rejectInvalidReference);
 }
 
 export const alterarPapelUsuarioSetor = alterarPapelNoSetor;

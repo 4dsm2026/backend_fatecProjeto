@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, Fiat-Uno]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, Fiat-Uno]
 
 jobs:
   build:
@@ -73,7 +73,7 @@ jobs:
         run: pnpm prisma:generate
 
       - name: Apply migrations
-        run: pnpm exec prisma migrate deploy || pnpm exec prisma db push
+        run: pnpm exec prisma migrate deploy
 
       - name: Typecheck
         run: pnpm typecheck
@@ -83,3 +83,27 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Run integration tests with coverage
+        run: pnpm test:integration
+      - name: Upload integration coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-coverage
+          path: coverage/integration/lcov.info
+          if-no-files-found: warn
