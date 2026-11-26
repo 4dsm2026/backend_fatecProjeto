@@ -15,10 +15,43 @@ async function ensureUsuarioSetor(usuarioId, setorId, papelId) {
   return prisma.usuarioSetor.create({ data: { usuarioId, setorId, papelId: papelId ?? null } });
 }
 
+// Senha dos usuários demo (a mesma do README e do plano de testes).
+const SENHA_DEMO = 'Fatec@2026';
+
+// Alunos demo usados nos testes do ambiente publicado.
+const ALUNOS_DEMO = [
+  { emailPessoal: 'joao.silva@aluno.fatec.sp.gov.br',    nome: 'João Silva - Aluno DSM',    ra: '123456789' },
+  { emailPessoal: 'maria.ribeiro@aluno.fatec.sp.gov.br', nome: 'Maria Ribeiro - Aluno GPI', ra: '987654321' },
+  { emailPessoal: 'joao.feijo@aluno.fatec.sp.gov.br',    nome: 'João Feijo - Aluno COMEX',  ra: '998877665' },
+];
+
+/**
+ * `node prisma/seed.js --resetar-demo`: só volta a senha dos alunos demo
+ * para SENHA_DEMO, sem troca obrigatória, e desbloqueia as contas.
+ * Localiza pelo RA (o e-mail pode ter sido editado no painel). Não cria
+ * contas e não mexe em administradores nem em outros usuários, então pode
+ * rodar num banco publicado.
+ */
+async function resetarAlunosDemo() {
+  const senhaHash = await argon2.hash(SENHA_DEMO);
+  const { count } = await prisma.usuario.updateMany({
+    where: { ra: { in: ALUNOS_DEMO.map((a) => a.ra) }, papel: Papel.USUARIO, deletadoEm: null },
+    data: {
+      senhaHash,
+      precisaTrocarSenha: false,
+      loginAttempts: 0,
+      lockedUntil: null,
+      passwordUpdatedAt: new Date(),
+    },
+  });
+  console.log(`✅ Senha dos alunos demo redefinida: ${count} de ${ALUNOS_DEMO.length} encontrados.`);
+  console.log(`   Login pelo RA (${ALUNOS_DEMO.map((a) => a.ra).join(', ')})  /  ${SENHA_DEMO}  (sem troca no 1º acesso)`);
+}
+
 async function main() {
   const [adminHash, demoHash] = await Promise.all([
     argon2.hash('wf-fatec2026'),
-    argon2.hash('Fatec@2026'),
+    argon2.hash(SENHA_DEMO),
   ]);
 
   // Organização
@@ -84,24 +117,7 @@ async function main() {
 
   // Usuários demo (precisaTrocarSenha = true)
   const demos = [
-    {
-      emailPessoal: 'joao.silva@aluno.fatec.sp.gov.br',
-      nome:         'João Silva - Aluno DSM',
-      ra:           '123456789',
-      papel:        Papel.USUARIO,
-    },
-    {
-      emailPessoal: 'maria.ribeiro@aluno.fatec.sp.gov.br',
-      nome:         'Maria Ribeiro - Aluno GPI',
-      ra:           '987654321',
-      papel:        Papel.USUARIO,
-    },
-    {
-      emailPessoal: 'joao.feijo@aluno.fatec.sp.gov.br',
-      nome:         'João Feijo - Aluno COMEX',
-      ra:           '998877665',
-      papel:        Papel.USUARIO,
-    },
+    ...ALUNOS_DEMO.map((a) => ({ ...a, papel: Papel.USUARIO })),
     {
       emailPessoal: 'ana.costa@fatec.sp.gov.br',
       nome:         'Ana Costa - Secretaria',
@@ -122,9 +138,12 @@ async function main() {
 
   console.log('✅ Seed concluído.');
   console.log('   Admin : admin@example.com  /  wf-fatec2026');
-  console.log('   Demo  : <email acima>      /  Fatec@2026  (troca de senha no 1º acesso)');
+  console.log(`   Demo  : <email acima>      /  ${SENHA_DEMO}  (troca de senha no 1º acesso)`);
+  console.log('   Para voltar a senha dos alunos demo depois: pnpm seed:resetar-demo');
 }
 
-main()
+const tarefa = process.argv.includes('--resetar-demo') ? resetarAlunosDemo : main;
+
+tarefa()
   .catch((e) => { console.error('❌ Erro no seed:', e); process.exit(1); })
   .finally(() => prisma.$disconnect());

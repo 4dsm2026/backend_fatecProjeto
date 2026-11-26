@@ -19,6 +19,7 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
     "seed": "node prisma/seed.js",
+    "seed:resetar-demo": "node prisma/seed.js --resetar-demo",
     "backfill:outros": "node scripts/backfill-outros-setor.js",
     "backfill:protocolos": "dotenv -e .env -- node scripts/backfill-protocolos.js",
     "backfill:setores": "dotenv -e .env -- tsx scripts/backfill-setores.ts"
