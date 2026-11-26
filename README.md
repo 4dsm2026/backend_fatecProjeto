@@ -86,7 +86,7 @@ Depois, suba o [frontend](https://github.com/4dsm2026/frontend_fatecProjeto#como
 
 ## Usuários de teste
 
-Criados pelo `pnpm prisma:seed` (`prisma/seed.js`). **Só existem no banco local.**
+Criados pelo `pnpm prisma:seed` (`prisma/seed.js`) no banco local. Os três alunos também existem no ambiente publicado, para testes.
 
 | Perfil | Login (aba) | Senha | Observação |
 |---|---|---|---|
@@ -97,6 +97,22 @@ Criados pelo `pnpm prisma:seed` (`prisma/seed.js`). **Só existem no banco local
 | Aluno | RA `998877665` (Aluno) | `Fatec@2026` | Troca a senha no 1º acesso |
 
 A nova senha do primeiro acesso precisa ter 8+ caracteres, letra maiúscula, minúscula, número e símbolo.
+
+### Voltar a senha dos alunos demo
+
+Se alguém trocou a senha de um aluno demo ou a conta ficou bloqueada, rode:
+
+```bash
+pnpm seed:resetar-demo
+```
+
+O comando só mexe nos três alunos demo (localizados pelo RA): volta a senha para `Fatec@2026`, **sem** troca obrigatória no 1º acesso, e zera tentativas e bloqueio. Não cria contas e não altera administradores nem outros usuários, por isso pode rodar no servidor:
+
+```bash
+cd /opt/wf-fatec && sudo docker compose exec backend node prisma/seed.js --resetar-demo
+```
+
+Não rode o seed completo (`pnpm prisma:seed`) num banco publicado: num banco novo ele cria o administrador com a senha desta tabela.
 
 ## Variáveis de ambiente
 
